@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from ..llm.ollama import OllamaLLM
+from ..llm import create_llm_from_config
 from ..memory.short_term import ShortTermMemory
 from ..tools.base import ToolRegistry
 from ..tools.builtin import register_builtin_tools
@@ -36,12 +36,8 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
         else:
             config = ConfigLoader.load()  # Returns default config
 
-    # Create LLM client
-    llm = OllamaLLM(
-        model=config.llm.model,
-        base_url=config.llm.base_url,
-        timeout=config.llm.timeout
-    )
+    # Create LLM client using factory function
+    llm = create_llm_from_config(config.llm)
 
     # Create memory system
     memory = ShortTermMemory(

@@ -131,5 +131,5 @@ llm:
     def test_load_project_config(self):
         """Test loading the project's config.yaml."""
         config = ConfigLoader.load("config/config.yaml")
-        assert config.llm.model == "llama3"
+        assert config.llm.model == "qwen3.5:9b"
         assert config.llm.base_url == "http://localhost:11434"

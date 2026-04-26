@@ -53,6 +53,8 @@ class ConfigLoader:
             provider=data.get("provider", "ollama"),
             model=data.get("model", "llama3"),
             base_url=data.get("base_url", "http://localhost:11434"),
+            api_key=data.get("api_key"),
+            api_key_env=data.get("api_key_env", "OPENAI_API_KEY"),
             timeout=data.get("timeout", 120),
             temperature=data.get("temperature", 0.7)
         )
@@ -101,6 +103,8 @@ class ConfigLoader:
                 "provider": config.llm.provider,
                 "model": config.llm.model,
                 "base_url": config.llm.base_url,
+                "api_key": config.llm.api_key,
+                "api_key_env": config.llm.api_key_env,
                 "timeout": config.llm.timeout,
                 "temperature": config.llm.temperature
             },

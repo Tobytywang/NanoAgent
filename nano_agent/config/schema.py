@@ -9,9 +9,11 @@ from typing import Literal
 @dataclass
 class LLMConfig:
     """LLM configuration."""
-    provider: Literal["ollama"] = "ollama"
+    provider: Literal["ollama", "openai", "deepseek", "moonshot", "openai_compatible"] = "ollama"
     model: str = "llama3"
     base_url: str = "http://localhost:11434"
+    api_key: str | None = None
+    api_key_env: str = "OPENAI_API_KEY"
     timeout: int = 120
     temperature: float = 0.7
 

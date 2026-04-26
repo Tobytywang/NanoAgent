@@ -41,6 +41,22 @@ class ToolCall:
             arguments=arguments
         )
 
+    @classmethod
+    def from_openai_format(cls, data: dict) -> "ToolCall":
+        """Parse from OpenAI API response format."""
+        func = data.get("function", {})
+        args_str = func.get("arguments", "{}")
+        # OpenAI format: arguments is always a JSON string
+        if isinstance(args_str, str):
+            arguments = json.loads(args_str)
+        else:
+            arguments = args_str
+        return cls(
+            id=data.get("id", ""),
+            name=func.get("name", ""),
+            arguments=arguments
+        )
+
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {

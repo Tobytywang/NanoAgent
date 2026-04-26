@@ -4,13 +4,13 @@
 
 ## 项目简介
 
-NanoAgent 是一个简洁易懂的 AI Agent 框架，通过实现经典的 ReAct 模式，让 AI 能够进行推理和行动的循环交互。项目使用 Ollama 作为本地 LLM 后端，无需依赖外部 API，适合本地开发和实验。
+NanoAgent 是一个简洁易懂的 AI Agent 框架，通过实现经典的 ReAct 模式，让 AI 能够进行推理和行动的循环交互。项目支持 Ollama 本地 LLM 和 OpenAI 兼容的在线 API（OpenAI、DeepSeek、Moonshot 等），灵活适配不同使用场景。
 
 ### 核心特性
 
 - **ReAct 模式**: 实现 Think → Act → Observe 推理循环
 - **工具调用**: 支持多种内置工具（文件操作、Shell 命令、Python 执行）
-- **本地运行**: 基于 Ollama，无需云端 API
+- **多 LLM 支持**: 支持 Ollama 本地模型和 OpenAI 兼容 API（OpenAI、DeepSeek、Moonshot 等）
 - **模块化设计**: 清晰的抽象层次，易于扩展
 - **配置灵活**: YAML 配置文件，支持自定义模型和参数
 
@@ -51,6 +51,7 @@ nano_agent/
 ├── llm/            # LLM 客户端
 │   ├── base.py     # 抽象接口
 │   ├── ollama.py   # Ollama 实现
+│   ├── openai_compatible.py # OpenAI 兼容 API
 │   └── messages.py # 消息结构
 ├── memory/         # 对话记忆
 ├── tools/          # 工具系统
@@ -72,10 +73,15 @@ nano_agent/
 
 ### 外部依赖
 
-- **Ollama**: 本地 LLM 服务
+- **Ollama** (可选): 本地 LLM 服务
   - 安装: https://ollama.ai
   - 默认地址: `http://localhost:11434`
   - 推荐模型: `qwen2.5`, `llama3`, `mistral`
+
+- **在线 API** (可选): OpenAI 兼容的 API 服务
+  - OpenAI: https://platform.openai.com
+  - DeepSeek: https://platform.deepseek.com
+  - Moonshot: https://platform.moonshot.cn
 
 ### 开发依赖
 
@@ -133,13 +139,17 @@ nano-agent -q
 ### 代码中使用
 
 ```python
-from nano_agent.llm.ollama import OllamaClient
+from nano_agent.llm import create_llm
 from nano_agent.memory.short_term import ShortTermMemory
 from nano_agent.agent.react import ReActAgent
 from nano_agent.tools.builtin import create_default_tool_registry
 
-# 创建组件
-llm = OllamaClient(model="qwen2.5:7b")
+# 使用 Ollama 本地模型
+llm = create_llm(provider="ollama", model="qwen2.5:7b")
+
+# 或使用在线 API
+# llm = create_llm(provider="deepseek", api_key="your-api-key")
+
 memory = ShortTermMemory()
 tools = create_default_tool_registry()
 
@@ -192,26 +202,59 @@ tools.register(MyCustomTool())
 ```yaml
 # LLM 设置
 llm:
-  provider: ollama
-  model: qwen2.5:7b        # 使用的模型
+  provider: ollama           # ollama / openai / deepseek / moonshot / openai_compatible
+  model: qwen2.5:7b          # 使用的模型
   base_url: http://localhost:11434
   timeout: 120
   temperature: 0.7
+  # api_key: xxx             # 直接配置 API Key（不推荐）
+  # api_key_env: OPENAI_API_KEY  # 环境变量名（推荐）
 
 # Agent 设置
 agent:
-  max_iterations: 10       # 最大推理轮数
-  verbose: true            # 显示详细过程
+  max_iterations: 10         # 最大推理轮数
+  verbose: true              # 显示详细过程
 
 # 记忆设置
 memory:
   type: short_term
-  max_messages: 50         # 最大消息数
+  max_messages: 50           # 最大消息数
 
 # 工具设置
 tools:
-  enabled: [all]           # 启用的工具
-  disabled: []             # 禁用的工具
+  enabled: [all]             # 启用的工具
+  disabled: []               # 禁用的工具
+```
+
+### 使用在线 API
+
+1. 设置环境变量：
+
+```bash
+# OpenAI
+export OPENAI_API_KEY="sk-..."
+
+# DeepSeek
+export DEEPSEEK_API_KEY="sk-..."
+
+# Moonshot
+export MOONSHOT_API_KEY="sk-..."
+```
+
+2. 修改配置文件：
+
+```yaml
+# 使用 DeepSeek
+llm:
+  provider: deepseek
+  model: deepseek-chat
+
+# 使用自定义 OpenAI 兼容 API
+llm:
+  provider: openai_compatible
+  model: custom-model
+  base_url: https://your-api.example.com/v1
+  api_key_env: CUSTOM_API_KEY
 ```
 
 ## 内置工具
