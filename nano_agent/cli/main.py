@@ -1,0 +1,167 @@
+"""
+CLI entry point for NanoAgent.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+from ..llm.ollama import OllamaLLM
+from ..memory.short_term import ShortTermMemory
+from ..tools.base import ToolRegistry
+from ..tools.builtin import register_builtin_tools
+from ..agent.react import ReActAgent
+from ..config.loader import ConfigLoader
+from .console import Console
+
+
+def create_agent(config_path: str | None = None) -> ReActAgent:
+    """
+    Create and configure a ReAct agent.
+
+    Args:
+        config_path: Path to configuration file
+
+    Returns:
+        Configured ReActAgent instance
+    """
+    # Load configuration
+    if config_path:
+        config = ConfigLoader.load(config_path)
+    else:
+        # Try default config path
+        default_path = Path("config/config.yaml")
+        if default_path.exists():
+            config = ConfigLoader.load(default_path)
+        else:
+            config = ConfigLoader.load()  # Returns default config
+
+    # Create LLM client
+    llm = OllamaLLM(
+        model=config.llm.model,
+        base_url=config.llm.base_url,
+        timeout=config.llm.timeout
+    )
+
+    # Create memory system
+    memory = ShortTermMemory(
+        max_messages=config.memory.max_messages,
+        system_prompt=config.agent.system_prompt or "You are a helpful AI assistant."
+    )
+
+    # Create tool registry and register built-in tools
+    tool_registry = ToolRegistry()
+    register_builtin_tools(tool_registry)
+
+    # Create agent
+    agent = ReActAgent(
+        llm=llm,
+        memory=memory,
+        tool_registry=tool_registry,
+        max_iterations=config.agent.max_iterations,
+        verbose=config.agent.verbose
+    )
+
+    return agent
+
+
+def run_interactive(agent: ReActAgent) -> None:
+    """
+    Run interactive chat loop.
+
+    Args:
+        agent: The agent to interact with
+    """
+    Console.print_header("NanoAgent - AI Assistant")
+    Console.print("Type 'exit' or 'quit' to exit", style="info")
+    Console.print("Type 'clear' to clear conversation history", style="info")
+    Console.print("Type 'tools' to list available tools", style="info")
+    Console.print_separator()
+
+    while True:
+        try:
+            user_input = input("\nYou: ").strip()
+
+            if not user_input:
+                continue
+
+            if user_input.lower() in ["exit", "quit"]:
+                Console.print("Goodbye!", style="success")
+                break
+
+            if user_input.lower() == "clear":
+                agent.reset()
+                Console.print("Conversation history cleared", style="success")
+                continue
+
+            if user_input.lower() == "tools":
+                tools = agent.tool_registry.list_tools()
+                Console.print(f"Available tools: {', '.join(tools)}", style="info")
+                continue
+
+            # Run agent
+            Console.print("\nAgent: ", style="agent", end="")
+            response = agent.run(user_input)
+            print(response)
+
+        except KeyboardInterrupt:
+            Console.print("\nInterrupted", style="warning")
+            break
+        except Exception as e:
+            Console.print(f"Error: {e}", style="error")
+
+
+def main():
+    """CLI entry point."""
+    parser = argparse.ArgumentParser(
+        description="NanoAgent - A lightweight AI Agent framework"
+    )
+    parser.add_argument(
+        "-c", "--config",
+        type=str,
+        default=None,
+        help="Configuration file path (default: config/config.yaml)"
+    )
+    parser.add_argument(
+        "-m", "--model",
+        type=str,
+        default=None,
+        help="Override model name from config"
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Non-interactive mode, read input from stdin"
+    )
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Suppress verbose output"
+    )
+
+    args = parser.parse_args()
+
+    # Create agent
+    agent = create_agent(args.config)
+
+    # Override model if specified
+    if args.model:
+        agent.llm.model = args.model
+
+    # Override verbose if quiet mode
+    if args.quiet:
+        agent.verbose = False
+
+    if args.non_interactive:
+        # Non-interactive mode
+        user_input = sys.stdin.read().strip()
+        if user_input:
+            response = agent.run(user_input)
+            print(response)
+    else:
+        # Interactive mode
+        run_interactive(agent)
+
+
+if __name__ == "__main__":
+    main()

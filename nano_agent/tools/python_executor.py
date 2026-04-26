@@ -1,0 +1,75 @@
+"""
+Python code executor tool.
+"""
+
+import subprocess
+import sys
+import tempfile
+from .base import BaseTool, ToolResult
+
+
+class PythonExecutorTool(BaseTool):
+    """Tool for executing Python code."""
+
+    name = "python_execute"
+    description = "Execute Python code and return the result. Useful for calculations, data processing, and algorithm implementation."
+
+    @property
+    def parameters_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "The Python code to execute"
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Execution timeout in seconds (default: 30)",
+                    "default": 30
+                }
+            },
+            "required": ["code"]
+        }
+
+    def execute(self, code: str, timeout: int = 30) -> ToolResult:
+        """
+        Execute Python code in a subprocess.
+
+        Args:
+            code: Python code to execute
+            timeout: Execution timeout in seconds
+
+        Returns:
+            ToolResult with execution output or error
+        """
+        try:
+            # Execute in a separate process for isolation
+            result = subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=tempfile.gettempdir()
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                return ToolResult(
+                    success=True,
+                    output=output or "Code executed successfully (no output)"
+                )
+            else:
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"Execution error: {result.stderr.strip()}"
+                )
+        except subprocess.TimeoutExpired:
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"Execution timed out ({timeout} seconds)"
+            )
+        except Exception as e:
+            return ToolResult(success=False, output="", error=str(e))
