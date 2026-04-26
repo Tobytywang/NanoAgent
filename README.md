@@ -1,0 +1,242 @@
+# NanoAgent
+
+一个轻量级的 AI Agent 框架，实现 ReAct (Reasoning + Acting) 模式，专为学习和实验设计。
+
+## 项目简介
+
+NanoAgent 是一个简洁易懂的 AI Agent 框架，通过实现经典的 ReAct 模式，让 AI 能够进行推理和行动的循环交互。项目使用 Ollama 作为本地 LLM 后端，无需依赖外部 API，适合本地开发和实验。
+
+### 核心特性
+
+- **ReAct 模式**: 实现 Think → Act → Observe 推理循环
+- **工具调用**: 支持多种内置工具（文件操作、Shell 命令、Python 执行）
+- **本地运行**: 基于 Ollama，无需云端 API
+- **模块化设计**: 清晰的抽象层次，易于扩展
+- **配置灵活**: YAML 配置文件，支持自定义模型和参数
+
+## 核心原理
+
+### ReAct 模式
+
+ReAct (Reasoning + Acting) 是一种让大语言模型交替进行推理和行动的模式：
+
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐
+│  │  Think  │───▶│   Act   │───▶│ Observe │
+│  │  思考   │    │  行动   │    │  观察   │
+│  └─────────┘    └─────────┘    └─────────┘
+│       ▲                              │
+│       └──────────────────────────────┘
+│                循环继续                │
+└─────────────────────────────────────────┘
+```
+
+**工作流程**:
+
+1. **Think (思考)**: LLM 分析当前任务，决定下一步行动
+2. **Act (行动)**: 调用工具执行具体操作
+3. **Observe (观察)**: 获取工具执行结果，更新上下文
+4. **循环**: 根据观察结果继续思考，直到任务完成
+
+### 架构设计
+
+```
+nano_agent/
+├── agent/          # Agent 实现
+│   ├── base.py     # 抽象基类
+│   ├── react.py    # ReAct Agent
+│   └── prompts.py  # 系统提示词
+├── llm/            # LLM 客户端
+│   ├── base.py     # 抽象接口
+│   ├── ollama.py   # Ollama 实现
+│   └── messages.py # 消息结构
+├── memory/         # 对话记忆
+├── tools/          # 工具系统
+│   ├── base.py     # 工具基类和注册表
+│   ├── file_ops.py # 文件操作
+│   ├── shell.py    # Shell 命令
+│   └── python_executor.py # Python 执行
+├── config/         # 配置管理
+└── cli/            # 命令行接口
+```
+
+## 技术依赖
+
+### 运行时依赖
+
+- **Python**: >= 3.10
+- **requests**: >= 2.28.0 (HTTP 请求)
+- **PyYAML**: >= 6.0 (配置解析)
+
+### 外部依赖
+
+- **Ollama**: 本地 LLM 服务
+  - 安装: https://ollama.ai
+  - 默认地址: `http://localhost:11434`
+  - 推荐模型: `qwen2.5`, `llama3`, `mistral`
+
+### 开发依赖
+
+```bash
+pip install -e ".[dev]"
+```
+
+- **pytest**: >= 7.0.0 (测试框架)
+- **black**: >= 23.0.0 (代码格式化)
+
+## 安装
+
+### 1. 安装 Ollama
+
+```bash
+# macOS/Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 拉取模型
+ollama pull qwen2.5:7b
+```
+
+### 2. 安装 NanoAgent
+
+```bash
+# 克隆项目
+git clone <repository-url>
+cd NanoAgent
+
+# 安装依赖
+pip install -e ".[dev]"
+```
+
+## 使用示例
+
+### 命令行使用
+
+```bash
+# 交互模式
+nano-agent
+
+# 指定模型
+nano-agent -m llama3
+
+# 使用自定义配置
+nano-agent -c config/config.yaml
+
+# 非交互模式（从 stdin 读取）
+echo "帮我列出当前目录的文件" | nano-agent --non-interactive
+
+# 安静模式（减少输出）
+nano-agent -q
+```
+
+### 代码中使用
+
+```python
+from nano_agent.llm.ollama import OllamaClient
+from nano_agent.memory.short_term import ShortTermMemory
+from nano_agent.agent.react import ReActAgent
+from nano_agent.tools.builtin import create_default_tool_registry
+
+# 创建组件
+llm = OllamaClient(model="qwen2.5:7b")
+memory = ShortTermMemory()
+tools = create_default_tool_registry()
+
+# 创建 Agent
+agent = ReActAgent(
+    llm=llm,
+    memory=memory,
+    tool_registry=tools,
+    max_iterations=10,
+    verbose=True
+)
+
+# 运行
+response = agent.run("帮我创建一个 hello.txt 文件，内容是 'Hello World'")
+print(response)
+```
+
+### 自定义工具
+
+```python
+from nano_agent.tools.base import BaseTool, ToolResult
+
+class MyCustomTool(BaseTool):
+    name = "my_tool"
+    description = "我的自定义工具"
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "input": {
+                "type": "string",
+                "description": "输入参数"
+            }
+        },
+        "required": ["input"]
+    }
+
+    def execute(self, input: str) -> ToolResult:
+        # 实现工具逻辑
+        result = f"处理结果: {input}"
+        return ToolResult(success=True, output=result)
+
+# 注册工具
+tools.register(MyCustomTool())
+```
+
+## 配置说明
+
+编辑 `config/config.yaml`:
+
+```yaml
+# LLM 设置
+llm:
+  provider: ollama
+  model: qwen2.5:7b        # 使用的模型
+  base_url: http://localhost:11434
+  timeout: 120
+  temperature: 0.7
+
+# Agent 设置
+agent:
+  max_iterations: 10       # 最大推理轮数
+  verbose: true            # 显示详细过程
+
+# 记忆设置
+memory:
+  type: short_term
+  max_messages: 50         # 最大消息数
+
+# 工具设置
+tools:
+  enabled: [all]           # 启用的工具
+  disabled: []             # 禁用的工具
+```
+
+## 内置工具
+
+| 工具名称 | 功能描述 |
+|---------|---------|
+| `python_execute` | 执行 Python 代码 |
+| `file_read` | 读取文件内容 |
+| `file_write` | 写入文件 |
+| `file_search` | 搜索文件（glob 模式） |
+| `shell_execute` | 执行 Shell 命令 |
+
+## 开发
+
+```bash
+# 运行测试
+pytest tests/ -v
+
+# 测试覆盖率
+python tests/run_tests.py --coverage
+
+# 代码格式化
+black .
+```
+
+## 许可证
+
+MIT License
