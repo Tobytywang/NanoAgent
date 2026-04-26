@@ -96,7 +96,7 @@ def run_interactive(agent: ReActAgent) -> None:
                 continue
 
             # Run agent
-            Console.print("\nAgent: ", style="agent", end="")
+            Console.print("\n", style="agent", end="")
             response = agent.run(user_input)
             print(response)
 
