@@ -68,6 +68,8 @@ def run_interactive(agent: ReActAgent) -> None:
     Args:
         agent: The agent to interact with
     """
+    import os
+
     Console.print_header("NanoAgent - AI Assistant")
     Console.print("Type 'exit' or 'quit' to exit", style="info")
     Console.print("Type 'clear' to clear conversation history", style="info")
@@ -76,7 +78,9 @@ def run_interactive(agent: ReActAgent) -> None:
 
     while True:
         try:
-            user_input = input("\nYou: ").strip()
+            cwd = os.getcwd()
+            print(f"\n[User] [{cwd}]:")
+            user_input = input("> ").strip()
 
             if not user_input:
                 continue
@@ -98,7 +102,7 @@ def run_interactive(agent: ReActAgent) -> None:
             # Run agent
             Console.print("\n", style="agent", end="")
             response = agent.run(user_input)
-            print(response)
+            print(f"> {response}")
 
         except KeyboardInterrupt:
             Console.print("\nInterrupted", style="warning")
