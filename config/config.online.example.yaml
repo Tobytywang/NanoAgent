@@ -1,0 +1,67 @@
+# NanoAgent Configuration - Online API
+# =======================
+# 在线 API 配置示例（OpenAI 兼容）
+# 使用方法：复制此文件为 config.yaml 并填写你的 API 信息
+
+# LLM (Large Language Model) settings
+llm:
+  provider: openai_compatible     # 支持: openai, deepseek, moonshot, openai_compatible
+
+  # 模型设置
+  model: your-model-name          # 填写模型名称，如: gpt-4o, deepseek-chat
+  base_url: https://api.example.com/v1  # 填写 API 地址
+
+  # API Key 配置（二选一）
+  # 方式一：直接配置 API Key（不推荐提交到版本控制）
+  # api_key: your-api-key-here
+
+  # 方式二：通过环境变量配置（推荐）
+  api_key_env: MY_API_KEY         # 环境变量名，运行前执行: export MY_API_KEY="your-key"
+
+  timeout: 120
+  temperature: 0.7
+
+# Agent settings
+agent:
+  max_iterations: 10
+  verbose: true
+  system_prompt: |
+    You are a helpful AI assistant with access to tools.
+    Use the available tools to help complete tasks.
+    Think step by step and explain your reasoning.
+
+# Memory settings
+memory:
+  type: short_term
+  max_messages: 50
+
+# Tool settings
+tools:
+  enabled:
+    - all  # Enable all built-in tools
+  disabled: []  # List tool names here to disable them
+
+# =======================
+# 常用 API 提供商配置参考
+# =======================
+#
+# OpenAI:
+#   provider: openai
+#   model: gpt-4o
+#   api_key_env: OPENAI_API_KEY
+#
+# DeepSeek:
+#   provider: deepseek
+#   model: deepseek-chat
+#   api_key_env: DEEPSEEK_API_KEY
+#
+# Moonshot:
+#   provider: moonshot
+#   model: moonshot-v1-8k
+#   api_key_env: MOONSHOT_API_KEY
+#
+# 自定义 API:
+#   provider: openai_compatible
+#   model: your-model
+#   base_url: https://your-api.example.com/v1
+#   api_key_env: YOUR_API_KEY

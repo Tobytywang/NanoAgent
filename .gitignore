@@ -45,5 +45,6 @@ htmlcov/
 .ruff_cache/
 
 # Local config overrides
+config/config.yaml
 config/local.yaml
 .env
