@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from ..llm import create_llm_from_config
-from ..memory import ShortTermMemory, PersistentMemory, FileStorage
+from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorage, LongTermMemory
 from ..tools.base import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent.react import ReActAgent
@@ -27,7 +27,26 @@ def create_memory(config):
     """
     system_prompt = config.agent.system_prompt or "You are a helpful AI assistant."
 
-    if config.memory.type == "persistent":
+    if config.memory.type == "hybrid":
+        # Create working memory (short-term)
+        working_memory = ShortTermMemory(
+            max_messages=config.memory.max_messages,
+            system_prompt=system_prompt
+        )
+
+        # Create long-term memory
+        long_term_memory = LongTermMemory(
+            storage_path=config.memory.long_term_storage_path
+        )
+
+        # Create hybrid memory
+        memory = HybridMemory(
+            working_memory=working_memory,
+            long_term_memory=long_term_memory,
+            auto_extract=config.memory.auto_extract
+        )
+
+    elif config.memory.type == "persistent":
         storage = FileStorage(base_dir=config.memory.storage_path)
         memory = PersistentMemory(
             storage=storage,
@@ -71,9 +90,13 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     # Create memory system
     memory = create_memory(config)
 
+    # Set LLM on hybrid memory for auto-extraction
+    if config.memory.type == "hybrid" and hasattr(memory, 'set_llm'):
+        memory.set_llm(llm)
+
     # Create tool registry and register built-in tools
     tool_registry = ToolRegistry()
-    register_builtin_tools(tool_registry)
+    register_builtin_tools(tool_registry, memory=memory)
 
     # Create agent
     agent = ReActAgent(

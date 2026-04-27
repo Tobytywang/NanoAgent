@@ -30,11 +30,14 @@ class AgentConfig:
 class MemoryConfig:
     """Memory configuration."""
     max_messages: int = 50
-    type: Literal["short_term", "persistent"] = "short_term"
+    type: Literal["short_term", "persistent", "hybrid"] = "short_term"
     # Persistent memory options
     storage_type: Literal["file"] = "file"
     storage_path: str = ".nano_agent/memory"
     session_id: str | None = None  # Optional: resume specific session
+    # Hybrid memory options
+    long_term_storage_path: str = ".nano_agent/long_term_memory"
+    auto_extract: bool = True  # Auto-extract important info to long-term memory
 
 
 @dataclass

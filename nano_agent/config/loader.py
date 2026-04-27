@@ -76,7 +76,9 @@ class ConfigLoader:
             type=data.get("type", "short_term"),
             storage_type=data.get("storage_type", "file"),
             storage_path=data.get("storage_path", ".nano_agent/memory"),
-            session_id=data.get("session_id")
+            session_id=data.get("session_id"),
+            long_term_storage_path=data.get("long_term_storage_path", ".nano_agent/long_term_memory"),
+            auto_extract=data.get("auto_extract", True)
         )
 
     @classmethod
@@ -121,7 +123,9 @@ class ConfigLoader:
                 "max_messages": config.memory.max_messages,
                 "storage_type": config.memory.storage_type,
                 "storage_path": config.memory.storage_path,
-                "session_id": config.memory.session_id
+                "session_id": config.memory.session_id,
+                "long_term_storage_path": config.memory.long_term_storage_path,
+                "auto_extract": config.memory.auto_extract
             },
             "tools": {
                 "enabled": config.tools.enabled,
