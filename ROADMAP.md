@@ -2,6 +2,31 @@
 
 本文档记录 NanoAgent 的开发路线图和增强计划。
 
+## 项目定位
+
+**NanoAgent 是一个纯粹的 Agent 技术底座/框架**：
+- 提供通用的 Agent 核心能力
+- 不包含特定领域的技能包
+- CodingAgent、跑团 Agent 等作为独立项目引用 NanoAgent
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   独立 Agent 项目                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
+│  │CodingAgent  │  │ 跑团Agent   │  │  其他Agent  │  │
+│  │ 技能包      │  │  技能包     │  │  技能包     │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  │
+│         └────────────────┼────────────────┘         │
+│                          ▼                          │
+│              ┌───────────────────────┐              │
+│              │     NanoAgent         │              │
+│              │   (技术底座/框架)      │              │
+│              └───────────────────────┘              │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 版本规划
 
 ### v0.1.0 (当前版本)
@@ -17,7 +42,7 @@
 
 ### v0.2.0 - 持久化记忆
 
-**目标**: 实现跨会话记忆能力，让 Agent 能够记住之前的对话和经验。
+**目标**: 实现跨会话记忆能力，让 Agent 能够记住之前的对话。
 
 **任务列表**:
 - [ ] 实现 `BaseStorage` 存储抽象接口
@@ -37,157 +62,112 @@ nano_agent/memory/
     └── file_storage.py
 ```
 
-**配置示例**:
-```yaml
-memory:
-  type: persistent
-  storage:
-    type: file
-    path: .nano_agent/memory
-```
-
 ---
 
-### v0.3.0 - 人机协作
+### v0.3.0 - 技能包机制
 
-**目标**: 实现关键操作审批机制，让用户能够控制高风险行为。
+**目标**: 提供可扩展的技能包机制，支持外部项目扩展。
 
 **任务列表**:
-- [ ] 实现 `HumanInterface` 人机交互抽象
-- [ ] 实现 `ConsoleInterface` 控制台交互
-- [ ] 实现 `ApprovalPolicy` 审批策略
-- [ ] 实现 `ApprovalManager` 审批管理
-- [ ] 实现 `CollaborativeAgent` 协作 Agent
-- [ ] 添加 `ask_user` 工具
+- [ ] 实现 `Skill` 技能包数据结构
+- [ ] 实现 `SkillRegistry` 技能包注册表
+- [ ] 支持从 YAML 配置加载技能包
+- [ ] 实现技能包热加载
+- [ ] 添加技能包开发文档
 
-**新增文件**:
-```
-nano_agent/human/
-├── __init__.py
-├── base.py
-├── console_interface.py
-└── approval.py
+**技能包定义**:
+```python
+@dataclass
+class Skill:
+    """技能包定义"""
+    name: str
+    system_prompt: str
+    tools: list[BaseTool]
+    knowledge: list[dict]  # 可选的知识库
 ```
 
 **配置示例**:
 ```yaml
-human_collab:
-  enabled: true
-  auto_approve_low_risk: true
-  tools_requiring_approval:
-    - shell_execute
-    - file_write
+agent:
+  skills:
+    - path: ./skills/custom_skill.yaml
 ```
 
 ---
 
-### v0.4.0 - 任务规划
+### v0.4.0 - 运行监控
 
-**目标**: 实现复杂任务分解能力，让 Agent 能够有计划地执行任务。
+**目标**: 提供运行时监控和调试能力。
 
 **任务列表**:
-- [ ] 实现 `Task` 和 `Plan` 数据结构
-- [ ] 实现 `BasePlanner` 规划器抽象
-- [ ] 实现 `SimplePlanner` 基于 LLM 的规划器
-- [ ] 实现 `PlanningAgent` 规划 Agent
-- [ ] 添加规划相关提示词
-- [ ] 支持任务依赖和并行执行
-
-**新增文件**:
-```
-nano_agent/planning/
-├── __init__.py
-├── base.py
-├── task.py
-├── simple_planner.py
-└── prompts.py
-```
-
-**配置示例**:
-```yaml
-planning:
-  enabled: true
-  planner_type: simple
-  approve_plans: false
-```
+- [ ] 实现 Token 使用统计
+- [ ] 实现调用链路追踪
+- [ ] 实现耗时分析
+- [ ] 添加调试日志输出
+- [ ] 支持导出运行报告
 
 ---
 
-### v0.5.0 - 自我反思
+### v0.5.0 - 框架完善
 
-**目标**: 实现执行评估能力，让 Agent 能够从失败中学习和改进。
+**目标**: 提供完整的框架能力，准备发布。
 
 **任务列表**:
-- [ ] 实现 `BaseReflector` 反思器抽象
-- [ ] 实现 `SimpleReflector` 简单反思器
-- [ ] 实现 `ReflectiveAgent` 反思 Agent
-- [ ] 支持失败重试和策略调整
-- [ ] 添加反思相关提示词
-
-**新增文件**:
-```
-nano_agent/reflection/
-├── __init__.py
-├── base.py
-├── simple_reflector.py
-└── prompts.py
-```
-
-**配置示例**:
-```yaml
-reflection:
-  enabled: true
-  max_retries: 2
-```
+- [ ] 插件化工具加载机制
+- [ ] 多存储后端支持（File/SQLite）
+- [ ] 完善的 API 文档
+- [ ] 使用示例和教程
+- [ ] PyPI 发布准备
 
 ---
 
-### v0.6.0 - 统一集成
+## Future（非核心，延后）
 
-**目标**: 整合所有能力，提供统一的增强型 Agent。
-
-**任务列表**:
-- [ ] 实现 `EnhancedAgent` 统一入口
-- [ ] 实现工厂函数 `create_enhanced_agent()`
-- [ ] 完善配置系统
-- [ ] 添加完整测试覆盖
-- [ ] 更新文档和示例
-
-**配置示例**:
-```yaml
-# 完整增强配置
-memory:
-  type: persistent
-  storage:
-    type: file
-    path: .nano_agent/memory
-
-planning:
-  enabled: true
-
-reflection:
-  enabled: true
-  max_retries: 2
-
-human_collab:
-  enabled: true
-  tools_requiring_approval:
-    - shell_execute
-    - file_write
-```
+| 特性 | 说明 |
+|------|------|
+| 计划与反思循环 | Plan-Execute 或 RCI 反思 |
+| 多 Agent 编排 | 并发、辩论、角色分工 |
+| 安全审批/沙箱 | 命令行确认、危险操作拦截 |
+| Web UI | 更友好的交互界面 |
+| 长期记忆 | 支持语义搜索的知识库 |
 
 ---
 
-## 未来展望
+## 如何基于 NanoAgent 开发专用 Agent
 
-### v0.7.0+ 可能的方向
+1. **安装 NanoAgent**
+   ```bash
+   pip install nano-agent
+   ```
 
-- **长期记忆**: 支持语义搜索的知识库
-- **层级规划**: 多层任务分解
-- **学习型反思**: 积累经验，避免重复错误
-- **多 Agent 协作**: 不同角色的 Agent 协作
-- **RAG 支持**: 文档检索增强生成
-- **Web 界面**: 基于 Web 的交互界面
+2. **定义技能包**
+   ```yaml
+   # my_skill.yaml
+   name: my_custom_agent
+   system_prompt: |
+     You are a specialized agent for...
+   tools:
+     - my_tool_1
+     - my_tool_2
+   ```
+
+3. **创建自定义工具**
+   ```python
+   from nano_agent.tools.base import BaseTool, ToolResult
+
+   class MyTool(BaseTool):
+       name = "my_tool"
+       description = "My custom tool"
+       # ...
+   ```
+
+4. **运行 Agent**
+   ```python
+   from nano_agent import create_agent
+
+   agent = create_agent(config_path="my_config.yaml")
+   response = agent.run("Hello!")
+   ```
 
 ---
 

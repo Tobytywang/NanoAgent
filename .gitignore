@@ -48,3 +48,4 @@ htmlcov/
 config/config.yaml
 config/local.yaml
 .env
+tmp.txt
