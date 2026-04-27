@@ -73,7 +73,10 @@ class ConfigLoader:
         """Parse memory configuration."""
         return MemoryConfig(
             max_messages=data.get("max_messages", 50),
-            type=data.get("type", "short_term")
+            type=data.get("type", "short_term"),
+            storage_type=data.get("storage_type", "file"),
+            storage_path=data.get("storage_path", ".nano_agent/memory"),
+            session_id=data.get("session_id")
         )
 
     @classmethod
@@ -115,7 +118,10 @@ class ConfigLoader:
             },
             "memory": {
                 "type": config.memory.type,
-                "max_messages": config.memory.max_messages
+                "max_messages": config.memory.max_messages,
+                "storage_type": config.memory.storage_type,
+                "storage_path": config.memory.storage_path,
+                "session_id": config.memory.session_id
             },
             "tools": {
                 "enabled": config.tools.enabled,

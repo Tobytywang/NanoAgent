@@ -7,12 +7,41 @@ import sys
 from pathlib import Path
 
 from ..llm import create_llm_from_config
-from ..memory.short_term import ShortTermMemory
+from ..memory import ShortTermMemory, PersistentMemory, FileStorage
 from ..tools.base import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent.react import ReActAgent
 from ..config.loader import ConfigLoader
 from .console import Console
+
+
+def create_memory(config):
+    """
+    Create memory system based on configuration.
+
+    Args:
+        config: Config object
+
+    Returns:
+        Memory instance
+    """
+    system_prompt = config.agent.system_prompt or "You are a helpful AI assistant."
+
+    if config.memory.type == "persistent":
+        storage = FileStorage(base_dir=config.memory.storage_path)
+        memory = PersistentMemory(
+            storage=storage,
+            session_id=config.memory.session_id,
+            max_messages=config.memory.max_messages,
+            system_prompt=system_prompt
+        )
+    else:
+        memory = ShortTermMemory(
+            max_messages=config.memory.max_messages,
+            system_prompt=system_prompt
+        )
+
+    return memory
 
 
 def create_agent(config_path: str | None = None) -> ReActAgent:
@@ -40,10 +69,7 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     llm = create_llm_from_config(config.llm)
 
     # Create memory system
-    memory = ShortTermMemory(
-        max_messages=config.memory.max_messages,
-        system_prompt=config.agent.system_prompt or "You are a helpful AI assistant."
-    )
+    memory = create_memory(config)
 
     # Create tool registry and register built-in tools
     tool_registry = ToolRegistry()
