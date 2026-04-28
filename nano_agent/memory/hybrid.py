@@ -142,14 +142,11 @@ class HybridMemory(BaseMemory):
 
     def _extract_keywords(self, content: str) -> list[str]:
         """
-        Extract keywords from content.
-
-        Simple implementation: extract meaningful words.
-        Can be enhanced with NLP or LLM.
+        Extract keywords from content (supports Chinese and English).
         """
         import re
 
-        # Remove common words
+        # English stop words
         stop_words = {
             "the", "a", "an", "is", "are", "was", "were", "be", "been",
             "being", "have", "has", "had", "do", "does", "did", "will",
@@ -170,14 +167,34 @@ class HybridMemory(BaseMemory):
             "which", "who", "whom", "this", "that", "am"
         }
 
-        # Extract words (alphanumeric, at least 2 chars)
-        words = re.findall(r'\b[a-zA-Z]{2,}\b', content.lower())
+        # Chinese stop words (common function words)
+        chinese_stop_words = {
+            "的", "是", "在", "了", "和", "与", "或", "也", "都", "就",
+            "着", "过", "会", "能", "要", "有", "这", "那", "我", "你",
+            "他", "她", "它", "们", "个", "上", "下", "不", "没", "很",
+            "把", "被", "给", "让", "对", "为", "以", "及", "等", "但"
+        }
 
-        # Filter and deduplicate
-        keywords = list(set(w for w in words if w not in stop_words))
+        keywords = []
 
-        # Limit to top keywords
-        return keywords[:10]
+        # Extract English words (2+ chars)
+        english_words = re.findall(r'[a-zA-Z]{2,}', content.lower())
+        keywords.extend([w for w in english_words if w not in stop_words])
+
+        # Extract Chinese segments (2-4 chars sliding window)
+        chinese_matches = re.findall(r'[一-鿿]+', content)
+        for chars in chinese_matches:
+            # Always use sliding window for better matching
+            for i in range(len(chars)):
+                for length in [4, 3, 2]:  # Prefer longer segments
+                    if i + length <= len(chars):
+                        segment = chars[i:i+length]
+                        if segment not in chinese_stop_words:
+                            keywords.append(segment)
+
+        # Deduplicate and limit (preserve order)
+        keywords = list(dict.fromkeys(keywords))
+        return keywords[:15]
 
     def extract_to_long_term(self, content: str | None = None) -> list[str]:
         """

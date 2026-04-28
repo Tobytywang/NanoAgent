@@ -153,7 +153,7 @@ class LongTermMemory:
 
     def search(self, query: str, limit: int = 5) -> list[LongTermEntry]:
         """
-        Search for memories using keyword matching.
+        Search for memories using keyword matching (supports Chinese).
 
         Args:
             query: Search query
@@ -163,18 +163,21 @@ class LongTermMemory:
             List of matching entries
         """
         # Extract keywords from query
-        query_words = set(re.findall(r'\w+', query.lower()))
+        query_keywords = self._extract_search_keywords(query)
+
+        if not query_keywords:
+            return []
 
         # Score each entry
         scored_entries = []
         for entry in self.entries:
             # Check keyword matches
             entry_keywords = set(k.lower() for k in entry.keywords)
-            content_words = set(re.findall(r'\w+', entry.content.lower()))
+            content_keywords = self._extract_search_keywords(entry.content)
 
             # Calculate match score
-            keyword_matches = len(query_words & entry_keywords)
-            content_matches = len(query_words & content_words)
+            keyword_matches = len(query_keywords & entry_keywords)
+            content_matches = len(query_keywords & content_keywords)
 
             # Weighted score: keywords worth more than content matches
             score = keyword_matches * 2 + content_matches
@@ -188,6 +191,58 @@ class LongTermMemory:
         scored_entries.sort(key=lambda x: x[0], reverse=True)
 
         return [entry for _, entry in scored_entries[:limit]]
+
+    def _extract_search_keywords(self, text: str) -> set[str]:
+        """
+        Extract keywords for search (supports Chinese and English).
+        """
+        # English stop words
+        stop_words = {
+            "the", "a", "an", "is", "are", "was", "were", "be", "been",
+            "being", "have", "has", "had", "do", "does", "did", "will",
+            "would", "could", "should", "may", "might", "must", "shall",
+            "can", "need", "dare", "ought", "used", "to", "of", "in",
+            "for", "on", "with", "at", "by", "from", "as", "into",
+            "through", "during", "before", "after", "above", "below",
+            "between", "under", "again", "further", "then", "once",
+            "here", "there", "when", "where", "why", "how", "all", "each",
+            "few", "more", "most", "other", "some", "such", "no", "nor",
+            "not", "only", "own", "same", "so", "than", "too", "very",
+            "just", "and", "but", "if", "or", "because", "until", "while",
+            "this", "that", "these", "those", "i", "me", "my", "myself",
+            "we", "our", "ours", "ourselves", "you", "your", "yours",
+            "yourself", "yourselves", "he", "him", "his", "himself",
+            "she", "her", "hers", "herself", "it", "its", "itself",
+            "they", "them", "their", "theirs", "themselves", "what",
+            "which", "who", "whom", "this", "that", "am"
+        }
+
+        # Chinese stop words
+        chinese_stop_words = {
+            "的", "是", "在", "了", "和", "与", "或", "也", "都", "就",
+            "着", "过", "会", "能", "要", "有", "这", "那", "我", "你",
+            "他", "她", "它", "们", "个", "上", "下", "不", "没", "很",
+            "把", "被", "给", "让", "对", "为", "以", "及", "等", "但"
+        }
+
+        keywords = []
+
+        # Extract English words
+        english_words = re.findall(r'[a-zA-Z]{2,}', text.lower())
+        keywords.extend([w for w in english_words if w not in stop_words])
+
+        # Extract Chinese segments
+        chinese_matches = re.findall(r'[一-鿿]+', text)
+        for chars in chinese_matches:
+            # Always use sliding window for better matching
+            for i in range(len(chars)):
+                for length in [4, 3, 2]:
+                    if i + length <= len(chars):
+                        segment = chars[i:i+length]
+                        if segment not in chinese_stop_words:
+                            keywords.append(segment)
+
+        return set(k.lower() for k in keywords)
 
     def get_all(self) -> list[LongTermEntry]:
         """Get all memory entries."""

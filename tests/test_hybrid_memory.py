@@ -198,6 +198,51 @@ class TestLongTermMemory:
         long_term_memory.clear()
         assert long_term_memory.count() == 0
 
+    def test_search_chinese(self, long_term_memory):
+        """Test Chinese keyword-based search."""
+        long_term_memory.add(
+            content="用户的名字是天宇",
+            category="fact",
+            keywords=["名字", "天宇", "用户"],
+            importance=0.7
+        )
+        long_term_memory.add(
+            content="用户住在北京",
+            category="fact",
+            keywords=["北京", "住址"],
+            importance=0.6
+        )
+
+        # Search with Chinese query
+        results = long_term_memory.search("用户的名字")
+        assert len(results) >= 1
+        assert "天宇" in results[0].content
+
+    def test_search_chinese_auto_extract(self, long_term_memory):
+        """Test Chinese search with automatic keyword extraction from content."""
+        long_term_memory.add(
+            content="用户的名字是天宇",
+            category="fact",
+            keywords=[],  # Empty keywords, should extract from content
+            importance=0.7
+        )
+
+        # Search should work even without pre-defined keywords
+        results = long_term_memory.search("我的名字")
+        assert len(results) >= 1
+        assert "天宇" in results[0].content
+
+    def test_extract_search_keywords_chinese(self, long_term_memory):
+        """Test _extract_search_keywords for Chinese text."""
+        keywords = long_term_memory._extract_search_keywords("用户的名字")
+
+        # Should extract meaningful segments
+        assert len(keywords) > 0
+        # Stop words should be filtered
+        assert "的" not in keywords
+        # Should contain meaningful words
+        assert "名字" in keywords or "用户" in keywords
+
 
 class TestHybridMemory:
     """Tests for HybridMemory implementation."""
@@ -293,6 +338,35 @@ class TestHybridMemory:
         assert len(keywords) > 0
         # Should contain Python or programming
         assert "python" in keywords or "programming" in keywords
+
+    def test_extract_keywords_chinese(self, hybrid_memory):
+        """Test automatic keyword extraction for Chinese text."""
+        keywords = hybrid_memory._extract_keywords("用户的名字是天宇")
+
+        # Should extract Chinese segments
+        assert len(keywords) > 0
+        # Should contain meaningful segments
+        assert "名字" in keywords or "天宇" in keywords or "用户" in keywords
+
+    def test_extract_keywords_chinese_with_stop_words(self, hybrid_memory):
+        """Test that Chinese stop words are filtered."""
+        keywords = hybrid_memory._extract_keywords("我的名字是什么")
+
+        # Stop words should be filtered
+        assert "的" not in keywords
+        assert "是" not in keywords
+        assert "我" not in keywords
+        # Should still extract meaningful segments
+        assert len(keywords) > 0
+        assert "名字" in keywords
+
+    def test_extract_keywords_mixed(self, hybrid_memory):
+        """Test keyword extraction for mixed Chinese-English text."""
+        keywords = hybrid_memory._extract_keywords("用户使用 Python 进行开发")
+
+        # Should extract both Chinese and English
+        assert "python" in keywords
+        assert any(k for k in keywords if "用户" in k or "开发" in k)
 
     def test_new_session(self, hybrid_memory):
         """Test starting a new session."""
