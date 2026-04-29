@@ -74,3 +74,24 @@ memory:
 - `python_execute`: Execute Python code in subprocess
 - `file_read`/`file_write`/`file_search`: File operations
 - `shell_execute`: Cross-platform shell command execution
+
+## Development Guidelines
+
+### Testing
+
+- Write formal test cases in `tests/` directory instead of using `python -c` for ad-hoc testing
+- Run `pytest tests/ -v` to verify all tests pass before committing
+
+### Bash Commands
+
+When executing Bash commands, always provide a clear purpose explaining:
+- What the command does
+- Why it's needed
+- What output is expected
+
+Example:
+```bash
+# Purpose: Verify the session management feature works correctly
+# by testing the --list-sessions CLI option
+python -m nano_agent.cli.main --list-sessions
+```
