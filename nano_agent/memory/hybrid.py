@@ -283,7 +283,30 @@ Only output the JSON array, nothing else."""
 
     def new_session(self) -> str:
         """Start a new session (clear working memory, keep long-term)."""
-        import uuid
-        self.session_id = f"session_{uuid.uuid4().hex[:8]}"
-        self.working_memory.clear()
-        return self.session_id
+        if hasattr(self.working_memory, 'new_session'):
+            return self.working_memory.new_session()
+        else:
+            import uuid
+            self.session_id = f"session_{uuid.uuid4().hex[:8]}"
+            self.working_memory.clear()
+            return self.session_id
+
+    def load_session(self, session_id: str) -> bool:
+        """
+        Load an existing session.
+
+        Args:
+            session_id: The session to load
+
+        Returns:
+            True if session was loaded, False if not found
+        """
+        if hasattr(self.working_memory, 'load_session'):
+            return self.working_memory.load_session(session_id)
+        return False
+
+    def list_sessions(self) -> list[str]:
+        """List all available sessions."""
+        if hasattr(self.working_memory, 'list_sessions'):
+            return self.working_memory.list_sessions()
+        return []
