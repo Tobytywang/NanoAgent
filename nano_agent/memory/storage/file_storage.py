@@ -3,6 +3,7 @@ File-based storage implementation for persistent memory.
 """
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -132,3 +133,52 @@ class FileStorage(BaseStorage):
             "first_message": entries[0].timestamp,
             "last_message": entries[-1].timestamp,
         }
+
+    def save_summary(self, session_id: str, summary: str, message_count: int) -> None:
+        """
+        Save session summary to a JSON file.
+
+        Args:
+            session_id: The session identifier
+            summary: The summary text
+            message_count: Number of messages in the session
+        """
+        summary_file = self.base_dir / f"{session_id}_summary.json"
+        data = {
+            "session_id": session_id,
+            "summary": summary,
+            "message_count": message_count,
+            "created_at": datetime.now().isoformat(),
+        }
+        with open(summary_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def load_summary(self, session_id: str) -> Optional[dict]:
+        """
+        Load session summary from a JSON file.
+
+        Args:
+            session_id: The session identifier
+
+        Returns:
+            Summary dict or None if not exists
+        """
+        summary_file = self.base_dir / f"{session_id}_summary.json"
+        if not summary_file.exists():
+            return None
+
+        with open(summary_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def summary_exists(self, session_id: str) -> bool:
+        """
+        Check if a session summary exists.
+
+        Args:
+            session_id: The session identifier
+
+        Returns:
+            True if summary exists
+        """
+        summary_file = self.base_dir / f"{session_id}_summary.json"
+        return summary_file.exists()
