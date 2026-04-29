@@ -8,6 +8,7 @@ from pathlib import Path
 
 from nano_agent.memory.long_term import LongTermMemory, LongTermEntry
 from nano_agent.memory.short_term import ShortTermMemory
+from nano_agent.memory.persistent import PersistentMemory
 from nano_agent.memory.hybrid import HybridMemory
 
 
@@ -380,6 +381,40 @@ class TestHybridMemory:
         assert len(hybrid_memory) == 1  # Only system message
         # Long-term memory should persist
         assert hybrid_memory.long_term_memory.count() == 1
+
+    def test_session_management_with_persistent_working_memory(self, temp_dir):
+        """Test session management when working memory is PersistentMemory."""
+        from nano_agent.memory import FileStorage
+
+        # Create hybrid memory with PersistentMemory as working memory
+        storage = FileStorage(base_dir=temp_dir)
+        working = PersistentMemory(
+            storage=storage,
+            max_messages=50,
+            system_prompt="Test"
+        )
+        long_term = LongTermMemory(storage_path=temp_dir)
+        hybrid = HybridMemory(
+            working_memory=working,
+            long_term_memory=long_term
+        )
+
+        # Add a message and save
+        hybrid.add_user_message("Hello")
+        session_id = working.session_id
+
+        # Create new session and add a message
+        new_id = hybrid.new_session()
+        hybrid.add_user_message("New session message")
+
+        # Load old session
+        success = hybrid.load_session(session_id)
+        assert success is True
+
+        # List sessions (only sessions with messages are listed)
+        sessions = hybrid.list_sessions()
+        assert session_id in sessions
+        assert new_id in sessions
 
 
 class TestMemoryConfig:
