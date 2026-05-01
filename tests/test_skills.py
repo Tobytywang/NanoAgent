@@ -304,3 +304,49 @@ class TestSkillHotReload:
         loader = SkillLoader()
         result = loader.reload_skill("nonexistent")
         assert result is False
+
+
+class TestWebSearchSkill:
+    """Tests for web_search skill."""
+
+    def test_web_search_skill_file_exists(self):
+        """Test that web_search skill file exists in examples."""
+        skill_path = Path("examples/skills/web_search.yaml")
+        assert skill_path.exists(), "web_search.yaml should exist in examples/skills"
+
+    def test_web_search_skill_loading(self):
+        """Test loading web_search skill."""
+        skill_path = Path("examples/skills/web_search.yaml")
+
+        loader = SkillLoader()
+        definition = loader.load_from_yaml(skill_path)
+
+        assert definition is not None
+        assert definition.name == "web_search"
+        assert definition.enabled is True
+        assert "shell_execute" in definition.tools
+        assert "python_execute" in definition.tools
+
+    def test_web_search_skill_has_system_prompt(self):
+        """Test that web_search skill has system prompt."""
+        skill_path = Path("examples/skills/web_search.yaml")
+
+        loader = SkillLoader()
+        definition = loader.load_from_yaml(skill_path)
+
+        assert definition.system_prompt is not None
+        assert len(definition.system_prompt) > 0
+        assert "web search" in definition.system_prompt.lower()
+        assert "curl" in definition.system_prompt.lower()
+
+    def test_web_search_skill_registry(self):
+        """Test registering web_search skill."""
+        skill_path = Path("examples/skills/web_search.yaml")
+
+        registry = SkillRegistry()
+        loader = SkillLoader(registry)
+        loader.load_from_yaml(skill_path)
+
+        definition = registry.get_definition("web_search")
+        assert definition is not None
+        assert definition.name == "web_search"
