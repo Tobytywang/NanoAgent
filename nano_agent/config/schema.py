@@ -48,9 +48,18 @@ class ToolConfig:
 
 
 @dataclass
+class SkillsConfig:
+    """Skills configuration."""
+    enabled: list[str] = field(default_factory=list)  # 启用的技能包名称
+    directory: str = ".nano_agent/skills"  # 技能包目录
+    configs: dict = field(default_factory=dict)  # 各技能包的额外配置
+
+
+@dataclass
 class Config:
     """Main configuration."""
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     tools: ToolConfig = field(default_factory=ToolConfig)
+    skills: SkillsConfig = field(default_factory=SkillsConfig)

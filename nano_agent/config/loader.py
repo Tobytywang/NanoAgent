@@ -6,7 +6,7 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from .schema import Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig
+from .schema import Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, SkillsConfig
 
 
 class ConfigLoader:
@@ -43,7 +43,8 @@ class ConfigLoader:
             llm=cls._parse_llm_config(data.get("llm", {})),
             agent=cls._parse_agent_config(data.get("agent", {})),
             memory=cls._parse_memory_config(data.get("memory", {})),
-            tools=cls._parse_tool_config(data.get("tools", {}))
+            tools=cls._parse_tool_config(data.get("tools", {})),
+            skills=cls._parse_skills_config(data.get("skills", {}))
         )
 
     @classmethod
@@ -87,6 +88,15 @@ class ConfigLoader:
         return ToolConfig(
             enabled=data.get("enabled", ["all"]),
             disabled=data.get("disabled", [])
+        )
+
+    @classmethod
+    def _parse_skills_config(cls, data: dict) -> SkillsConfig:
+        """Parse skills configuration."""
+        return SkillsConfig(
+            enabled=data.get("enabled", []),
+            directory=data.get("directory", ".nano_agent/skills"),
+            configs=data.get("configs", {})
         )
 
     @classmethod
