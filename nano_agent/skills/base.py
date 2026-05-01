@@ -93,9 +93,16 @@ class SkillRegistry:
     def get_combined_system_prompt(self) -> str:
         """获取合并后的系统提示"""
         prompts = []
+
+        # From BaseSkill instances
         for skill in self.get_active_skills():
             if skill.system_prompt:
                 prompts.append(f"## {skill.name}\n{skill.system_prompt}")
+
+        # From SkillDefinition instances
+        for definition in self._definitions.values():
+            if definition.enabled and definition.system_prompt:
+                prompts.append(f"## {definition.name}\n{definition.system_prompt}")
 
         if prompts:
             return "\n\n".join(prompts)
