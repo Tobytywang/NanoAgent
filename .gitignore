@@ -48,7 +48,6 @@ htmlcov/
 config/config.yaml
 config/local.yaml
 .env
-tmp.txt
 
 # Runtime data
 .nano_agent/

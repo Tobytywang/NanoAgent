@@ -69,9 +69,9 @@ nano_agent/memory/
 **目标**: 提供可扩展的技能包机制，支持外部项目扩展。
 
 **任务列表**:
-- [ ] 实现 `Skill` 技能包数据结构
-- [ ] 实现 `SkillRegistry` 技能包注册表
-- [ ] 支持从 YAML 配置加载技能包
+- [x] 实现 `Skill` 技能包数据结构
+- [x] 实现 `SkillRegistry` 技能包注册表
+- [x] 支持从 YAML 配置加载技能包
 - [ ] 实现技能包热加载
 - [ ] 添加技能包开发文档
 
@@ -88,9 +88,10 @@ class Skill:
 
 **配置示例**:
 ```yaml
-agent:
-  skills:
-    - path: ./skills/custom_skill.yaml
+skills:
+  enabled:
+    - coding
+  directory: .nano_agent/skills
 ```
 
 ---
