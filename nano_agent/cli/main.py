@@ -174,6 +174,10 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
         skill_prompt=skill_prompt
     )
 
+    # Attach skill registry and loader for hot-reload support
+    agent.skill_registry = skill_registry
+    agent.skill_loader = skill_loader
+
     return agent
 
 
@@ -198,6 +202,9 @@ def run_interactive(agent: ReActAgent, config) -> None:
     Console.print("Type 'clear' to clear conversation history", style="info")
     Console.print("Type 'tools' to list available tools", style="info")
     Console.print("Type 'sessions' to list available sessions", style="info")
+    Console.print("Type 'skills' to list loaded skills", style="info")
+    Console.print("Type 'skill reload <name>' to reload a skill", style="info")
+    Console.print("Type 'skill unload <name>' to unload a skill", style="info")
     Console.print_separator()
 
     while True:
@@ -240,6 +247,25 @@ def run_interactive(agent: ReActAgent, config) -> None:
                             print(f"  {sid}")
                 else:
                     Console.print("Session listing not available (requires persistent/hybrid memory)", style="warning")
+                continue
+
+            # Skill commands
+            if user_input.lower() == "skills":
+                if hasattr(agent, 'skill_loader'):
+                    skills = agent.skill_loader.list_loaded_skills()
+                    if not skills:
+                        Console.print("No skills loaded.", style="info")
+                    else:
+                        Console.print(f"Loaded skills ({len(skills)}):", style="info")
+                        for skill_name in skills:
+                            source = agent.skill_loader.get_skill_source(skill_name)
+                            print(f"  {skill_name} <- {source}")
+                else:
+                    Console.print("Skill system not available", style="warning")
+                continue
+
+            if user_input.lower().startswith("skill "):
+                _handle_skill_command(agent, user_input[6:])
                 continue
 
             # 重置 Ctrl+C 计数
@@ -496,6 +522,80 @@ def _save_session_summary(agent, config, summary: str) -> None:
     message_count = len([m for m in messages if m.get("role") != "system"])
 
     storage.save_summary(session_id, summary, message_count)
+
+
+def _handle_skill_command(agent, command: str) -> None:
+    """处理技能包命令
+
+    Args:
+        agent: Agent 实例
+        command: 命令字符串（如 'reload coding'）
+    """
+    if not hasattr(agent, 'skill_loader'):
+        Console.print("Skill system not available", style="warning")
+        return
+
+    parts = command.strip().split()
+    if not parts:
+        Console.print("Usage: skill <reload|unload> <name>", style="info")
+        return
+
+    action = parts[0].lower()
+    skill_name = parts[1] if len(parts) > 1 else None
+
+    if action == "reload":
+        if not skill_name:
+            Console.print("Usage: skill reload <name>", style="info")
+            return
+
+        if skill_name not in agent.skill_loader.list_loaded_skills():
+            Console.print(f"Skill '{skill_name}' not found", style="error")
+            return
+
+        success = agent.skill_loader.reload_skill(skill_name)
+        if success:
+            Console.print(f"Skill '{skill_name}' reloaded successfully", style="success")
+            # Update agent's tools and prompt
+            _update_agent_skills(agent)
+        else:
+            Console.print(f"Failed to reload skill '{skill_name}'", style="error")
+
+    elif action == "unload":
+        if not skill_name:
+            Console.print("Usage: skill unload <name>", style="info")
+            return
+
+        if skill_name not in agent.skill_loader.list_loaded_skills():
+            Console.print(f"Skill '{skill_name}' not found", style="error")
+            return
+
+        success = agent.skill_loader.unload_skill(skill_name)
+        if success:
+            Console.print(f"Skill '{skill_name}' unloaded successfully", style="success")
+            # Update agent's tools and prompt
+            _update_agent_skills(agent)
+        else:
+            Console.print(f"Failed to unload skill '{skill_name}'", style="error")
+
+    else:
+        Console.print(f"Unknown action: {action}. Use 'reload' or 'unload'", style="error")
+
+
+def _update_agent_skills(agent) -> None:
+    """更新 Agent 的工具和系统提示（热加载后）
+
+    Args:
+        agent: Agent 实例
+    """
+    # Update tools
+    for tool in agent.skill_registry.get_all_tools():
+        if tool.name not in agent.tool_registry.list_tools():
+            agent.tool_registry.register(tool)
+
+    # Update system prompt
+    skill_prompt = agent.skill_registry.get_combined_system_prompt()
+    agent.skill_prompt = skill_prompt
+    agent._setup_system_prompt()
 
 
 if __name__ == "__main__":

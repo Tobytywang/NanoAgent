@@ -228,3 +228,79 @@ skills:
 
             assert config.skills.enabled == ["coding", "translation"]
             assert config.skills.directory == "./skills"
+
+
+class TestSkillHotReload:
+    """Tests for skill hot-reload functionality."""
+
+    def test_list_loaded_skills(self):
+        """Test listing loaded skills."""
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = Path(d) / "test_skill.yaml"
+            yaml_path.write_text("name: test_skill\ndescription: Test")
+
+            loader = SkillLoader()
+            loader.load_from_yaml(yaml_path)
+
+            skills = loader.list_loaded_skills()
+            assert "test_skill" in skills
+
+    def test_get_skill_source(self):
+        """Test getting skill source path."""
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = Path(d) / "test_skill.yaml"
+            yaml_path.write_text("name: test_skill\ndescription: Test")
+
+            loader = SkillLoader()
+            loader.load_from_yaml(yaml_path)
+
+            source = loader.get_skill_source("test_skill")
+            assert source == str(yaml_path)
+
+    def test_unload_skill(self):
+        """Test unloading a skill."""
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = Path(d) / "test_skill.yaml"
+            yaml_path.write_text("name: test_skill\ndescription: Test")
+
+            loader = SkillLoader()
+            loader.load_from_yaml(yaml_path)
+
+            assert "test_skill" in loader.list_loaded_skills()
+
+            result = loader.unload_skill("test_skill")
+            assert result is True
+            assert "test_skill" not in loader.list_loaded_skills()
+
+    def test_unload_nonexistent_skill(self):
+        """Test unloading a nonexistent skill."""
+        loader = SkillLoader()
+        result = loader.unload_skill("nonexistent")
+        assert result is False
+
+    def test_reload_skill(self):
+        """Test reloading a skill."""
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = Path(d) / "test_skill.yaml"
+            yaml_path.write_text("name: test_skill\ndescription: Original")
+
+            loader = SkillLoader()
+            loader.load_from_yaml(yaml_path)
+
+            # Modify the file
+            yaml_path.write_text("name: test_skill\ndescription: Modified")
+
+            # Reload
+            result = loader.reload_skill("test_skill")
+            assert result is True
+
+            # Verify reloaded
+            definition = loader.registry.get_definition("test_skill")
+            assert definition is not None
+            assert definition.description == "Modified"
+
+    def test_reload_nonexistent_skill(self):
+        """Test reloading a nonexistent skill."""
+        loader = SkillLoader()
+        result = loader.reload_skill("nonexistent")
+        assert result is False

@@ -107,12 +107,21 @@ class SkillRegistry:
 
     def unregister(self, name: str) -> bool:
         """注销技能包"""
+        removed = False
+
+        # Remove skill instance
         if name in self._skills:
             skill = self._skills[name]
             skill.teardown()
             del self._skills[name]
-            return True
-        return False
+            removed = True
+
+        # Remove skill definition
+        if name in self._definitions:
+            del self._definitions[name]
+            removed = True
+
+        return removed
 
     def clear(self) -> None:
         """清空所有技能包"""

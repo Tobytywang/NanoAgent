@@ -16,6 +16,7 @@ class SkillLoader:
 
     def __init__(self, registry: SkillRegistry | None = None):
         self.registry = registry or SkillRegistry()
+        self._skill_sources: dict[str, str] = {}  # skill_name -> source_path
 
     def load_from_yaml(self, yaml_path: str | Path) -> SkillDefinition | None:
         """从 YAML 文件加载技能包定义"""
@@ -37,6 +38,7 @@ class SkillLoader:
         )
 
         self.registry.register_definition(definition)
+        self._skill_sources[definition.name] = str(path)
         return definition
 
     def load_from_directory(self, directory: str | Path) -> list[SkillDefinition]:
@@ -88,12 +90,78 @@ class SkillLoader:
             skill = skill_class()
             if isinstance(skill, BaseSkill):
                 self.registry.register(skill)
+                self._skill_sources[skill.name] = module_path
                 return skill
 
             return None
 
         except Exception:
             return None
+
+    def reload_skill(self, name: str) -> bool:
+        """重新加载指定技能包
+
+        Args:
+            name: 技能包名称
+
+        Returns:
+            是否成功重载
+        """
+        source = self._skill_sources.get(name)
+        if not source:
+            return False
+
+        # 先卸载
+        self.registry.unregister(name)
+
+        # 根据来源类型重新加载
+        if source.endswith(".yaml") or source.endswith(".yml"):
+            definition = self.load_from_yaml(source)
+            return definition is not None
+        elif source.endswith(".py"):
+            # Python 类需要重新导入
+            # 清除模块缓存
+            module_name = Path(source).stem
+            if module_name in sys.modules:
+                del sys.modules[module_name]
+            skill = self.load_skill_class(source)
+            return skill is not None
+        else:
+            # 模块路径
+            skill = self.load_skill_class(source)
+            return skill is not None
+
+    def unload_skill(self, name: str) -> bool:
+        """卸载指定技能包
+
+        Args:
+            name: 技能包名称
+
+        Returns:
+            是否成功卸载
+        """
+        if name in self._skill_sources:
+            del self._skill_sources[name]
+        return self.registry.unregister(name)
+
+    def list_loaded_skills(self) -> list[str]:
+        """列出已加载的技能包
+
+        Returns:
+            技能包名称列表
+        """
+        return list(self._skill_sources.keys())
+
+    def get_skill_source(self, name: str) -> str | None:
+        """获取技能包的来源路径
+
+        Args:
+            name: 技能包名称
+
+        Returns:
+            来源路径或 None
+        """
+        return self._skill_sources.get(name)
 
     def load_from_config(self, config: dict) -> list[BaseSkill]:
         """从配置加载技能包"""
