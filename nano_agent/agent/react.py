@@ -23,7 +23,8 @@ class ReActAgent(BaseAgent):
         memory,
         tool_registry,
         max_iterations: int = 10,
-        verbose: bool = True
+        verbose: bool = True,
+        skill_prompt: str = ""
     ):
         """
         Initialize the ReAct agent.
@@ -34,15 +35,22 @@ class ReActAgent(BaseAgent):
             tool_registry: Tool registry instance
             max_iterations: Maximum reasoning iterations
             verbose: Whether to print debug information
+            skill_prompt: Additional prompt from skills
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
+        self.skill_prompt = skill_prompt
         self._setup_system_prompt()
 
     def _setup_system_prompt(self) -> None:
         """Set up the system prompt with tool descriptions."""
         tools_desc = self._format_tools_description()
         system_prompt = REACT_SYSTEM_PROMPT.format(tools_description=tools_desc)
+
+        # Add skill prompt if available
+        if self.skill_prompt:
+            system_prompt = f"{system_prompt}\n\n## Skills\n\n{self.skill_prompt}"
+
         self.memory.set_system_prompt(system_prompt)
 
     def _format_tools_description(self) -> str:

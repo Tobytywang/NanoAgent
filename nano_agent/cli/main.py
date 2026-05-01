@@ -14,6 +14,7 @@ from ..tools.base import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent.react import ReActAgent
 from ..config.loader import ConfigLoader
+from ..skills import SkillRegistry, SkillLoader
 from .console import Console
 
 
@@ -151,13 +152,26 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     tool_registry = ToolRegistry()
     register_builtin_tools(tool_registry, memory=memory)
 
+    # Load and register skills
+    skill_registry = SkillRegistry()
+    skill_loader = SkillLoader(skill_registry)
+    skill_loader.load_from_directory(config.skills.directory)
+
+    # Register skill tools
+    for tool in skill_registry.get_all_tools():
+        tool_registry.register(tool)
+
+    # Get combined skill system prompt
+    skill_prompt = skill_registry.get_combined_system_prompt()
+
     # Create agent
     agent = ReActAgent(
         llm=llm,
         memory=memory,
         tool_registry=tool_registry,
         max_iterations=config.agent.max_iterations,
-        verbose=config.agent.verbose
+        verbose=config.agent.verbose,
+        skill_prompt=skill_prompt
     )
 
     return agent
