@@ -350,3 +350,126 @@ class TestWebSearchSkill:
         definition = registry.get_definition("web_search")
         assert definition is not None
         assert definition.name == "web_search"
+
+
+class TestSkillLoaderPythonClass:
+    """Tests for loading Python skill classes."""
+
+    def test_load_skill_class_from_file(self):
+        """Test loading a skill class from a Python file."""
+        with tempfile.TemporaryDirectory() as d:
+            skill_file = Path(d) / "my_skill.py"
+            skill_file.write_text('''
+from nano_agent.skills.base import BaseSkill
+from nano_agent.tools.base import BaseTool, ToolResult
+
+class MyTool(BaseTool):
+    name = "my_tool"
+    description = "My tool"
+
+    @property
+    def parameters_schema(self):
+        return {"type": "object", "properties": {}}
+
+    def execute(self):
+        return ToolResult(success=True, output="done")
+
+class Skill(BaseSkill):
+    name = "my_python_skill"
+    description = "A Python skill"
+
+    @property
+    def tools(self):
+        return [MyTool()]
+''')
+
+            loader = SkillLoader()
+            skill = loader.load_skill_class(str(skill_file))
+
+            assert skill is not None
+            assert skill.name == "my_python_skill"
+            assert len(skill.tools) == 1
+            assert skill.tools[0].name == "my_tool"
+
+    def test_load_skill_class_nonexistent_file(self):
+        """Test loading from a nonexistent Python file."""
+        loader = SkillLoader()
+        skill = loader.load_skill_class("/nonexistent/skill.py")
+        assert skill is None
+
+    def test_load_skill_class_missing_class(self):
+        """Test loading a file without the Skill class."""
+        with tempfile.TemporaryDirectory() as d:
+            skill_file = Path(d) / "no_skill.py"
+            skill_file.write_text('''
+# No Skill class here
+def some_function():
+    pass
+''')
+
+            loader = SkillLoader()
+            skill = loader.load_skill_class(str(skill_file))
+            assert skill is None
+
+    def test_load_skill_class_custom_class_name(self):
+        """Test loading a skill with custom class name."""
+        with tempfile.TemporaryDirectory() as d:
+            skill_file = Path(d) / "custom_skill.py"
+            skill_file.write_text('''
+from nano_agent.skills.base import BaseSkill
+
+class CustomSkill(BaseSkill):
+    name = "custom_skill"
+''')
+
+            loader = SkillLoader()
+            skill = loader.load_skill_class(str(skill_file), class_name="CustomSkill")
+
+            assert skill is not None
+            assert skill.name == "custom_skill"
+
+    def test_load_skill_class_registers_in_registry(self):
+        """Test that loaded skill is registered."""
+        with tempfile.TemporaryDirectory() as d:
+            skill_file = Path(d) / "reg_skill.py"
+            skill_file.write_text('''
+from nano_agent.skills.base import BaseSkill
+
+class Skill(BaseSkill):
+    name = "registered_skill"
+''')
+
+            registry = SkillRegistry()
+            loader = SkillLoader(registry)
+            loader.load_skill_class(str(skill_file))
+
+            assert registry.get("registered_skill") is not None
+
+
+class TestSkillLoaderFromConfig:
+    """Tests for loading skills from config."""
+
+    def test_load_from_config_with_directory(self):
+        """Test loading skills from config with directory."""
+        with tempfile.TemporaryDirectory() as d:
+            skill_file = Path(d) / "config_skill.yaml"
+            skill_file.write_text("name: config_skill\ndescription: From config")
+
+            config = {
+                "skills": {
+                    "enabled": [],
+                    "directory": d
+                }
+            }
+
+            loader = SkillLoader()
+            skills = loader.load_from_config(config)
+
+            # Should load from directory
+            assert "config_skill" in loader.list_loaded_skills()
+
+    def test_load_from_config_empty(self):
+        """Test loading from empty config."""
+        loader = SkillLoader()
+        skills = loader.load_from_config({})
+        assert skills == []

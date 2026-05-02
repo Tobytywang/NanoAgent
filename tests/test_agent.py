@@ -207,3 +207,90 @@ class TestPrompts:
 
         assert "python_execute" in desc
         assert "Execute Python code" in desc
+
+
+class TestReActAgentStreaming:
+    """Tests for ReActAgent streaming functionality."""
+
+    def test_run_stream_basic(self):
+        """Test basic streaming functionality."""
+        llm = Mock()
+        llm.chat = Mock(return_value=("Hello! How can I help?", []))
+
+        memory = ShortTermMemory()
+        registry = ToolRegistry()
+
+        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+
+        # Collect streamed chunks
+        chunks = list(agent.run_stream("Hi"))
+
+        assert len(chunks) == 1
+        assert chunks[0] == "Hello! How can I help?"
+
+    def test_run_stream_with_tool_calls(self):
+        """Test streaming with tool calls."""
+        llm = Mock()
+
+        tool_call = ToolCall(id="call_1", name="mock_tool", arguments={"input": "test"})
+        llm.chat = Mock(
+            side_effect=[
+                ("Let me check", [tool_call]),
+                ("The result is: Processed: test", [])
+            ]
+        )
+
+        memory = ShortTermMemory()
+        registry = ToolRegistry()
+        registry.register(MockTool())
+
+        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+
+        chunks = list(agent.run_stream("Process test"))
+
+        assert len(chunks) == 1
+        assert "Processed: test" in chunks[0]
+
+
+class TestReActAgentWithSkillPrompt:
+    """Tests for ReActAgent with skill prompts."""
+
+    def test_agent_with_skill_prompt(self):
+        """Test agent initialization with skill prompt."""
+        llm = Mock()
+        memory = ShortTermMemory()
+        registry = ToolRegistry()
+
+        skill_prompt = "You are a coding assistant."
+
+        agent = ReActAgent(
+            llm=llm,
+            memory=memory,
+            tool_registry=registry,
+            skill_prompt=skill_prompt
+        )
+
+        messages = memory.get_all()
+        system_msg = messages[0]
+        assert "coding assistant" in system_msg["content"]
+
+    def test_agent_skill_prompt_updated_after_add_tool(self):
+        """Test that skill prompt is preserved when adding tool."""
+        llm = Mock()
+        memory = ShortTermMemory()
+        registry = ToolRegistry()
+
+        skill_prompt = "You are a specialized assistant."
+
+        agent = ReActAgent(
+            llm=llm,
+            memory=memory,
+            tool_registry=registry,
+            skill_prompt=skill_prompt
+        )
+
+        agent.add_tool(MockTool())
+
+        messages = memory.get_all()
+        system_msg = messages[0]
+        assert "specialized assistant" in system_msg["content"]
