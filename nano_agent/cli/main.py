@@ -497,7 +497,7 @@ def _generate_session_summary(agent, config) -> str:
 3. 用中文回答"""
 
     try:
-        response, _ = agent.llm.chat(
+        response, _, _ = agent.llm.chat(
             messages=[{"role": "user", "content": prompt}],
             tools=None
         )

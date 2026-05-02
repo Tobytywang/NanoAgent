@@ -248,7 +248,7 @@ If nothing important to remember, output: []
 Only output the JSON array, nothing else."""
 
         try:
-            response, _ = self._llm.chat(
+            response, _, _ = self._llm.chat(
                 messages=[{"role": "user", "content": extraction_prompt}],
                 tools=None
             )
