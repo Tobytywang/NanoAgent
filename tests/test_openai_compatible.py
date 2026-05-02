@@ -1,3 +1,4 @@
+
 """
 Tests for OpenAI Compatible LLM client.
 """
@@ -66,15 +67,19 @@ class TestOpenAICompatibleLLM:
         mock_response.json.return_value = {
             "choices": [{
                 "message": {"content": "Hello! How can I help you?"}
-            }]
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
         }
         mock_post.return_value = mock_response
 
         llm = OpenAICompatibleLLM(model="gpt-4o", api_key="test")
-        content, tool_calls = llm.chat([{"role": "user", "content": "Hi"}])
+        content, tool_calls, usage = llm.chat([{"role": "user", "content": "Hi"}])
 
         assert content == "Hello! How can I help you?"
         assert tool_calls == []
+        assert usage.prompt_tokens == 10
+        assert usage.completion_tokens == 20
+        assert usage.total_tokens == 30
 
         # Verify request
         call_args = mock_post.call_args
@@ -99,17 +104,19 @@ class TestOpenAICompatibleLLM:
                         }
                     }]
                 }
-            }]
+            }],
+            "usage": {"prompt_tokens": 15, "completion_tokens": 25, "total_tokens": 40}
         }
         mock_post.return_value = mock_response
 
         llm = OpenAICompatibleLLM(model="gpt-4o", api_key="test")
-        content, tool_calls = llm.chat([{"role": "user", "content": "Weather?"}])
+        content, tool_calls, usage = llm.chat([{"role": "user", "content": "Weather?"}])
 
         assert len(tool_calls) == 1
         assert tool_calls[0].id == "call_123"
         assert tool_calls[0].name == "get_weather"
         assert tool_calls[0].arguments == {"location": "Beijing"}
+        assert usage.total_tokens == 40
 
     @patch('requests.post')
     def test_chat_with_tools_parameter(self, mock_post):
@@ -118,7 +125,8 @@ class TestOpenAICompatibleLLM:
         mock_response.json.return_value = {
             "choices": [{
                 "message": {"content": "Let me check that."}
-            }]
+            }],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
         }
         mock_post.return_value = mock_response
 
@@ -132,7 +140,7 @@ class TestOpenAICompatibleLLM:
         }]
 
         llm = OpenAICompatibleLLM(model="gpt-4o", api_key="test")
-        llm.chat([{"role": "user", "content": "Test"}], tools=tools)
+        content, tool_calls, usage = llm.chat([{"role": "user", "content": "Test"}], tools=tools)
 
         call_args = mock_post.call_args
         assert "tools" in call_args[1]["json"]
@@ -143,7 +151,8 @@ class TestOpenAICompatibleLLM:
         """Test that temperature is included in request payload."""
         mock_response = Mock()
         mock_response.json.return_value = {
-            "choices": [{"message": {"content": "ok"}}]
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
         }
         mock_post.return_value = mock_response
 

@@ -10,7 +10,7 @@ from typing import Generator
 
 import requests
 
-from .base import BaseLLM
+from .base import BaseLLM, LLMUsage
 from .messages import Message, ToolCall
 
 
@@ -97,7 +97,7 @@ class OpenAICompatibleLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         **kwargs
-    ) -> tuple[str, list[ToolCall]]:
+    ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
         Call OpenAI-compatible API and get a response.
 
@@ -106,7 +106,7 @@ class OpenAICompatibleLLM(BaseLLM):
             tools: Optional tool definitions in OpenAI format
 
         Returns:
-            Tuple of (text_response, tool_calls)
+            Tuple of (text_response, tool_calls, usage)
         """
         payload = self._build_payload(messages, tools)
 
@@ -130,7 +130,15 @@ class OpenAICompatibleLLM(BaseLLM):
             for tc in message["tool_calls"]:
                 tool_calls.append(ToolCall.from_openai_format(tc))
 
-        return content, tool_calls
+        # Parse usage information
+        usage_data = data.get("usage", {})
+        usage = LLMUsage(
+            prompt_tokens=usage_data.get("prompt_tokens", 0),
+            completion_tokens=usage_data.get("completion_tokens", 0),
+            total_tokens=usage_data.get("total_tokens", 0),
+        )
+
+        return content, tool_calls, usage
 
     def chat_stream(
         self,

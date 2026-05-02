@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from .base import BaseLLM
+from .base import BaseLLM, LLMUsage
 from .ollama import OllamaLLM
 from .openai_compatible import OpenAICompatibleLLM
 from .messages import Message, ToolCall, AssistantMessage, ToolResultMessage, SystemMessage, UserMessage
@@ -112,6 +112,7 @@ def create_llm_from_config(config) -> BaseLLM:
 
 __all__ = [
     "BaseLLM",
+    "LLMUsage",
     "OllamaLLM",
     "OpenAICompatibleLLM",
     "Message",

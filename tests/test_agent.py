@@ -8,6 +8,7 @@ from unittest.mock import Mock, MagicMock
 from nano_agent.agent.base import BaseAgent
 from nano_agent.agent.react import ReActAgent
 from nano_agent.agent.prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
+from nano_agent.llm.base import LLMUsage
 from nano_agent.llm.messages import ToolCall
 from nano_agent.tools.base import ToolRegistry, ToolResult, BaseTool
 from nano_agent.memory.short_term import ShortTermMemory
@@ -95,7 +96,7 @@ class TestReActAgent:
     def test_run_without_tool_calls(self):
         """Test run when LLM returns no tool calls."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello! How can I help?", []))
+        llm.chat = Mock(return_value=("Hello! How can I help?", [], LLMUsage()))
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
@@ -116,8 +117,8 @@ class TestReActAgent:
         tool_call = ToolCall(id="call_1", name="mock_tool", arguments={"input": "test"})
         llm.chat = Mock(
             side_effect=[
-                ("Let me check", [tool_call]),
-                ("The result is: Processed: test", [])
+                ("Let me check", [tool_call], LLMUsage()),
+                ("The result is: Processed: test", [], LLMUsage())
             ]
         )
 
@@ -136,7 +137,7 @@ class TestReActAgent:
 
         # Always return a tool call (infinite loop scenario)
         tool_call = ToolCall(id="call_1", name="mock_tool", arguments={"input": "test"})
-        llm.chat = Mock(return_value=("Thinking...", [tool_call]))
+        llm.chat = Mock(return_value=("Thinking...", [tool_call], LLMUsage()))
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
@@ -156,7 +157,7 @@ class TestReActAgent:
     def test_reset(self):
         """Test agent reset."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Response", []))
+        llm.chat = Mock(return_value=("Response", [], LLMUsage()))
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
@@ -215,7 +216,7 @@ class TestReActAgentStreaming:
     def test_run_stream_basic(self):
         """Test basic streaming functionality."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello! How can I help?", []))
+        llm.chat = Mock(return_value=("Hello! How can I help?", [], LLMUsage()))
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
@@ -235,8 +236,8 @@ class TestReActAgentStreaming:
         tool_call = ToolCall(id="call_1", name="mock_tool", arguments={"input": "test"})
         llm.chat = Mock(
             side_effect=[
-                ("Let me check", [tool_call]),
-                ("The result is: Processed: test", [])
+                ("Let me check", [tool_call], LLMUsage()),
+                ("The result is: Processed: test", [], LLMUsage())
             ]
         )
 

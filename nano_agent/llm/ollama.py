@@ -5,7 +5,7 @@ Ollama LLM client implementation.
 import requests
 import json
 from typing import Generator
-from .base import BaseLLM
+from .base import BaseLLM, LLMUsage
 from .messages import Message, ToolCall
 
 
@@ -65,7 +65,7 @@ class OllamaLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         **kwargs
-    ) -> tuple[str, list[ToolCall]]:
+    ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
         Call Ollama API and get a response.
 
@@ -74,7 +74,7 @@ class OllamaLLM(BaseLLM):
             tools: Optional tool definitions
 
         Returns:
-            Tuple of (text_response, tool_calls)
+            Tuple of (text_response, tool_calls, usage)
         """
         payload = self._build_payload(messages, tools)
 
@@ -96,7 +96,17 @@ class OllamaLLM(BaseLLM):
             for tc in message["tool_calls"]:
                 tool_calls.append(ToolCall.from_ollama_format(tc))
 
-        return content, tool_calls
+        # Parse usage information from Ollama response
+        # Ollama returns: prompt_eval_count (input) and eval_count (output)
+        prompt_tokens = data.get("prompt_eval_count", 0)
+        completion_tokens = data.get("eval_count", 0)
+        usage = LLMUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+        )
+
+        return content, tool_calls, usage
 
     def chat_stream(
         self,

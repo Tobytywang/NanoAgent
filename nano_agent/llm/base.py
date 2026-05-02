@@ -3,8 +3,26 @@ Base LLM client interface.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Generator
 from .messages import Message, ToolCall
+
+
+@dataclass
+class LLMUsage:
+    """LLM token usage information."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+        }
 
 
 class BaseLLM(ABC):
@@ -21,7 +39,7 @@ class BaseLLM(ABC):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         **kwargs
-    ) -> tuple[str, list[ToolCall]]:
+    ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
         Send messages and get a response.
 
@@ -30,7 +48,7 @@ class BaseLLM(ABC):
             tools: Optional list of tool definitions in Ollama format
 
         Returns:
-            Tuple of (text_response, tool_calls)
+            Tuple of (text_response, tool_calls, usage)
         """
         pass
 
@@ -51,5 +69,5 @@ class BaseLLM(ABC):
             Text chunks from the response
         """
         # Default implementation: just return the full response
-        response, _ = self.chat(messages, tools, **kwargs)
+        response, _, _ = self.chat(messages, tools, **kwargs)
         yield response

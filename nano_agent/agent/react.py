@@ -2,12 +2,14 @@
 ReAct Agent implementation.
 """
 
+import time
 import uuid
 from typing import Generator
 from .base import BaseAgent
 from .prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
+from ..monitoring import MetricsTracker
 
 
 class ReActAgent(BaseAgent):
@@ -24,7 +26,8 @@ class ReActAgent(BaseAgent):
         tool_registry,
         max_iterations: int = 10,
         verbose: bool = True,
-        skill_prompt: str = ""
+        skill_prompt: str = "",
+        tracker: MetricsTracker | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -36,10 +39,12 @@ class ReActAgent(BaseAgent):
             max_iterations: Maximum reasoning iterations
             verbose: Whether to print debug information
             skill_prompt: Additional prompt from skills
+            tracker: Metrics tracker for monitoring
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
         self.skill_prompt = skill_prompt
+        self.tracker = tracker or MetricsTracker()
         self._setup_system_prompt()
 
     def _setup_system_prompt(self) -> None:
@@ -79,9 +84,13 @@ class ReActAgent(BaseAgent):
         # Add user message to memory
         self.memory.add_user_message(user_input)
 
+        # Start tracking
+        self.tracker.start_run(user_input)
+
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
+            self.tracker.start_iteration(iteration)
 
             if self.verbose:
                 print(f"\n[Iteration {iteration}/{self.max_iterations}]")
@@ -90,14 +99,27 @@ class ReActAgent(BaseAgent):
             messages = self.memory.get_all()
             tools_schema = self.tool_registry.get_all_schemas()
 
-            response_text, tool_calls = self.llm.chat(
+            llm_start = time.perf_counter()
+            response_text, tool_calls, usage = self.llm.chat(
                 messages=messages,
                 tools=tools_schema if tools_schema else None
+            )
+            llm_latency = (time.perf_counter() - llm_start) * 1000
+
+            # Record LLM call
+            self.tracker.record_llm_call(
+                model=self.llm.model,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                latency_ms=llm_latency,
+                tool_calls_count=len(tool_calls),
             )
 
             # If no tool calls, return the final answer
             if not tool_calls:
                 self.memory.add_assistant_message(response_text)
+                self.tracker.end_iteration()
+                self.tracker.end_run(response_text)
                 return response_text
 
             # There are tool calls - execute them
@@ -112,7 +134,19 @@ class ReActAgent(BaseAgent):
 
             # Execute each tool call
             for tool_call in tool_calls:
+                tool_start = time.perf_counter()
                 result = self._execute_tool_call(tool_call)
+                tool_latency = (time.perf_counter() - tool_start) * 1000
+
+                # Record tool execution
+                self.tracker.record_tool_execution(
+                    tool_name=tool_call.name,
+                    arguments=tool_call.arguments,
+                    success=result.success,
+                    latency_ms=tool_latency,
+                    output_length=len(result.output) if result.output else 0,
+                    error=result.error,
+                )
 
                 if self.verbose:
                     status = "success" if result.success else "failed"
@@ -128,8 +162,12 @@ class ReActAgent(BaseAgent):
                     content=result_content
                 )
 
+            self.tracker.end_iteration()
+
         # Reached max iterations
-        return "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
+        response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
+        self.tracker.end_run(response)
+        return response
 
     def run_stream(self, user_input: str) -> Generator[str, None, None]:
         """
