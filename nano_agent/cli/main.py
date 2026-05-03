@@ -150,7 +150,19 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
 
     # Create tool registry and register built-in tools
     tool_registry = ToolRegistry()
-    register_builtin_tools(tool_registry, memory=memory)
+
+    # Create agent first (to get tracker)
+    agent = ReActAgent(
+        llm=llm,
+        memory=memory,
+        tool_registry=tool_registry,
+        max_iterations=config.agent.max_iterations,
+        verbose=config.agent.verbose,
+        skill_prompt=""
+    )
+
+    # Register built-in tools with tracker and context_length
+    register_builtin_tools(tool_registry, memory=memory, tracker=agent.tracker, context_length=config.llm.get_context_length())
 
     # Load and register skills
     skill_registry = SkillRegistry()
@@ -164,15 +176,9 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     # Get combined skill system prompt
     skill_prompt = skill_registry.get_combined_system_prompt()
 
-    # Create agent
-    agent = ReActAgent(
-        llm=llm,
-        memory=memory,
-        tool_registry=tool_registry,
-        max_iterations=config.agent.max_iterations,
-        verbose=config.agent.verbose,
-        skill_prompt=skill_prompt
-    )
+    # Update agent's skill prompt
+    agent.skill_prompt = skill_prompt
+    agent._setup_system_prompt()
 
     # Attach skill registry and loader for hot-reload support
     agent.skill_registry = skill_registry
@@ -205,6 +211,7 @@ def run_interactive(agent: ReActAgent, config) -> None:
     Console.print("Type 'skills' to list loaded skills", style="info")
     Console.print("Type 'skill reload <name>' to reload a skill", style="info")
     Console.print("Type 'skill unload <name>' to unload a skill", style="info")
+    Console.print("Type 'stats' to show monitoring statistics", style="info")
     Console.print_separator()
 
     while True:
@@ -234,6 +241,10 @@ def run_interactive(agent: ReActAgent, config) -> None:
             if user_input.lower() == "tools":
                 tools = agent.tool_registry.list_tools()
                 Console.print(f"Available tools: {', '.join(tools)}", style="info")
+                continue
+
+            if user_input.lower() == "stats":
+                _show_monitoring_stats(agent)
                 continue
 
             if user_input.lower() == "sessions":
@@ -275,6 +286,9 @@ def run_interactive(agent: ReActAgent, config) -> None:
             Console.print("\n", style="agent", end="")
             response = agent.run(user_input)
             print(f"> {response}")
+
+            # Show monitoring stats after each run
+            _show_run_stats(agent, config)
 
         except KeyboardInterrupt:
             # 被 signal handler 处理，继续循环
@@ -596,6 +610,118 @@ def _update_agent_skills(agent) -> None:
     skill_prompt = agent.skill_registry.get_combined_system_prompt()
     agent.skill_prompt = skill_prompt
     agent._setup_system_prompt()
+
+
+def _show_run_stats(agent, config=None) -> None:
+    """显示本轮运行的统计信息
+
+    Args:
+        agent: Agent 实例
+        config: 配置对象（用于获取上下文长度）
+    """
+    if not hasattr(agent, 'tracker') or not agent.tracker.run_metrics:
+        return
+
+    # Get current run and session statistics
+    current_summary = agent.tracker.get_summary()
+    session_summary = agent.tracker.get_session_summary()
+
+    if not current_summary or not session_summary:
+        return
+
+    # 收集工具调用类型 (from current run)
+    tool_types = []
+    full_report = agent.tracker.get_full_report()
+    if full_report and full_report.get('iterations'):
+        for iteration in full_report['iterations']:
+            for tool in iteration.get('tool_executions', []):
+                status = "✓" if tool['success'] else "✗"
+                tool_types.append(f"{status}{tool['tool_name']}")
+
+    # 本轮统计
+    current_duration = current_summary.get('duration_ms', 0) / 1000
+    current_tokens = current_summary.get('total_tokens', 0)
+    current_iterations = current_summary.get('total_iterations', 0)
+
+    # 会话总计
+    session_duration = session_summary.get('session_duration_ms', 0) / 1000
+    session_tokens = session_summary.get('total_tokens', 0)
+    session_llm_calls = session_summary.get('total_llm_calls', 0)
+
+    # 上下文使用率
+    context_info = ""
+    if config and hasattr(config, 'llm'):
+        context_length = config.llm.get_context_length()
+        usage_percent = (session_tokens / context_length) * 100 if context_length > 0 else 0
+        context_info = f" | 上下文: {usage_percent:.1f}% ({session_tokens}/{context_length})"
+
+        # 警告接近上限
+        if usage_percent >= 80:
+            context_info = f" | ⚠️ 上下文: {usage_percent:.1f}% (接近上限!)"
+
+    # 格式化输出 - 右对齐数字
+    def format_tokens(n: int) -> str:
+        return f"{n:>6}"
+
+    def format_duration(s: float) -> str:
+        return f"{s:>6.2f}"
+
+    def format_llm_calls(n: int) -> str:
+        return f"{n:>3}"
+
+    # 本轮
+    print(f"\n📊 本轮: {format_tokens(current_tokens)} tokens | {format_duration(current_duration)}s | LLM调用: {format_llm_calls(current_iterations)} | 迭代: {current_iterations}", end="")
+    if tool_types:
+        print(f" | 工具: {', '.join(tool_types)}", end="")
+    # 总计
+    print(f"\n📊 总计: {format_tokens(session_tokens)} tokens | {format_duration(session_duration)}s | LLM调用: {format_llm_calls(session_llm_calls)}{context_info}")
+
+
+def _show_monitoring_stats(agent) -> None:
+    """显示监控统计信息
+
+    Args:
+        agent: Agent 实例
+    """
+    import json
+
+    if not hasattr(agent, 'tracker'):
+        Console.print("Monitoring not available", style="warning")
+        return
+
+    summary = agent.tracker.get_summary()
+    if not summary:
+        Console.print("No monitoring data available yet. Run a query first.", style="info")
+        return
+
+    Console.print("\n=== Monitoring Statistics ===", style="info")
+    print(f"Session ID: {summary.get('session_id', 'N/A')}")
+    print(f"Duration: {summary.get('duration_ms', 0):.2f} ms")
+    print(f"Total Iterations: {summary.get('total_iterations', 0)}")
+    print(f"Total Tokens: {summary.get('total_tokens', 0)}")
+    print(f"Total Tool Calls: {summary.get('total_tool_calls', 0)}")
+    print(f"  - Successful: {summary.get('successful_tool_calls', 0)}")
+    print(f"  - Failed: {summary.get('failed_tool_calls', 0)}")
+
+    # Show detailed report if available
+    full_report = agent.tracker.get_full_report()
+    if full_report and full_report.get('iterations'):
+        print("\n--- Iteration Details ---")
+        for iteration in full_report['iterations']:
+            print(f"\nIteration {iteration['iteration_number']}:")
+            if iteration.get('llm_call'):
+                llm = iteration['llm_call']
+                print(f"  LLM: {llm['model']}")
+                print(f"    Tokens: {llm['prompt_tokens']} prompt + {llm['completion_tokens']} completion = {llm['total_tokens']} total")
+                print(f"    Latency: {llm['latency_ms']:.2f} ms")
+                print(f"    Tool calls: {llm['tool_calls_count']}")
+            if iteration.get('tool_executions'):
+                print(f"  Tool Executions:")
+                for tool in iteration['tool_executions']:
+                    status = "✓" if tool['success'] else "✗"
+                    print(f"    {status} {tool['tool_name']}: {tool['latency_ms']:.2f} ms")
+
+    print("\n" + "=" * 30)
 
 
 if __name__ == "__main__":

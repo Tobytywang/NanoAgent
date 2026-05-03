@@ -6,6 +6,40 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
+# Default context lengths for common models (in tokens)
+MODEL_CONTEXT_LENGTHS = {
+    # OpenAI models
+    "gpt-4o": 128000,
+    "gpt-4o-mini": 128000,
+    "gpt-4-turbo": 128000,
+    "gpt-4": 8192,
+    "gpt-4-32k": 32768,
+    "gpt-3.5-turbo": 16385,
+    "gpt-3.5-turbo-16k": 16385,
+    # Claude models
+    "claude-3-opus": 200000,
+    "claude-3-sonnet": 200000,
+    "claude-3-haiku": 200000,
+    "claude-3.5-sonnet": 200000,
+    # DeepSeek models
+    "deepseek-chat": 64000,
+    "deepseek-coder": 16000,
+    # Moonshot models
+    "moonshot-v1-8k": 8192,
+    "moonshot-v1-32k": 32768,
+    "moonshot-v1-128k": 131072,
+    # Ollama models (common defaults)
+    "llama3": 8192,
+    "llama3.1": 131072,
+    "llama3.2": 131072,
+    "qwen2.5": 131072,
+    "qwen3": 131072,
+    "mistral": 32768,
+    "mixtral": 32768,
+    "codellama": 16384,
+}
+
+
 @dataclass
 class LLMConfig:
     """LLM configuration."""
@@ -16,6 +50,31 @@ class LLMConfig:
     api_key_env: str = "OPENAI_API_KEY"
     timeout: int = 120
     temperature: float = 0.7
+    context_length: int | None = None  # Override context length (auto-detected if None)
+
+    def get_context_length(self) -> int:
+        """
+        Get the context length for the current model.
+
+        Returns:
+            Context length in tokens
+        """
+        # Use override if set
+        if self.context_length is not None:
+            return self.context_length
+
+        # Try exact match
+        model_lower = self.model.lower()
+        if model_lower in MODEL_CONTEXT_LENGTHS:
+            return MODEL_CONTEXT_LENGTHS[model_lower]
+
+        # Try partial match (e.g., "gpt-4o-2024-08-06" -> "gpt-4o")
+        for key, length in MODEL_CONTEXT_LENGTHS.items():
+            if key in model_lower or model_lower.startswith(key):
+                return length
+
+        # Default fallback (128k for modern models)
+        return 128000
 
 
 @dataclass

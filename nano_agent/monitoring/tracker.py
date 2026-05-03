@@ -31,6 +31,15 @@ class MetricsTracker:
         self._iteration_start_time: float = 0.0
         self._run_start_time: float = 0.0
 
+        # Accumulated session statistics
+        self._session_total_tokens: int = 0
+        self._session_total_iterations: int = 0
+        self._session_total_llm_calls: int = 0  # LLM API 调用次数
+        self._session_total_tool_calls: int = 0
+        self._session_successful_tool_calls: int = 0
+        self._session_failed_tool_calls: int = 0
+        self._session_start_time: float = time.perf_counter()
+
     def start_run(self, user_input: str) -> None:
         """
         Start tracking a new run.
@@ -62,12 +71,23 @@ class MetricsTracker:
         self.run_metrics.final_response = response
         self.run_metrics.total_latency_ms = (time.perf_counter() - self._run_start_time) * 1000
 
-        # Calculate total tokens
+        # Calculate total tokens for this run
         self.run_metrics.total_tokens = sum(
             i.llm_call.total_tokens
             for i in self.run_metrics.iterations
             if i.llm_call
         )
+
+        # Accumulate session statistics
+        self._session_total_tokens += self.run_metrics.total_tokens
+        self._session_total_iterations += len(self.run_metrics.iterations)
+        for iteration in self.run_metrics.iterations:
+            for tool in iteration.tool_executions:
+                self._session_total_tool_calls += 1
+                if tool.success:
+                    self._session_successful_tool_calls += 1
+                else:
+                    self._session_failed_tool_calls += 1
 
     def start_iteration(self, number: int) -> None:
         """
@@ -124,6 +144,9 @@ class MetricsTracker:
             tool_calls_count=tool_calls_count,
         )
 
+        # Increment LLM call count
+        self._session_total_llm_calls += 1
+
     def record_tool_execution(
         self,
         tool_name: str,
@@ -177,6 +200,24 @@ class MetricsTracker:
             "total_tool_calls": self.run_metrics.total_tool_calls,
             "successful_tool_calls": self.run_metrics.successful_tool_calls,
             "failed_tool_calls": self.run_metrics.failed_tool_calls,
+        }
+
+    def get_session_summary(self) -> dict[str, Any]:
+        """
+        Get accumulated session statistics (across all runs).
+
+        Returns:
+            Session summary dictionary
+        """
+        session_duration = (time.perf_counter() - self._session_start_time) * 1000
+        return {
+            "session_duration_ms": round(session_duration, 2),
+            "total_tokens": self._session_total_tokens,
+            "total_iterations": self._session_total_iterations,
+            "total_llm_calls": self._session_total_llm_calls,
+            "total_tool_calls": self._session_total_tool_calls,
+            "successful_tool_calls": self._session_successful_tool_calls,
+            "failed_tool_calls": self._session_failed_tool_calls,
         }
 
     def get_full_report(self) -> dict[str, Any]:
