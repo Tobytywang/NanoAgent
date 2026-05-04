@@ -9,12 +9,13 @@ from datetime import datetime
 from pathlib import Path
 
 from ..llm import create_llm_from_config
-from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorage, LongTermMemory
+from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorage, SQLiteStorage, LongTermMemory
 from ..tools.base import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent.react import ReActAgent
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
+from ..monitoring.reporter import ReportGenerator
 from .console import Console
 
 
@@ -25,6 +26,9 @@ class GracefulExitManager:
     generating_summary = False  # 是否正在生成摘要
     agent = None  # 当前 agent 引用
     config = None  # 当前 config 引用
+    report_enabled = False  # 是否启用报告导出
+    report_format = "json"  # 报告格式
+    report_output = None  # 报告输出路径
 
     @classmethod
     def reset(cls):
@@ -59,6 +63,10 @@ class GracefulExitManager:
                 summary = _generate_session_summary(cls.agent, cls.config)
                 _save_session_summary(cls.agent, cls.config, summary)
                 print("摘要已保存")
+
+                # 导出监控报告
+                if cls.report_enabled:
+                    _export_report(cls.agent, cls.report_format, cls.report_output)
         except Exception as e:
             print(f"摘要生成失败: {e}")
 
@@ -78,9 +86,18 @@ def create_memory(config):
     """
     system_prompt = config.agent.system_prompt or "You are a helpful AI assistant."
 
+    # Create storage based on type
+    if config.memory.storage_type == "sqlite":
+        db_path = config.memory.storage_path
+        # Ensure it's a .db file path, not a directory
+        if not db_path.endswith(".db"):
+            db_path = db_path + ".db"
+        storage = SQLiteStorage(db_path=db_path)
+    else:
+        storage = FileStorage(base_dir=config.memory.storage_path)
+
     if config.memory.type == "hybrid":
         # Create working memory (persistent for session support)
-        storage = FileStorage(base_dir=config.memory.storage_path)
         working_memory = PersistentMemory(
             storage=storage,
             session_id=config.memory.session_id,
@@ -101,7 +118,6 @@ def create_memory(config):
         )
 
     elif config.memory.type == "persistent":
-        storage = FileStorage(base_dir=config.memory.storage_path)
         memory = PersistentMemory(
             storage=storage,
             session_id=config.memory.session_id,
@@ -164,6 +180,15 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     # Register built-in tools with tracker and context_length
     register_builtin_tools(tool_registry, memory=memory, tracker=agent.tracker, context_length=config.llm.get_context_length())
 
+    # Load plugins from configuration
+    from ..tools.plugin import load_plugins_from_config
+    plugins_config = {
+        "directories": config.plugins.directories if hasattr(config, 'plugins') else [],
+        "modules": config.plugins.modules if hasattr(config, 'plugins') else [],
+        "files": config.plugins.files if hasattr(config, 'plugins') else [],
+    }
+    load_plugins_from_config(plugins_config, tool_registry)
+
     # Load and register skills
     skill_registry = SkillRegistry()
     skill_loader = SkillLoader(skill_registry)
@@ -187,19 +212,31 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     return agent
 
 
-def run_interactive(agent: ReActAgent, config) -> None:
+def run_interactive(
+    agent: ReActAgent,
+    config,
+    report_enabled: bool = False,
+    report_format: str = "json",
+    report_output: str | None = None
+) -> None:
     """
     Run interactive chat loop.
 
     Args:
         agent: The agent to interact with
         config: The configuration object
+        report_enabled: Whether to export report on exit
+        report_format: Report format (json, markdown, summary)
+        report_output: Report output path
     """
     import os
 
     # 设置优雅退出管理器
     GracefulExitManager.agent = agent
     GracefulExitManager.config = config
+    GracefulExitManager.report_enabled = report_enabled
+    GracefulExitManager.report_format = report_format
+    GracefulExitManager.report_output = report_output
     signal.signal(signal.SIGINT, GracefulExitManager.handler)
 
     Console.print_header("NanoAgent - AI Assistant")
@@ -212,6 +249,7 @@ def run_interactive(agent: ReActAgent, config) -> None:
     Console.print("Type 'skill reload <name>' to reload a skill", style="info")
     Console.print("Type 'skill unload <name>' to unload a skill", style="info")
     Console.print("Type 'stats' to show monitoring statistics", style="info")
+    Console.print("Type 'report' to export monitoring report", style="info")
     Console.print_separator()
 
     while True:
@@ -245,6 +283,10 @@ def run_interactive(agent: ReActAgent, config) -> None:
 
             if user_input.lower() == "stats":
                 _show_monitoring_stats(agent)
+                continue
+
+            if user_input.lower() == "report":
+                _export_report(agent, report_format, report_output)
                 continue
 
             if user_input.lower() == "sessions":
@@ -348,6 +390,24 @@ def main():
         action="store_true",
         help="Suppress verbose output"
     )
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Export monitoring report after session ends"
+    )
+    parser.add_argument(
+        "--report-format",
+        type=str,
+        choices=["json", "markdown", "summary"],
+        default="json",
+        help="Report format (json, markdown, summary)"
+    )
+    parser.add_argument(
+        "--report-output",
+        type=str,
+        default=None,
+        help="Report output file path (default: .nano_agent/report.{format})"
+    )
 
     args = parser.parse_args()
 
@@ -402,6 +462,10 @@ def main():
         if user_input:
             response = agent.run(user_input)
             print(response)
+
+            # Export report if enabled
+            if args.report:
+                _export_report(agent, args.report_format, args.report_output)
     else:
         # Interactive mode - load config for graceful exit
         if args.config:
@@ -412,7 +476,25 @@ def main():
                 config = ConfigLoader.load(default_path)
             else:
                 config = ConfigLoader.load()
-        run_interactive(agent, config)
+        run_interactive(
+            agent,
+            config,
+            report_enabled=args.report,
+            report_format=args.report_format,
+            report_output=args.report_output
+        )
+
+
+def _get_storage(config):
+    """Get storage instance based on configuration."""
+    if config.memory.storage_type == "sqlite":
+        db_path = config.memory.storage_path
+        # Ensure path ends with .db
+        if not db_path.endswith(".db"):
+            db_path = db_path + ".db"
+        return SQLiteStorage(db_path=db_path)
+    else:
+        return FileStorage(base_dir=config.memory.storage_path)
 
 
 def _list_sessions(config_path: str | None = None) -> None:
@@ -427,8 +509,7 @@ def _list_sessions(config_path: str | None = None) -> None:
         else:
             config = ConfigLoader.load()
 
-    storage_path = config.memory.storage_path
-    storage = FileStorage(base_dir=storage_path)
+    storage = _get_storage(config)
     sessions = storage.list_sessions()
 
     if not sessions:
@@ -458,8 +539,7 @@ def _show_session(session_id: str, config_path: str | None = None) -> None:
         else:
             config = ConfigLoader.load()
 
-    storage_path = config.memory.storage_path
-    storage = FileStorage(base_dir=storage_path)
+    storage = _get_storage(config)
 
     if not storage.session_exists(session_id):
         Console.print(f"Session '{session_id}' not found", style="error")
@@ -531,7 +611,7 @@ def _save_session_summary(agent, config, summary: str) -> None:
     else:
         return  # 无法获取 session_id
 
-    storage = FileStorage(base_dir=config.memory.storage_path)
+    storage = _get_storage(config)
     messages = agent.memory.get_all()
     message_count = len([m for m in messages if m.get("role") != "system"])
 
@@ -629,14 +709,23 @@ def _show_run_stats(agent, config=None) -> None:
     if not current_summary or not session_summary:
         return
 
-    # 收集工具调用类型 (from current run)
-    tool_types = []
+    # 收集工具调用类型 (from current run)，合并相同工具
+    tool_counts = {}
     full_report = agent.tracker.get_full_report()
     if full_report and full_report.get('iterations'):
         for iteration in full_report['iterations']:
             for tool in iteration.get('tool_executions', []):
                 status = "✓" if tool['success'] else "✗"
-                tool_types.append(f"{status}{tool['tool_name']}")
+                key = (status, tool['tool_name'])
+                tool_counts[key] = tool_counts.get(key, 0) + 1
+
+    # 格式化工具调用显示
+    tool_types = []
+    for (status, name), count in tool_counts.items():
+        if count > 1:
+            tool_types.append(f"{status}{name}*{count}")
+        else:
+            tool_types.append(f"{status}{name}")
 
     # 本轮统计
     current_duration = current_summary.get('duration_ms', 0) / 1000
@@ -722,6 +811,52 @@ def _show_monitoring_stats(agent) -> None:
                     print(f"    {status} {tool['tool_name']}: {tool['latency_ms']:.2f} ms")
 
     print("\n" + "=" * 30)
+
+
+def _export_report(
+    agent,
+    report_format: str = "json",
+    report_output: str | None = None
+) -> None:
+    """导出监控报告
+
+    Args:
+        agent: Agent 实例
+        report_format: 报告格式 (json, markdown, summary)
+        report_output: 输出路径 (默认 .nano_agent/report.{format})
+    """
+    if not hasattr(agent, 'tracker') or not agent.tracker.run_metrics:
+        Console.print("No monitoring data available yet. Run a query first.", style="info")
+        return
+
+    # 确定输出路径
+    if report_output is None:
+        ext = "md" if report_format == "markdown" else report_format
+        report_output = f".nano_agent/report.{ext}"
+
+    # 确保目录存在
+    from pathlib import Path
+    Path(report_output).parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # 获取完整的运行指标
+        metrics = agent.tracker.run_metrics
+
+        # 使用 ReportGenerator 导出
+        if report_format == "json":
+            ReportGenerator.save_json(metrics, report_output)
+            Console.print(f"Report exported to: {report_output}", style="success")
+        elif report_format == "markdown":
+            ReportGenerator.save_markdown(metrics, report_output)
+            Console.print(f"Report exported to: {report_output}", style="success")
+        elif report_format == "summary":
+            summary = ReportGenerator.to_summary(metrics)
+            print(f"\n{summary}")
+        else:
+            Console.print(f"Unknown format: {report_format}", style="error")
+
+    except Exception as e:
+        Console.print(f"Failed to export report: {e}", style="error")
 
 
 if __name__ == "__main__":

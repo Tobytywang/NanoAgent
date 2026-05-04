@@ -167,9 +167,10 @@ class OpenAICompatibleLLM(BaseLLM):
             headers=self._get_headers()
         ) as response:
             response.raise_for_status()
+            # Use errors='replace' to handle malformed UTF-8 sequences
             for line in response.iter_lines():
                 if line:
-                    line = line.decode("utf-8")
+                    line = line.decode("utf-8", errors="replace")
                     if line.startswith("data: "):
                         data_str = line[6:]  # Remove "data: " prefix
                         if data_str == "[DONE]":

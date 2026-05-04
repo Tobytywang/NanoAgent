@@ -9,6 +9,16 @@ from .metrics import (
     RunMetrics,
 )
 from .tracker import MetricsTracker
+from .logger import (
+    AgentLogger,
+    get_logger,
+    configure_logging,
+    DEBUG,
+    INFO,
+    WARNING,
+    ERROR,
+)
+from .reporter import ReportGenerator, export_report
 
 __all__ = [
     "LLMCallMetrics",
@@ -16,4 +26,13 @@ __all__ = [
     "IterationMetrics",
     "RunMetrics",
     "MetricsTracker",
+    "AgentLogger",
+    "get_logger",
+    "configure_logging",
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "ReportGenerator",
+    "export_report",
 ]

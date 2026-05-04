@@ -2,6 +2,8 @@
 
 一个轻量级的 AI Agent 框架，实现 ReAct (Reasoning + Acting) 模式，专为学习和实验设计。
 
+**[使用教程](docs/tutorial.md)** | **[API 文档](docs/api.md)** | **[开发路线图](ROADMAP.md)**
+
 ## 项目简介
 
 NanoAgent 是一个简洁易懂的 AI Agent 框架，通过实现经典的 ReAct 模式，让 AI 能够进行推理和行动的循环交互。项目支持 Ollama 本地 LLM 和 OpenAI 兼容的在线 API（OpenAI、DeepSeek、Moonshot 等），灵活适配不同使用场景。

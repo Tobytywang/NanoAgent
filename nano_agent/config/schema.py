@@ -90,8 +90,8 @@ class MemoryConfig:
     """Memory configuration."""
     max_messages: int = 50
     type: Literal["short_term", "persistent", "hybrid"] = "short_term"
-    # Persistent memory options
-    storage_type: Literal["file"] = "file"
+    # Storage options
+    storage_type: Literal["file", "sqlite"] = "file"
     storage_path: str = ".nano_agent/memory"
     session_id: str | None = None  # Optional: resume specific session
     # Hybrid memory options
@@ -107,11 +107,27 @@ class ToolConfig:
 
 
 @dataclass
+class PluginsConfig:
+    """Plugin configuration for external tools."""
+    directories: list[str] = field(default_factory=list)  # Directories to scan for tools
+    modules: list[str] = field(default_factory=list)      # Python modules to import
+    files: list[str] = field(default_factory=list)        # Specific files to load
+
+
+@dataclass
 class SkillsConfig:
     """Skills configuration."""
     enabled: list[str] = field(default_factory=list)  # 启用的技能包名称
     directory: str = ".nano_agent/skills"  # 技能包目录
     configs: dict = field(default_factory=dict)  # 各技能包的额外配置
+
+
+@dataclass
+class LoggingConfig:
+    """Logging configuration."""
+    level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+    console: bool = True
+    file: str | None = None  # Optional log file path
 
 
 @dataclass
@@ -121,4 +137,6 @@ class Config:
     agent: AgentConfig = field(default_factory=AgentConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     tools: ToolConfig = field(default_factory=ToolConfig)
+    plugins: PluginsConfig = field(default_factory=PluginsConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)

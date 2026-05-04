@@ -63,18 +63,20 @@ class WebSearchTool(BaseTool):
             result = subprocess.run(
                 curl_cmd,
                 capture_output=True,
-                text=True,
                 timeout=self._timeout + 5
             )
 
             if result.returncode != 0:
                 return ToolResult(
                     success=False,
-                    error=f"Search request failed: {result.stderr}"
+                    error=f"Search request failed: {result.stderr.decode('utf-8', errors='replace')}"
                 )
 
+            # Decode stdout with error handling for malformed UTF-8
+            stdout = result.stdout.decode('utf-8', errors='replace')
+
             # Parse the HTML to extract search results
-            output = self._parse_search_results(result.stdout)
+            output = self._parse_search_results(stdout)
 
             if not output:
                 return ToolResult(

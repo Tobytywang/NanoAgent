@@ -5,7 +5,7 @@ from .short_term import ShortTermMemory
 from .persistent import PersistentMemory
 from .long_term import LongTermMemory, LongTermEntry
 from .hybrid import HybridMemory
-from .storage import BaseStorage, MemoryEntry, FileStorage
+from .storage import BaseStorage, MemoryEntry, FileStorage, SQLiteStorage
 
 __all__ = [
     "BaseMemory",
@@ -17,4 +17,5 @@ __all__ = [
     "BaseStorage",
     "MemoryEntry",
     "FileStorage",
+    "SQLiteStorage",
 ]
