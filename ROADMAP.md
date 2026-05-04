@@ -29,7 +29,7 @@
 
 ## 版本规划
 
-### v0.1.0 (当前版本)
+### v0.1.0 ✅
 
 - [x] ReAct 模式实现
 - [x] 基础工具系统（文件操作、Shell、Python 执行）
@@ -40,7 +40,7 @@
 
 ---
 
-### v0.2.0 - 持久化记忆
+### v0.2.0 - 持久化记忆 ✅
 
 **目标**: 实现跨会话记忆能力，让 Agent 能够记住之前的对话。
 
@@ -64,7 +64,7 @@ nano_agent/memory/
 
 ---
 
-### v0.3.0 - 技能包机制
+### v0.3.0 - 技能包机制 ✅
 
 **目标**: 提供可扩展的技能包机制，支持外部项目扩展。
 
@@ -96,7 +96,7 @@ skills:
 
 ---
 
-### v0.4.0 - 运行监控
+### v0.4.0 - 运行监控 ✅
 
 **目标**: 提供运行时监控和调试能力。
 
@@ -121,18 +121,39 @@ nano_agent/tools/
 
 ---
 
-### v0.5.0 - 框架完善
+### v0.5.0 - 框架完善 ✅
 
 **目标**: 提供完整的框架能力，准备发布。
 
 **任务列表**:
-- [ ] 调试日志输出（从 v0.4.0 移入）
-- [ ] 导出运行报告（从 v0.4.0 移入）
-- [ ] 插件化工具加载机制
-- [ ] 多存储后端支持（File/SQLite）
-- [ ] 完善的 API 文档
-- [ ] 使用示例和教程
-- [ ] PyPI 发布准备
+- [x] 调试日志输出（`logger.py`）
+- [x] 导出运行报告（`reporter.py`, CLI `--report`）
+- [x] 插件化工具加载机制（`plugin.py`）
+- [x] 多存储后端支持（File/SQLite）
+- [x] 完善的 API 文档（`docs/api.md`）
+- [x] 使用示例和教程（`docs/tutorial.md`）
+- [x] PyPI 发布准备
+
+**新增文件**:
+```
+nano_agent/monitoring/
+├── logger.py           # 可配置日志工具
+└── reporter.py         # 报告生成器
+
+nano_agent/memory/storage/
+└── sqlite_storage.py   # SQLite 存储后端
+
+nano_agent/tools/
+└── plugin.py           # 插件加载机制
+
+docs/
+├── api.md              # API 文档
+├── tutorial.md         # 使用教程
+└── plugins.md          # 插件开发指南
+
+examples/plugins/
+└── tool_weather.py     # 插件示例
+```
 
 ---
 
