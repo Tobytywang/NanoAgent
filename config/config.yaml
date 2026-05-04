@@ -12,6 +12,7 @@ llm:
   api_key: YOUR_API_KEY_HERE          # 填写 API Key
   timeout: 120
   temperature: 0.7
+  context_length: 128000              # 可选：覆盖模型的上下文长度（不设置则自动检测）
 
 # Agent settings
 agent:
