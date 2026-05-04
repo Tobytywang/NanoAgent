@@ -82,6 +82,13 @@ memory:
 - Write formal test cases in `tests/` directory instead of using `python -c` for ad-hoc testing
 - Run `pytest tests/ -v` to verify all tests pass before committing
 
+### Documentation
+
+When adding or modifying features, always update the relevant documentation:
+- **Interactive help**: Update `_show_help()` in `nano_agent/cli/main.py`
+- **API documentation**: Update `docs/api.md`
+- **Tutorial**: Update `docs/tutorial.md` if it affects user workflow
+
 ### Bash Commands
 
 When executing Bash commands, always provide a clear purpose explaining:
