@@ -327,6 +327,23 @@ class TestHybridMemory:
         assert len(context) == 5
         assert context[0]["role"] == "system"
 
+    def test_system_prompt_property(self, hybrid_memory):
+        """Test that system_prompt property is accessible."""
+        # Should be able to read system_prompt
+        assert hybrid_memory.system_prompt == "Test prompt"
+
+    def test_set_system_prompt(self, hybrid_memory):
+        """Test setting system prompt."""
+        hybrid_memory.set_system_prompt("New prompt")
+
+        # Should be reflected in the property
+        assert hybrid_memory.system_prompt == "New prompt"
+
+        # Should be reflected in context
+        context = hybrid_memory.get_context()
+        assert context[0]["role"] == "system"
+        assert context[0]["content"] == "New prompt"
+
     def test_extract_keywords(self, hybrid_memory):
         """Test automatic keyword extraction."""
         keywords = hybrid_memory._extract_keywords(

@@ -79,6 +79,7 @@ class ShortTermMemory(BaseMemory):
 
     def set_system_prompt(self, prompt: str) -> None:
         """Set or update the system prompt."""
+        self.system_prompt = prompt  # Update the attribute
         if self._messages and self._messages[0]["role"] == "system":
             self._messages[0]["content"] = prompt
         else:
