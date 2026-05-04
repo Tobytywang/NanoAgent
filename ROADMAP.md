@@ -159,13 +159,136 @@ examples/plugins/
 
 ## Future（非核心，延后）
 
-| 特性 | 说明 |
-|------|------|
-| 计划与反思循环 | Plan-Execute 或 RCI 反思 |
-| 多 Agent 编排 | 并发、辩论、角色分工 |
-| 安全审批/沙箱 | 命令行确认、危险操作拦截 |
-| Web UI | 更友好的交互界面 |
-| 长期记忆 | 支持语义搜索的知识库 |
+### v0.6.0 - 反思与规划能力
+
+**目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
+
+**任务列表**:
+- [ ] 反思能力 - 执行后自我评估结果质量并调整策略
+- [ ] 规划能力 - 复杂任务前置规划，制定计划后再执行
+- [ ] RCI (Reason-Call-Interact) 反思循环实现
+- [ ] Plan-Execute 模式支持
+
+**技术方案**:
+```python
+# 反思循环示例
+class ReflectiveAgent(ReActAgent):
+    def run_with_reflection(self, task: str) -> str:
+        # 1. 初始执行
+        result = self.run(task)
+        
+        # 2. 反思评估
+        reflection = self.reflect(task, result)
+        
+        # 3. 如果质量不足，调整策略重试
+        if reflection.needs_improvement:
+            result = self.run(task, strategy=reflection.suggested_strategy)
+        
+        return result
+```
+
+---
+
+### v0.7.0 - 主动学习能力
+
+**目标**: Agent 能够主动从交互中提取知识、建立关联。
+
+**任务列表**:
+- [ ] 自动知识提取 - 从对话中识别重要信息
+- [ ] 知识关联建立 - 连接相关概念和经验
+- [ ] 语义搜索增强 - 基于向量相似度的记忆检索
+- [ ] 学习反馈机制 - 用户确认/纠正学习结果
+
+**技术方案**:
+```python
+# 主动学习示例
+class LearningAgent(ReActAgent):
+    def learn_from_interaction(self, interaction: dict):
+        # 1. 提取知识点
+        knowledge = self.extract_knowledge(interaction)
+        
+        # 2. 建立关联
+        connections = self.find_connections(knowledge)
+        
+        # 3. 存储到长期记忆
+        self.memorize(knowledge, connections)
+```
+
+---
+
+### v0.8.0 - 个性化与角色
+
+**目标**: 支持可配置的 Agent 性格和专业领域深度。
+
+**任务列表**:
+- [ ] 角色配置系统 - 定义 Agent 性格、语气、专业领域
+- [ ] 角色模板库 - 预定义常见角色（程序员、分析师、写作助手等）
+- [ ] 动态角色切换 - 运行时切换角色
+- [ ] 领域知识注入 - 加载专业领域知识库
+
+**配置示例**:
+```yaml
+persona:
+  name: "Code Assistant"
+  traits:
+    - professional
+    - concise
+    - helpful
+  expertise:
+    - python
+    - web_development
+  communication_style: "technical_but_friendly"
+```
+
+---
+
+### v0.9.0 - 多 Agent 协作
+
+**目标**: 支持多 Agent 协作和人机协作机制。
+
+**任务列表**:
+- [ ] 多 Agent 编排框架
+- [ ] Agent 间通信协议
+- [ ] 协作模式支持（并发、辩论、角色分工）
+- [ ] 人机协作接口 - 人类审批/干预点
+- [ ] 任务分解与分配
+
+**架构示例**:
+```
+┌─────────────────────────────────────┐
+│           Orchestrator              │
+├─────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐
+│  │ Agent A │  │ Agent B │  │ Agent C │
+│  │ Coder   │  │ Reviewer│  │ Tester  │
+│  └─────────┘  └─────────┘  └─────────┘
+└─────────────────────────────────────┘
+```
+
+---
+
+### v1.0.0 - 安全与体验
+
+**目标**: 完善安全机制和用户体验。
+
+**任务列表**:
+- [ ] 安全审批机制 - 危险操作确认
+- [ ] 沙箱执行环境 - 隔离执行代码
+- [ ] Web UI - 更友好的交互界面
+- [ ] 流式输出优化 - 实时显示思考过程
+- [ ] 完善的权限控制
+
+---
+
+## 特性总览
+
+| 版本 | 特性 | 说明 |
+|------|------|------|
+| v0.6.0 | 反思与规划 | Plan-Execute、RCI 反思循环 |
+| v0.7.0 | 主动学习 | 知识提取、语义搜索 |
+| v0.8.0 | 个性化角色 | 可配置性格、专业领域 |
+| v0.9.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
+| v1.0.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
 
 ---
 
