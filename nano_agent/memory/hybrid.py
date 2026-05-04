@@ -76,6 +76,11 @@ class HybridMemory(BaseMemory):
         """Set the system prompt in working memory."""
         self.working_memory.set_system_prompt(prompt)
 
+    @property
+    def system_prompt(self) -> str:
+        """Get the system prompt from working memory."""
+        return self.working_memory.system_prompt
+
     def __len__(self) -> int:
         """Return number of messages in working memory."""
         return len(self.working_memory)
