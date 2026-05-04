@@ -30,6 +30,7 @@ class GracefulExitManager:
     report_enabled = False  # 是否启用报告导出
     report_format = "json"  # 报告格式
     report_output = None  # 报告输出路径
+    show_run_stats = True  # 是否在每次对话后显示统计
 
     @classmethod
     def reset(cls):
@@ -417,8 +418,8 @@ def run_interactive(
                 Console.print(f"Available tools: {', '.join(tools)}", style="info")
                 continue
 
-            if user_input.lower() == "stats":
-                _show_monitoring_stats(agent)
+            if user_input.lower().startswith("/stats"):
+                _handle_stats_command(agent, config, user_input[6:].strip())
                 continue
 
             if user_input.lower() == "/init":
@@ -867,6 +868,10 @@ def _show_run_stats(agent, config=None) -> None:
         agent: Agent 实例
         config: 配置对象（用于获取上下文长度）
     """
+    # 检查是否启用了统计显示
+    if not GracefulExitManager.show_run_stats:
+        return
+
     if not hasattr(agent, 'tracker') or not agent.tracker.run_metrics:
         return
 
@@ -1234,6 +1239,97 @@ def _disable_long_term_memory(config) -> None:
         Console.print(f"Failed to update config: {e}", style="error")
 
 
+def _handle_stats_command(agent, config, command: str) -> None:
+    """处理 /stats 子命令
+
+    Args:
+        agent: Agent 实例
+        config: 配置对象
+        command: 子命令字符串
+    """
+    parts = command.strip().split() if command else []
+
+    if not parts or parts[0].lower() in ["status", ""]:
+        # 显示当前会话统计
+        _show_stats_status(agent, config)
+    elif parts[0].lower() == "on":
+        _enable_run_stats()
+    elif parts[0].lower() == "off":
+        _disable_run_stats()
+    else:
+        Console.print(f"Unknown subcommand: {parts[0]}", style="error")
+        Console.print("Available: status, on, off", style="info")
+
+
+def _show_stats_status(agent, config) -> None:
+    """显示当前会话统计状态"""
+    print("\n" + "=" * 50)
+    print("Session Statistics")
+    print("=" * 50)
+
+    def format_line(label: str, value: str, width: int = 20) -> str:
+        return f"  {label:<{width}} {value}"
+
+    # 显示自动统计开关状态
+    auto_status = "on" if GracefulExitManager.show_run_stats else "off"
+    print("\n## Auto Display")
+    print(format_line("Show after each run:", auto_status))
+
+    # 显示会话统计
+    if hasattr(agent, 'tracker'):
+        session_summary = agent.tracker.get_session_summary()
+        if session_summary:
+            print("\n## Session Summary")
+            duration_ms = session_summary.get('session_duration_ms', 0)
+            duration_s = duration_ms / 1000
+            print(format_line("Duration:", f"{duration_s:.2f} s"))
+            print(format_line("Total Tokens:", str(session_summary.get('total_tokens', 0))))
+            print(format_line("Total LLM Calls:", str(session_summary.get('total_llm_calls', 0))))
+            print(format_line("Total Iterations:", str(session_summary.get('total_iterations', 0))))
+            print(format_line("Tool Calls:", str(session_summary.get('total_tool_calls', 0))))
+            print(format_line("  - Successful:", str(session_summary.get('successful_tool_calls', 0))))
+            print(format_line("  - Failed:", str(session_summary.get('failed_tool_calls', 0))))
+
+            # 上下文使用率
+            if config and hasattr(config, 'llm'):
+                context_length = config.llm.get_context_length()
+                total_tokens = session_summary.get('total_tokens', 0)
+                if context_length > 0:
+                    usage_percent = (total_tokens / context_length) * 100
+                    print(format_line("Context Usage:", f"{usage_percent:.1f}% ({total_tokens}/{context_length})"))
+        else:
+            print("\n## Session Summary")
+            print("  No data yet. Run a query first.")
+
+    print("\n## Commands")
+    print("  /stats on   - Enable auto display after each run")
+    print("  /stats off  - Disable auto display after each run")
+
+    print("\n" + "=" * 50 + "\n")
+
+
+def _enable_run_stats() -> None:
+    """启用每次对话后的统计显示"""
+    if GracefulExitManager.show_run_stats:
+        Console.print("Auto stats display is already enabled.", style="info")
+        return
+
+    GracefulExitManager.show_run_stats = True
+    Console.print("Auto stats display enabled!", style="success")
+    Console.print("Statistics will be shown after each run.", style="info")
+
+
+def _disable_run_stats() -> None:
+    """禁用每次对话后的统计显示"""
+    if not GracefulExitManager.show_run_stats:
+        Console.print("Auto stats display is already disabled.", style="info")
+        return
+
+    GracefulExitManager.show_run_stats = False
+    Console.print("Auto stats display disabled!", style="success")
+    Console.print("Use /stats to view statistics manually.", style="info")
+
+
 def _show_help() -> None:
     """显示交互模式帮助信息"""
     print("\n" + "=" * 50)
@@ -1257,7 +1353,9 @@ def _show_help() -> None:
     print("  /memory off       Disable long-term memory")
 
     print("\n## Monitoring")
-    print("  stats             Show monitoring statistics")
+    print("  /stats            Show session statistics")
+    print("  /stats on         Enable auto display after each run")
+    print("  /stats off        Disable auto display after each run")
     print("  report            Export monitoring report")
 
     print("\n## Tools & Skills")
