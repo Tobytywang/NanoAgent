@@ -1140,8 +1140,7 @@ def _show_memory_status(config) -> None:
 
     print("\n## Memory Modes")
     print("  short_term  - Only current context (no persistence)")
-    print("  persistent  - Session persistence (cross-session)")
-    print("  hybrid      - Short-term + Long-term memory")
+    print("  hybrid      - Short-term + Long-term memory (recommended)")
 
     print("\n## Commands")
     print("  /memory on   - Enable long-term memory (hybrid mode)")
