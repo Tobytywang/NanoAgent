@@ -1,0 +1,49 @@
+# NanoAgent Configuration Example
+# =======================
+#
+# Copy this file to .nano_agent/config.yaml for your project
+# Or use /config init to generate a default config
+
+# LLM (Large Language Model) settings
+llm:
+  provider: openai_compatible
+  model: astron-code-latest           # 填写模型名称
+  base_url: https://maas-coding-api.cn-huabei-1.xf-yun.com/v2
+  api_key: YOUR_API_KEY_HERE          # 填写 API Key
+  timeout: 120
+  temperature: 0.7
+
+# Agent settings
+agent:
+  max_iterations: 10
+  verbose: true
+  system_prompt: |
+    You are a helpful AI assistant with access to tools.
+    Use the available tools to help complete tasks.
+    Think step by step and explain your reasoning.
+
+# Memory settings
+memory:
+  type: hybrid                        # short_term or hybrid
+  storage_type: sqlite                # file or sqlite
+  max_messages: 50
+  storage_path: .nano_agent/memory.db
+  long_term_storage_path: .nano_agent/long_term_memory
+  auto_extract: true
+
+# Tool settings
+tools:
+  enabled:
+    - all                              # Enable all built-in tools
+  disabled: []                         # List tool names to disable
+
+# Skills settings
+skills:
+  enabled: []                          # List skill names to enable
+  directory: .nano_agent/skills        # Directory to load skills
+
+# Logging settings
+logging:
+  level: INFO                         # DEBUG, INFO, WARNING, ERROR
+  console: true
+  file: .nano_agent/debug.log
