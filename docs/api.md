@@ -503,6 +503,12 @@ nano-agent [选项]
 | `tools` | 列出可用工具 |
 | `sessions` | 列出会话 |
 | `skills` | 列出已加载技能包 |
+| `/config` | 显示当前配置 |
+| `/config init` | 生成配置文件（合并模式） |
+| `/config init -f` | 强制覆盖配置文件 |
+| `/memory` | 显示记忆配置 |
+| `/memory on` | 启用长期记忆 |
+| `/memory off` | 禁用长期记忆 |
 | `/stats` | 显示会话统计 |
 | `/stats on` | 启用每次对话后自动显示统计 |
 | `/stats off` | 关闭自动显示统计 |

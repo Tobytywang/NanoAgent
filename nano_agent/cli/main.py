@@ -1347,7 +1347,8 @@ def _show_help() -> None:
 
     print("\n## Configuration")
     print("  /config           Show current configuration")
-    print("  /config init      Generate default config file")
+    print("  /config init      Generate default config file (merge)")
+    print("  /config init -f   Force overwrite config file")
     print("  /memory           Show memory configuration")
     print("  /memory on        Enable long-term memory")
     print("  /memory off       Disable long-term memory")
