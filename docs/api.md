@@ -503,7 +503,9 @@ nano-agent [选项]
 | `tools` | 列出可用工具 |
 | `sessions` | 列出会话 |
 | `skills` | 列出已加载技能包 |
-| `stats` | 显示监控统计 |
+| `/stats` | 显示会话统计 |
+| `/stats on` | 启用每次对话后自动显示统计 |
+| `/stats off` | 关闭自动显示统计 |
 
 ### 示例
 

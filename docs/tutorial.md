@@ -466,17 +466,45 @@ Skill 'coding' unloaded successfully
 ### 7.2 查询统计
 
 ```
-> stats
+> /stats
 
-📊 Session Statistics (before current query):
-- Tokens: 15000 (prompt + completion)
-- Context Usage: 11.7% (15000/128000)
-- Duration: 45.20 seconds
-- LLM Calls: 12
-- Tool Calls: 5 (5 success, 0 failed)
+==================================================
+Session Statistics
+==================================================
+
+## Auto Display
+  Show after each run:  on
+
+## Session Summary
+  Duration:            45.20 s
+  Total Tokens:        15000
+  Total LLM Calls:     12
+  Total Iterations:    8
+  Tool Calls:          5
+    - Successful:      5
+    - Failed:          0
+  Context Usage:       11.7% (15000/128000)
+
+## Commands
+  /stats on   - Enable auto display after each run
+  /stats off  - Disable auto display after each run
+
+==================================================
 ```
 
-### 7.3 代码中获取统计
+### 7.3 控制统计显示
+
+```
+> /stats off
+Auto stats display disabled!
+Use /stats to view statistics manually.
+
+> /stats on
+Auto stats display enabled!
+Statistics will be shown after each run.
+```
+
+### 7.4 代码中获取统计
 
 ```python
 from nano_agent.monitoring import MetricsTracker
