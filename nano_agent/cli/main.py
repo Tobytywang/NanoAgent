@@ -433,6 +433,10 @@ def run_interactive(
                 _handle_config_command(agent, config, user_input[8:])
                 continue
 
+            if user_input.lower().startswith("/memory"):
+                _handle_memory_command(agent, config, user_input[7:].strip())
+                continue
+
             if user_input.lower() == "report":
                 _export_report(agent, report_format, report_output)
                 continue
@@ -1094,6 +1098,145 @@ def _show_config(config, agent) -> None:
     print("\n" + "=" * 50 + "\n")
 
 
+def _handle_memory_command(agent, config, command: str) -> None:
+    """处理 /memory 子命令
+
+    Args:
+        agent: Agent 实例
+        config: 配置对象
+        command: 子命令字符串
+    """
+    parts = command.strip().split() if command else []
+
+    if not parts or parts[0].lower() in ["status", ""]:
+        # 显示当前记忆状态
+        _show_memory_status(config)
+    elif parts[0].lower() == "on":
+        _enable_long_term_memory(config)
+    elif parts[0].lower() == "off":
+        _disable_long_term_memory(config)
+    else:
+        Console.print(f"Unknown subcommand: {parts[0]}", style="error")
+        Console.print("Available: status, on, off", style="info")
+
+
+def _show_memory_status(config) -> None:
+    """显示当前记忆配置状态"""
+    print("\n" + "=" * 50)
+    print("Memory Configuration")
+    print("=" * 50)
+
+    def format_line(label: str, value: str, width: int = 20) -> str:
+        return f"  {label:<{width}} {value}"
+
+    print("\n## Current Settings")
+    print(format_line("Memory Type:", config.memory.type))
+    print(format_line("Storage Type:", config.memory.storage_type))
+    print(format_line("Storage Path:", config.memory.storage_path))
+
+    if config.memory.type == "hybrid":
+        print(format_line("Long-term Path:", config.memory.long_term_storage_path))
+        print(format_line("Auto Extract:", str(config.memory.auto_extract)))
+
+    print("\n## Memory Modes")
+    print("  short_term  - Only current context (no persistence)")
+    print("  persistent  - Session persistence (cross-session)")
+    print("  hybrid      - Short-term + Long-term memory")
+
+    print("\n## Commands")
+    print("  /memory on   - Enable long-term memory (hybrid mode)")
+    print("  /memory off  - Disable long-term memory (short_term mode)")
+
+    print("\n" + "=" * 50 + "\n")
+
+
+def _enable_long_term_memory(config) -> None:
+    """启用长期记忆功能"""
+    import yaml
+    from pathlib import Path
+
+    # 检查当前状态
+    if config.memory.type == "hybrid":
+        Console.print("Long-term memory is already enabled.", style="info")
+        return
+
+    # 更新配置文件
+    config_path = Path.cwd() / ".nano_agent" / "config.yaml"
+
+    if not config_path.exists():
+        # 创建配置文件
+        Console.print("Creating config file...", style="info")
+        _init_config_file(config)
+
+    # 读取并更新配置
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            existing_config = yaml.safe_load(f) or {}
+
+        # 更新 memory 配置
+        existing_config["memory"] = existing_config.get("memory", {})
+        existing_config["memory"]["type"] = "hybrid"
+        existing_config["memory"]["auto_extract"] = True
+
+        # 确保路径存在
+        if "storage_path" not in existing_config["memory"]:
+            existing_config["memory"]["storage_path"] = ".nano_agent/memory"
+        if "long_term_storage_path" not in existing_config["memory"]:
+            existing_config["memory"]["long_term_storage_path"] = ".nano_agent/long_term_memory"
+
+        # 写入配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(existing_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+        Console.print("Long-term memory enabled!", style="success")
+        Console.print(f"Config updated: {config_path}", style="info")
+        Console.print("Memory type changed to: hybrid", style="info")
+        Console.print("Restart nano-agent to apply changes.", style="warning")
+
+    except Exception as e:
+        Console.print(f"Failed to update config: {e}", style="error")
+
+
+def _disable_long_term_memory(config) -> None:
+    """禁用长期记忆功能"""
+    import yaml
+    from pathlib import Path
+
+    # 检查当前状态
+    if config.memory.type == "short_term":
+        Console.print("Long-term memory is already disabled.", style="info")
+        return
+
+    # 更新配置文件
+    config_path = Path.cwd() / ".nano_agent" / "config.yaml"
+
+    if not config_path.exists():
+        Console.print("No config file found. Memory is using defaults.", style="info")
+        return
+
+    # 读取并更新配置
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            existing_config = yaml.safe_load(f) or {}
+
+        # 更新 memory 配置
+        existing_config["memory"] = existing_config.get("memory", {})
+        existing_config["memory"]["type"] = "short_term"
+        existing_config["memory"]["auto_extract"] = False
+
+        # 写入配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(existing_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+        Console.print("Long-term memory disabled!", style="success")
+        Console.print(f"Config updated: {config_path}", style="info")
+        Console.print("Memory type changed to: short_term", style="info")
+        Console.print("Restart nano-agent to apply changes.", style="warning")
+
+    except Exception as e:
+        Console.print(f"Failed to update config: {e}", style="error")
+
+
 def _show_help() -> None:
     """显示交互模式帮助信息"""
     print("\n" + "=" * 50)
@@ -1112,6 +1255,9 @@ def _show_help() -> None:
     print("\n## Configuration")
     print("  /config           Show current configuration")
     print("  /config init      Generate default config file")
+    print("  /memory           Show memory configuration")
+    print("  /memory on        Enable long-term memory")
+    print("  /memory off       Disable long-term memory")
 
     print("\n## Monitoring")
     print("  stats             Show monitoring statistics")
@@ -1337,8 +1483,56 @@ Please generate NANOPROJECT.md content (in Chinese, concise and professional):""
         Console.print(f"\nNANOPROJECT.md created at: {output_path}", style="success")
         Console.print("Project summary generated by LLM.", style="success")
 
+        # 将项目信息导入长期记忆（如果启用了 hybrid 模式）
+        _save_project_to_long_term_memory(agent, info, response)
+
     except Exception as e:
         Console.print(f"Failed to scan project: {e}", style="error")
+
+
+def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
+    """将项目信息保存到长期记忆
+
+    Args:
+        agent: Agent 实例
+        info: 项目扫描信息
+        summary: LLM 生成的摘要
+    """
+    # 检查是否启用了长期记忆
+    if not hasattr(agent.memory, 'long_term_memory'):
+        return
+
+    try:
+        from ..memory import LongTermMemory
+
+        ltm = agent.memory.long_term_memory
+
+        # 保存项目基本信息
+        project_info = f"""项目: {info['project_name']}
+技术栈: {', '.join(info['tech_stack']) or 'Unknown'}
+文件数: {info['structure']['total_files']}
+目录数: {info['structure']['total_dirs']}
+入口: {', '.join(info['code_summary']['entry_points']) or 'Unknown'}
+"""
+
+        ltm.add(
+            content=project_info,
+            category="project_info",
+            metadata={"source": "/init", "project_name": info['project_name']}
+        )
+
+        # 保存项目摘要（截取关键部分）
+        summary_preview = summary[:500] if len(summary) > 500 else summary
+        ltm.add(
+            content=f"项目摘要:\n{summary_preview}",
+            category="project_summary",
+            metadata={"source": "/init", "project_name": info['project_name']}
+        )
+
+        Console.print("Project info saved to long-term memory.", style="success")
+
+    except Exception as e:
+        Console.print(f"Warning: Could not save to long-term memory: {e}", style="warning")
 
 
 if __name__ == "__main__":
