@@ -637,15 +637,13 @@ Config file priority:
             if args.report:
                 _export_report(agent, args.report_format, args.report_output)
     else:
-        # Interactive mode - load config for graceful exit
-        if args.config:
-            config = ConfigLoader.load(args.config)
+        # Interactive mode - use the same config as create_agent
+        # Re-load config to get the actual loaded config
+        config_file, _ = _find_config_file(args.config)
+        if config_file:
+            config = ConfigLoader.load(config_file)
         else:
-            default_path = Path("config/config.yaml")
-            if default_path.exists():
-                config = ConfigLoader.load(default_path)
-            else:
-                config = ConfigLoader.load()
+            config = ConfigLoader.load()
         run_interactive(
             agent,
             config,
