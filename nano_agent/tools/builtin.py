@@ -8,6 +8,7 @@ from .file_ops import FileReadTool, FileWriteTool, FileSearchTool
 from .shell import ShellTool
 from .memory_tools import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
 from .monitoring_tools import GetStatsTool
+from .web_search import WebSearchTool
 
 
 def register_builtin_tools(registry: ToolRegistry, memory=None, tracker=None, context_length: int = 8192) -> None:
@@ -25,6 +26,7 @@ def register_builtin_tools(registry: ToolRegistry, memory=None, tracker=None, co
     registry.register(FileWriteTool())
     registry.register(FileSearchTool())
     registry.register(ShellTool())
+    registry.register(WebSearchTool())
 
     # Register memory tools
     memorize_tool = MemorizeTool(memory)
@@ -49,6 +51,7 @@ BUILTIN_TOOLS = [
     "file_write",
     "file_search",
     "shell_execute",
+    "web_search",
     "memorize",
     "recall",
     "list_memories",
