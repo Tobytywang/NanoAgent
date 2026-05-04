@@ -17,6 +17,7 @@ from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
 from .console import Console
+from .scanner import ProjectScanner
 
 
 class GracefulExitManager:
@@ -133,6 +134,86 @@ def create_memory(config):
     return memory
 
 
+def update_gitignore(project_root: Path | None = None) -> bool:
+    """
+    Automatically add .nano_agent/ to project's .gitignore.
+
+    Only updates if .gitignore already exists (won't create new one).
+    Skips if entry already present.
+
+    Args:
+        project_root: Project root directory, defaults to current working directory
+
+    Returns:
+        True if updated successfully or entry already exists
+    """
+    if project_root is None:
+        project_root = Path.cwd()
+
+    gitignore_path = project_root / ".gitignore"
+    entry = ".nano_agent/"
+
+    try:
+        # Only update if .gitignore already exists
+        if not gitignore_path.exists():
+            return False
+
+        # Check if entry already exists
+        content = gitignore_path.read_text(encoding="utf-8")
+        # Check both with and without trailing slash
+        if entry in content or entry.rstrip("/") in content:
+            return True  # Already exists, no need to update
+
+        # Append to file
+        with open(gitignore_path, "a", encoding="utf-8") as f:
+            # Ensure file ends with newline
+            if content and not content.endswith("\n"):
+                f.write("\n")
+            f.write(f"\n# NanoAgent\n{entry}\n")
+
+        return True
+
+    except (IOError, PermissionError) as e:
+        # Silently fail if can't write to .gitignore
+        Console.print(f"Warning: Could not update .gitignore: {e}", style="warning")
+        return False
+
+
+def _find_config_file(config_path: str | None = None) -> tuple[Path | None, str]:
+    """
+    Find configuration file with priority.
+
+    Priority:
+    1. Explicitly specified path (-c option)
+    2. ~/.nano_agent/config.yaml (global)
+    3. ./.nano_agent/config.yaml (project local)
+    4. None (use default config)
+
+    Args:
+        config_path: Explicitly specified config path
+
+    Returns:
+        Tuple of (config_path, source_description)
+    """
+    if config_path:
+        path = Path(config_path)
+        if path.exists():
+            return path, f"specified: {config_path}"
+        return None, "default (specified file not found)"
+
+    # Priority 1: Global config (~/.nano_agent/config.yaml)
+    global_config = Path.home() / ".nano_agent" / "config.yaml"
+    if global_config.exists():
+        return global_config, f"global: {global_config}"
+
+    # Priority 2: Project local config (./.nano_agent/config.yaml)
+    local_config = Path.cwd() / ".nano_agent" / "config.yaml"
+    if local_config.exists():
+        return local_config, f"local: {local_config}"
+
+    return None, "default (no config file found)"
+
+
 def create_agent(config_path: str | None = None) -> ReActAgent:
     """
     Create and configure a ReAct agent.
@@ -143,16 +224,16 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     Returns:
         Configured ReActAgent instance
     """
-    # Load configuration
-    if config_path:
-        config = ConfigLoader.load(config_path)
+    # Find and load configuration with priority
+    config_file, config_source = _find_config_file(config_path)
+
+    if config_file:
+        config = ConfigLoader.load(config_file)
     else:
-        # Try default config path
-        default_path = Path("config/config.yaml")
-        if default_path.exists():
-            config = ConfigLoader.load(default_path)
-        else:
-            config = ConfigLoader.load()  # Returns default config
+        config = ConfigLoader.load()  # Returns default config
+
+    # Auto-update .gitignore
+    update_gitignore()
 
     # Create LLM client using factory function
     llm = create_llm_from_config(config.llm)
@@ -209,7 +290,53 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     agent.skill_registry = skill_registry
     agent.skill_loader = skill_loader
 
+    # Store config source for display
+    agent._config_source = config_source
+
     return agent
+
+
+def _load_project_context() -> str:
+    """
+    Load project context from NANOPROJECT.md and .nano_agent/.
+
+    Returns:
+        Context string to add to system prompt
+    """
+    context_parts = []
+    project_root = Path.cwd()
+
+    # 1. Load NANOPROJECT.md (required if exists)
+    nanoproject_path = project_root / "NANOPROJECT.md"
+    if nanoproject_path.exists():
+        try:
+            content = nanoproject_path.read_text(encoding="utf-8")
+            # Truncate if too long
+            if len(content) > 3000:
+                content = content[:3000] + "\n\n... (truncated)"
+            context_parts.append(f"## Project Context\n\n{content}")
+        except Exception:
+            pass
+
+    # 2. Load .nano_agent/long_term_memory (optional)
+    long_term_path = project_root / ".nano_agent" / "long_term_memory"
+    if long_term_path.exists():
+        try:
+            from ..memory import LongTermMemory
+            ltm = LongTermMemory(storage_path=str(long_term_path))
+            memories = ltm.search("", limit=10)  # Get recent memories
+            if memories:
+                memory_text = "\n".join([
+                    f"- [{m.category}] {m.content[:200]}"
+                    for m in memories[:5]
+                ])
+                context_parts.append(f"## Long-term Memories\n\n{memory_text}")
+        except Exception:
+            pass
+
+    if context_parts:
+        return "\n\n---\n\n".join(context_parts)
+    return ""
 
 
 def run_interactive(
@@ -231,6 +358,14 @@ def run_interactive(
     """
     import os
 
+    # Load project context at startup and add to system prompt
+    project_context = _load_project_context()
+    if project_context:
+        # Append to system prompt
+        current_prompt = agent.memory.system_prompt or ""
+        agent.memory.set_system_prompt(f"{current_prompt}\n\n---\n\n{project_context}")
+        Console.print("Project context loaded from NANOPROJECT.md", style="success")
+
     # 设置优雅退出管理器
     GracefulExitManager.agent = agent
     GracefulExitManager.config = config
@@ -240,16 +375,12 @@ def run_interactive(
     signal.signal(signal.SIGINT, GracefulExitManager.handler)
 
     Console.print_header("NanoAgent - AI Assistant")
-    Console.print("Type '/exit' or '/quit' to exit with summary", style="info")
-    Console.print("Type 'exit' or 'quit' to exit directly", style="info")
-    Console.print("Type 'clear' to clear conversation history", style="info")
-    Console.print("Type 'tools' to list available tools", style="info")
-    Console.print("Type 'sessions' to list available sessions", style="info")
-    Console.print("Type 'skills' to list loaded skills", style="info")
-    Console.print("Type 'skill reload <name>' to reload a skill", style="info")
-    Console.print("Type 'skill unload <name>' to unload a skill", style="info")
-    Console.print("Type 'stats' to show monitoring statistics", style="info")
-    Console.print("Type 'report' to export monitoring report", style="info")
+
+    # Show config source
+    if hasattr(agent, '_config_source'):
+        Console.print(f"Config: {agent._config_source}", style="info")
+
+    Console.print("Type '/?' or 'help' for available commands", style="info")
     Console.print_separator()
 
     while True:
@@ -259,6 +390,11 @@ def run_interactive(
             user_input = input("> ").strip()
 
             if not user_input:
+                continue
+
+            # 显示帮助信息
+            if user_input.lower() in ["/?", "/help", "help", "?"]:
+                _show_help()
                 continue
 
             # 优雅退出命令（生成摘要）
@@ -283,6 +419,18 @@ def run_interactive(
 
             if user_input.lower() == "stats":
                 _show_monitoring_stats(agent)
+                continue
+
+            if user_input.lower() == "/init":
+                _init_project(agent)
+                continue
+
+            if user_input.lower() == "/config":
+                _show_config(config, agent)
+                continue
+
+            if user_input.lower().startswith("/config "):
+                _handle_config_command(agent, config, user_input[8:])
                 continue
 
             if user_input.lower() == "report":
@@ -342,48 +490,64 @@ def run_interactive(
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="NanoAgent - A lightweight AI Agent framework"
+        description="NanoAgent - A lightweight AI Agent framework",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  nano-agent                          Start interactive session
+  nano-agent -c ~/.nano_agent/config.yaml    Use global config
+  nano-agent --report                 Export report after session
+  nano-agent --list-sessions          List saved sessions
+  nano-agent -r session_xxx           Resume a session
+
+Config file priority:
+  1. ~/.nano_agent/config.yaml (global)
+  2. ./.nano_agent/config.yaml (project)
+  3. Built-in defaults
+"""
     )
     parser.add_argument(
         "-c", "--config",
         type=str,
         default=None,
-        help="Configuration file path (default: config/config.yaml)"
+        metavar="PATH",
+        help="Config file path (see priority below)"
     )
     parser.add_argument(
         "-m", "--model",
         type=str,
         default=None,
-        help="Override model name from config"
+        metavar="NAME",
+        help="Override model name"
     )
     parser.add_argument(
         "--list-sessions",
         action="store_true",
-        help="List all available sessions and exit"
+        help="List all saved sessions"
     )
     parser.add_argument(
         "--show-session",
         type=str,
-        metavar="SESSION_ID",
+        metavar="ID",
         default=None,
-        help="Show messages in a specific session"
+        help="Show a specific session"
     )
     parser.add_argument(
         "-r", "--resume",
         type=str,
-        metavar="SESSION_ID",
+        metavar="ID",
         default=None,
         help="Resume an existing session"
     )
     parser.add_argument(
         "-n", "--new-session",
         action="store_true",
-        help="Force start a new session"
+        help="Start a new session"
     )
     parser.add_argument(
         "--non-interactive",
         action="store_true",
-        help="Non-interactive mode, read input from stdin"
+        help="Non-interactive mode (read from stdin)"
     )
     parser.add_argument(
         "-q", "--quiet",
@@ -393,20 +557,22 @@ def main():
     parser.add_argument(
         "--report",
         action="store_true",
-        help="Export monitoring report after session ends"
+        help="Export monitoring report after session"
     )
     parser.add_argument(
         "--report-format",
         type=str,
         choices=["json", "markdown", "summary"],
         default="json",
-        help="Report format (json, markdown, summary)"
+        metavar="FORMAT",
+        help="Report format: json, markdown, summary"
     )
     parser.add_argument(
         "--report-output",
         type=str,
         default=None,
-        help="Report output file path (default: .nano_agent/report.{format})"
+        metavar="PATH",
+        help="Report output file path"
     )
 
     args = parser.parse_args()
@@ -857,6 +1023,322 @@ def _export_report(
 
     except Exception as e:
         Console.print(f"Failed to export report: {e}", style="error")
+
+
+def _show_config(config, agent) -> None:
+    """显示当前配置信息
+
+    Args:
+        config: 配置对象
+        agent: Agent 实例
+    """
+    print("\n" + "=" * 50)
+    print("Current Configuration")
+    print("=" * 50)
+
+    # 格式化函数：左对齐标签，右对齐值
+    def format_line(label: str, value: str, width: int = 20) -> str:
+        return f"  {label:<{width}} {value}"
+
+    # LLM 配置
+    print("\n## LLM Settings")
+    print(format_line("Provider:", config.llm.provider))
+    print(format_line("Model:", config.llm.model))
+    print(format_line("Base URL:", config.llm.base_url))
+    print(format_line("Timeout:", f"{config.llm.timeout}s"))
+    print(format_line("Temperature:", str(config.llm.temperature)))
+    print(format_line("Context Length:", f"{config.llm.get_context_length():,}"))
+
+    # Agent 配置
+    print("\n## Agent Settings")
+    print(format_line("Max Iterations:", str(config.agent.max_iterations)))
+    print(format_line("Verbose:", str(config.agent.verbose)))
+
+    # Memory 配置
+    print("\n## Memory Settings")
+    print(format_line("Type:", config.memory.type))
+    print(format_line("Storage Type:", config.memory.storage_type))
+    print(format_line("Storage Path:", config.memory.storage_path))
+    print(format_line("Max Messages:", str(config.memory.max_messages)))
+    if config.memory.type == "hybrid":
+        print(format_line("Long-term Path:", config.memory.long_term_storage_path))
+        print(format_line("Auto Extract:", str(config.memory.auto_extract)))
+
+    # Skills 配置
+    print("\n## Skills Settings")
+    print(format_line("Directory:", config.skills.directory))
+    if hasattr(agent, 'skill_loader'):
+        skills = agent.skill_loader.list_loaded_skills()
+        print(format_line("Loaded Skills:", ', '.join(skills) if skills else 'None'))
+
+    # Plugins 配置
+    print("\n## Plugins Settings")
+    print(format_line("Directories:", ', '.join(config.plugins.directories) if config.plugins.directories else 'None'))
+    print(format_line("Modules:", ', '.join(config.plugins.modules) if config.plugins.modules else 'None'))
+
+    # Logging 配置
+    print("\n## Logging Settings")
+    print(format_line("Level:", config.logging.level))
+    print(format_line("Console:", str(config.logging.console)))
+    print(format_line("File:", config.logging.file or 'None'))
+
+    # 工具统计
+    print("\n## Tools")
+    tools = agent.tool_registry.list_tools()
+    print(format_line("Total:", str(len(tools))))
+    tools_display = ', '.join(tools[:10])
+    if len(tools) > 10:
+        tools_display += f"... (+{len(tools) - 10} more)"
+    print(format_line("Tools:", tools_display))
+
+    print("\n" + "=" * 50 + "\n")
+
+
+def _show_help() -> None:
+    """显示交互模式帮助信息"""
+    print("\n" + "=" * 50)
+    print("Available Commands")
+    print("=" * 50)
+
+    print("\n## Session Management")
+    print("  /exit, /quit      Exit with session summary")
+    print("  exit, quit        Exit directly (no summary)")
+    print("  clear             Clear conversation history")
+    print("  sessions          List saved sessions")
+
+    print("\n## Project")
+    print("  /init             Scan project and create NANOPROJECT.md")
+
+    print("\n## Configuration")
+    print("  /config           Show current configuration")
+    print("  /config init      Generate default config file")
+
+    print("\n## Monitoring")
+    print("  stats             Show monitoring statistics")
+    print("  report            Export monitoring report")
+
+    print("\n## Tools & Skills")
+    print("  tools             List available tools")
+    print("  skills            List loaded skills")
+    print("  skill reload <n>  Reload a skill")
+    print("  skill unload <n>  Unload a skill")
+
+    print("\n## Help")
+    print("  /?, help          Show this help message")
+
+    print("\n" + "=" * 50 + "\n")
+
+
+def _handle_config_command(agent, config, command: str) -> None:
+    """处理 /config 子命令
+
+    Args:
+        agent: Agent 实例
+        config: 配置对象
+        command: 子命令字符串
+    """
+    parts = command.strip().split()
+    if not parts:
+        Console.print("Usage: /config <init [--force]>", style="info")
+        return
+
+    subcommand = parts[0].lower()
+
+    if subcommand == "init":
+        force = "--force" in parts or "-f" in parts
+        _init_config_file(config, force=force)
+    else:
+        Console.print(f"Unknown subcommand: {subcommand}", style="error")
+        Console.print("Available: init [--force]", style="info")
+
+
+def _init_config_file(config, force: bool = False) -> None:
+    """生成或更新配置文件到 .nano_agent 目录
+
+    采用合并策略：保留用户已修改的配置，只补充缺失的默认配置。
+
+    Args:
+        config: 当前配置对象
+        force: 是否强制覆盖
+    """
+    import yaml
+    from pathlib import Path
+
+    # 确保 .nano_agent 目录存在
+    nano_agent_dir = Path.cwd() / ".nano_agent"
+    nano_agent_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = nano_agent_dir / "config.yaml"
+
+    # 生成默认配置模板（带注释标记）
+    default_config = {
+        "llm": {
+            "provider": config.llm.provider,
+            "model": config.llm.model,
+            "base_url": config.llm.base_url,
+            "api_key": config.llm.api_key or "YOUR_API_KEY_HERE",
+            "timeout": config.llm.timeout,
+            "temperature": config.llm.temperature,
+        },
+        "agent": {
+            "max_iterations": config.agent.max_iterations,
+            "verbose": config.agent.verbose,
+            "system_prompt": config.agent.system_prompt or "You are a helpful AI assistant.",
+        },
+        "memory": {
+            "type": config.memory.type,
+            "storage_type": config.memory.storage_type,
+            "storage_path": config.memory.storage_path,
+            "max_messages": config.memory.max_messages,
+            "long_term_storage_path": config.memory.long_term_storage_path,
+            "auto_extract": config.memory.auto_extract,
+        },
+        "tools": {
+            "enabled": ["all"],
+            "disabled": [],
+        },
+        "skills": {
+            "enabled": [],
+            "directory": config.skills.directory,
+        },
+        "logging": {
+            "level": config.logging.level,
+            "console": config.logging.console,
+            "file": config.logging.file or ".nano_agent/debug.log",
+        },
+    }
+
+    # 如果文件不存在或强制覆盖，直接写入
+    if not config_path.exists() or force:
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(default_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        Console.print(f"Config file created: {config_path}", style="success")
+        return
+
+    # 文件已存在，进行合并
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            existing_config = yaml.safe_load(f) or {}
+
+        # 深度合并：补充缺失的配置项，保留用户已修改的
+        merged_config = _merge_config(default_config, existing_config)
+
+        # 检查是否有新增配置项
+        if merged_config == existing_config:
+            Console.print("Config file is up to date. No changes needed.", style="info")
+            return
+
+        # 写入合并后的配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(merged_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+        Console.print(f"Config file updated: {config_path}", style="success")
+        Console.print("Missing default values have been added.", style="info")
+
+    except Exception as e:
+        Console.print(f"Failed to merge config: {e}", style="error")
+        Console.print("Use '/config init --force' to overwrite", style="info")
+
+
+def _merge_config(default: dict, existing: dict) -> dict:
+    """深度合并配置，保留用户已修改的值，补充缺失的默认值
+
+    Args:
+        default: 默认配置
+        existing: 现有配置
+
+    Returns:
+        合并后的配置
+    """
+    import copy
+    result = copy.deepcopy(existing)
+
+    for key, value in default.items():
+        if key not in result:
+            # 缺失的配置项，添加默认值
+            result[key] = copy.deepcopy(value)
+        elif isinstance(value, dict) and isinstance(result.get(key), dict):
+            # 递归合并嵌套字典
+            result[key] = _merge_config(value, result[key])
+
+    return result
+
+
+def _init_project(agent) -> None:
+    """扫描项目并使用 LLM 生成 NANOPROJECT.md
+
+    Args:
+        agent: Agent 实例
+    """
+    Console.print("Scanning project structure...", style="info")
+
+    try:
+        scanner = ProjectScanner()
+        info = scanner.scan()
+
+        # 显示扫描结果摘要
+        Console.print(f"Project: {info['project_name']}", style="info")
+        Console.print(f"Files: {info['structure']['total_files']} | Dirs: {info['structure']['total_dirs']}", style="info")
+
+        if info['tech_stack']:
+            Console.print(f"Tech: {', '.join(info['tech_stack'])}", style="info")
+
+        # 使用 LLM 生成项目摘要
+        Console.print("\nGenerating project summary with LLM...", style="info")
+
+        # 构建扫描信息摘要
+        scan_summary = f"""
+Project Name: {info['project_name']}
+Tech Stack: {', '.join(info['tech_stack']) or 'Unknown'}
+Files: {info['structure']['total_files']}
+Directories: {info['structure']['total_dirs']}
+Top Directories: {', '.join(info['structure']['top_dirs'][:10])}
+Entry Points: {', '.join(info['code_summary']['entry_points']) or 'None detected'}
+Languages: {dict(info['code_summary']['languages'])}
+Git Branch: {info['git_info'].get('branch', 'N/A')}
+Recent Commits: {info['git_info'].get('recent_commits', [])[:3]}
+"""
+
+        prompt = f"""Based on the following project scan results, generate a comprehensive project summary in Markdown format.
+
+The summary should include:
+1. A brief project description (infer from name and structure)
+2. Technology stack analysis
+3. Project structure overview
+4. Development notes and suggestions
+
+Scan Results:
+{scan_summary}
+
+Please generate NANOPROJECT.md content (in Chinese, concise and professional):"""
+
+        # 调用 LLM
+        response, _, _ = agent.llm.chat(
+            messages=[{"role": "user", "content": prompt}],
+            tools=None
+        )
+
+        # 保存 LLM 生成的摘要
+        output_path = Path.cwd() / "NANOPROJECT.md"
+
+        # 添加头部信息
+        header = f"""# {info['project_name']} - 项目摘要
+
+> 由 NanoAgent 生成于 {info['scan_time'][:19]}
+> 基于 LLM 分析
+
+---
+
+"""
+        full_content = header + response
+
+        output_path.write_text(full_content, encoding="utf-8")
+
+        Console.print(f"\nNANOPROJECT.md created at: {output_path}", style="success")
+        Console.print("Project summary generated by LLM.", style="success")
+
+    except Exception as e:
+        Console.print(f"Failed to scan project: {e}", style="error")
 
 
 if __name__ == "__main__":
