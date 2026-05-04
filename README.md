@@ -9,8 +9,11 @@ NanoAgent 是一个简洁易懂的 AI Agent 框架，通过实现经典的 ReAct
 ### 核心特性
 
 - **ReAct 模式**: 实现 Think → Act → Observe 推理循环
-- **工具调用**: 支持多种内置工具（文件操作、Shell 命令、Python 执行）
+- **工具调用**: 支持多种内置工具（文件操作、Shell 命令、Python 执行、网络搜索）
 - **多 LLM 支持**: 支持 Ollama 本地模型和 OpenAI 兼容 API（OpenAI、DeepSeek、Moonshot 等）
+- **持久化记忆**: 支持会话保存和恢复，跨会话记忆
+- **技能包机制**: 可扩展的技能包系统，支持热加载
+- **运行监控**: Token 使用统计、上下文使用率、LLM 调用追踪
 - **模块化设计**: 清晰的抽象层次，易于扩展
 - **配置灵活**: YAML 配置文件，支持自定义模型和参数
 
@@ -263,6 +266,42 @@ llm:
 | `file_write` | 写入文件 |
 | `file_search` | 搜索文件（glob 模式） |
 | `shell_execute` | 执行 Shell 命令 |
+| `web_search` | 网络搜索（使用 Bing） |
+| `memorize` | 存储信息到长期记忆 |
+| `recall` | 从长期记忆检索信息 |
+| `list_memories` | 列出所有长期记忆 |
+| `forget` | 删除长期记忆条目 |
+| `get_stats` | 获取运行统计信息 |
+
+## 运行监控
+
+NanoAgent 提供运行时监控功能，帮助了解 Agent 运行状态：
+
+```
+📊 本轮:   1500 tokens |   2.50s | LLM调用:   2 | 迭代: 2 | 工具: ✓web_search
+📊 总计:  15000 tokens |  45.20s | LLM调用:  12 | 上下文: 11.7% (15000/128000)
+```
+
+- **Token 统计**: 显示本轮和会话总计的 token 消耗
+- **LLM 调用**: 统计 API 调用次数（计费相关）
+- **上下文使用率**: 显示当前上下文占用量，超过 80% 时警告
+- **工具调用追踪**: 显示每个工具调用的状态和耗时
+
+## 会话管理
+
+```bash
+# 列出所有会话
+nano-agent --list-sessions
+
+# 恢复会话
+nano-agent --resume session_abc123
+
+# 开始新会话
+nano-agent --new-session
+
+# 查看会话内容
+nano-agent --show-session session_abc123
+```
 
 ## 开发
 
