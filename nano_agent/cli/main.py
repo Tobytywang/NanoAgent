@@ -1420,6 +1420,7 @@ def _init_config_file(config, force: bool = False) -> None:
             "api_key": config.llm.api_key or "YOUR_API_KEY_HERE",
             "timeout": config.llm.timeout,
             "temperature": config.llm.temperature,
+            "context_length": config.llm.context_length,
         },
         "agent": {
             "max_iterations": config.agent.max_iterations,
