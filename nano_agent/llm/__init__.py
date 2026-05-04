@@ -86,7 +86,19 @@ def create_llm(
             **kwargs
         )
 
-    raise ValueError(f"Unsupported provider: {provider}")
+    # Unknown provider - treat as OpenAI-compatible if base_url is provided
+    if base_url:
+        return OpenAICompatibleLLM(
+            model=model or "default",
+            base_url=base_url,
+            api_key=api_key,
+            api_key_env=api_key_env or "OPENAI_API_KEY",
+            timeout=timeout,
+            temperature=temperature,
+            **kwargs
+        )
+
+    raise ValueError(f"Unsupported provider: {provider}. Use 'openai_compatible' with base_url for custom providers.")
 
 
 def create_llm_from_config(config) -> BaseLLM:

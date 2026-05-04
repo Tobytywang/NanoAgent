@@ -43,7 +43,7 @@ MODEL_CONTEXT_LENGTHS = {
 @dataclass
 class LLMConfig:
     """LLM configuration."""
-    provider: Literal["ollama", "openai", "deepseek", "moonshot", "openai_compatible"] = "ollama"
+    provider: str = "ollama"  # ollama, openai, deepseek, moonshot, openai_compatible, or any custom provider
     model: str = "llama3"
     base_url: str = "http://localhost:11434"
     api_key: str | None = None
