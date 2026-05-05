@@ -744,6 +744,12 @@ Config file priority:
         _cleanup_sessions(args.config, args.clean_threshold)
         return
 
+    # --clean-threshold requires --clean-sessions
+    if args.clean_threshold != 3:  # User specified a custom threshold
+        Console.print("--clean-threshold requires --clean-sessions", style="error")
+        Console.print("Example: nano-agent --clean-sessions --clean-threshold 5", style="info")
+        sys.exit(1)
+
     # Default behavior: resume most recent session (unless --new-session specified)
     if not args.new_session and not args.resume_session:
         config_file, _ = _find_config_file(args.config)
