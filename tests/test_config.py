@@ -249,6 +249,71 @@ class TestFindConfigFile:
                 os.environ["HOME"] = original_home or ""
 
 
+class TestListSessionsConfig:
+    """Test that _list_sessions uses correct config file."""
+
+    def test_list_sessions_uses_project_config(self):
+        """Test that _list_sessions finds and uses project config."""
+        from nano_agent.cli.main import _find_config_file
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create project config with sqlite storage
+            project_dir = Path(tmpdir) / "project"
+            project_dir.mkdir()
+            config_dir = project_dir / ".nano_agent"
+            config_dir.mkdir()
+            config_file = config_dir / "config.yaml"
+            config_file.write_text("""
+memory:
+  storage_type: sqlite
+  storage_path: .nano_agent/test.db
+""")
+
+            original_cwd = os.getcwd()
+            original_home = os.environ.get("HOME")
+            try:
+                os.chdir(project_dir)
+                os.environ["HOME"] = tmpdir  # No global config
+
+                found, source = _find_config_file()
+                assert found is not None
+                assert "local" in source
+                assert found.name == "config.yaml"
+            finally:
+                os.chdir(original_cwd)
+                os.environ["HOME"] = original_home or ""
+
+    def test_list_sessions_finds_global_when_no_project(self):
+        """Test that _list_sessions finds global config when no project config."""
+        from nano_agent.cli.main import _find_config_file
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create global config
+            home_dir = Path(tmpdir) / "home"
+            home_dir.mkdir()
+            global_dir = home_dir / ".nano_agent"
+            global_dir.mkdir()
+            global_config = global_dir / "config.yaml"
+            global_config.write_text("llm:\n  model: global_model\n")
+
+            # Project dir without config
+            project_dir = Path(tmpdir) / "project"
+            project_dir.mkdir()
+
+            original_cwd = os.getcwd()
+            original_home = os.environ.get("HOME")
+            try:
+                os.chdir(project_dir)
+                os.environ["HOME"] = str(home_dir)
+
+                found, source = _find_config_file()
+                assert found is not None
+                assert "global" in source
+            finally:
+                os.chdir(original_cwd)
+                os.environ["HOME"] = original_home or ""
+
+
 class TestConfigMerge:
     """Test configuration merge logic."""
 
