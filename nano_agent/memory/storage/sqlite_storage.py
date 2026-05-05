@@ -159,6 +159,56 @@ class SQLiteStorage(BaseStorage):
             """, (session_id,))
             conn.commit()
 
+    def delete_summary(self, session_id: str) -> None:
+        """
+        Delete summary record for a session.
+
+        Args:
+            session_id: The session identifier
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                DELETE FROM session_summaries WHERE session_id = ?
+            """, (session_id,))
+            conn.commit()
+
+    def get_most_recent_session(self) -> str | None:
+        """
+        Get the most recently active session.
+
+        Returns:
+            Session ID of most recent session, or None if no sessions exist
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT session_id
+                FROM memory_entries
+                GROUP BY session_id
+                ORDER BY MAX(timestamp) DESC
+                LIMIT 1
+            """)
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def get_sessions_below_threshold(self, threshold: int) -> list[str]:
+        """
+        Get sessions with message count below threshold.
+
+        Args:
+            threshold: Minimum message count (exclusive)
+
+        Returns:
+            List of session IDs with fewer messages than threshold
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT session_id
+                FROM memory_entries
+                GROUP BY session_id
+                HAVING COUNT(*) < ?
+            """, (threshold,))
+            return [row[0] for row in cursor.fetchall()]
+
     def list_sessions(self) -> list[str]:
         """
         List all session identifiers.

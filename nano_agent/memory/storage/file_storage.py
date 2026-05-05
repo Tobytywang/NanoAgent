@@ -88,6 +88,61 @@ class FileStorage(BaseStorage):
         if session_file.exists():
             session_file.unlink()
 
+    def delete_summary(self, session_id: str) -> None:
+        """
+        Delete summary file for a session.
+
+        Args:
+            session_id: The session identifier
+        """
+        summary_file = self.base_dir / f"{session_id}_summary.json"
+        if summary_file.exists():
+            summary_file.unlink()
+
+    def get_most_recent_session(self) -> str | None:
+        """
+        Get the most recently active session based on last_message timestamp.
+
+        Returns:
+            Session ID of most recent session, or None if no sessions exist
+        """
+        sessions = self.list_sessions()
+        if not sessions:
+            return None
+
+        most_recent = None
+        most_recent_time = None
+
+        for session_id in sessions:
+            info = self.get_session_info(session_id)
+            if info and info.get("last_message"):
+                last_time = info["last_message"]
+                if most_recent_time is None or last_time > most_recent_time:
+                    most_recent_time = last_time
+                    most_recent = session_id
+
+        return most_recent
+
+    def get_sessions_below_threshold(self, threshold: int) -> list[str]:
+        """
+        Get sessions with message count below threshold.
+
+        Args:
+            threshold: Minimum message count (exclusive)
+
+        Returns:
+            List of session IDs with fewer messages than threshold
+        """
+        sessions = self.list_sessions()
+        low_value = []
+
+        for session_id in sessions:
+            info = self.get_session_info(session_id)
+            if info and info.get("message_count", 0) < threshold:
+                low_value.append(session_id)
+
+        return low_value
+
     def list_sessions(self) -> list[str]:
         """
         List all session identifiers.

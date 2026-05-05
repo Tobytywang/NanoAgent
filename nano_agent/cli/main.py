@@ -618,7 +618,10 @@ Examples:
   nano-agent -c ~/.nano_agent/config.yaml    Use global config
   nano-agent --report                 Export report after session
   nano-agent --list-sessions          List saved sessions
-  nano-agent -r session_xxx           Resume a session
+  nano-agent --continue               Resume most recent session
+  nano-agent -r session_xxx           Resume a specific session
+  nano-agent --delete-session session_xxx    Delete a session
+  nano-agent --cleanup                Remove low-value sessions
 
 Config file priority:
   1. ./.nano_agent/config.yaml (project)
@@ -659,6 +662,31 @@ Config file priority:
         metavar="ID",
         default=None,
         help="[r]esume an existing session"
+    )
+    parser.add_argument(
+        "--delete-session",
+        type=str,
+        metavar="ID",
+        default=None,
+        help="Delete a specific session by ID"
+    )
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Remove low-value sessions (fewer than threshold messages)"
+    )
+    parser.add_argument(
+        "--cleanup-threshold",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Message count threshold for cleanup (default: 3)"
+    )
+    parser.add_argument(
+        "--continue",
+        dest="continue_last",
+        action="store_true",
+        help="Resume the most recent session"
     )
     parser.add_argument(
         "--non-interactive",
@@ -702,6 +730,31 @@ Config file priority:
     if args.session:
         _show_session(args.session, args.config)
         return
+
+    # Handle --delete-session
+    if args.delete_session:
+        _delete_session(args.delete_session, args.config)
+        return
+
+    # Handle --cleanup
+    if args.cleanup:
+        _cleanup_sessions(args.config, args.cleanup_threshold)
+        return
+
+    # Handle --continue (resume most recent session)
+    if args.continue_last:
+        config_file, _ = _find_config_file(args.config)
+        if config_file:
+            config = ConfigLoader.load(config_file)
+        else:
+            config = ConfigLoader.load()
+        storage = _get_storage(config)
+        recent_session = storage.get_most_recent_session()
+        if recent_session:
+            args.resume = recent_session
+            Console.print(f"Resuming most recent session: {recent_session}", style="info")
+        else:
+            Console.print("No existing sessions found. Starting new session.", style="info")
 
     # Create agent
     agent = create_agent(args.config)
@@ -893,6 +946,69 @@ def _show_session(session_id: str, config_path: str | None = None) -> None:
             print(f"  [{entry.role}]: {content}")
         if len(entries) > 3:
             print(f"  ... 还有 {len(entries) - 3} 条消息")
+
+
+def _delete_session(session_id: str, config_path: str | None = None) -> None:
+    """Delete a specific session and its summary.
+
+    Args:
+        session_id: The session ID to delete
+        config_path: Optional config file path
+    """
+    config_file, _ = _find_config_file(config_path)
+
+    if config_file:
+        config = ConfigLoader.load(config_file)
+    else:
+        config = ConfigLoader.load()
+
+    storage = _get_storage(config)
+
+    if not storage.session_exists(session_id):
+        Console.print(f"Session '{session_id}' not found", style="error")
+        sys.exit(1)
+
+    # Delete session and summary
+    storage.delete_session(session_id)
+    storage.delete_summary(session_id)
+
+    Console.print(f"Session '{session_id}' deleted successfully", style="success")
+
+
+def _cleanup_sessions(config_path: str | None = None, threshold: int = 3) -> None:
+    """Remove low-value sessions with fewer than threshold messages.
+
+    Args:
+        config_path: Optional config file path
+        threshold: Minimum message count threshold
+    """
+    config_file, _ = _find_config_file(config_path)
+
+    if config_file:
+        config = ConfigLoader.load(config_file)
+    else:
+        config = ConfigLoader.load()
+
+    storage = _get_storage(config)
+    low_value_sessions = storage.get_sessions_below_threshold(threshold)
+
+    if not low_value_sessions:
+        Console.print(f"No sessions with fewer than {threshold} messages found.", style="info")
+        return
+
+    Console.print(f"Found {len(low_value_sessions)} session(s) with fewer than {threshold} messages:", style="info")
+    for session_id in low_value_sessions:
+        info = storage.get_session_info(session_id)
+        print(f"  {session_id} ({info['message_count']} messages)")
+
+    # Delete sessions
+    deleted_count = 0
+    for session_id in low_value_sessions:
+        storage.delete_session(session_id)
+        storage.delete_summary(session_id)
+        deleted_count += 1
+
+    Console.print(f"Cleaned up {deleted_count} low-value session(s)", style="success")
 
 
 def _generate_session_summary(agent, config) -> str:

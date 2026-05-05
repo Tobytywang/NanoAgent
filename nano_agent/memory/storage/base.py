@@ -124,3 +124,36 @@ class BaseStorage(ABC):
             True if session exists
         """
         pass
+
+    @abstractmethod
+    def delete_summary(self, session_id: str) -> None:
+        """
+        Delete summary for a session.
+
+        Args:
+            session_id: The session identifier
+        """
+        pass
+
+    @abstractmethod
+    def get_most_recent_session(self) -> str | None:
+        """
+        Get the most recently active session.
+
+        Returns:
+            Session ID of most recent session, or None if no sessions exist
+        """
+        pass
+
+    @abstractmethod
+    def get_sessions_below_threshold(self, threshold: int) -> list[str]:
+        """
+        Get sessions with message count below threshold.
+
+        Args:
+            threshold: Minimum message count (exclusive)
+
+        Returns:
+            List of session IDs with fewer messages than threshold
+        """
+        pass
