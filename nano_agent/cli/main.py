@@ -664,9 +664,11 @@ def _get_storage(config):
 
 def _list_sessions(config_path: str | None = None) -> None:
     """List all available sessions."""
-    # Get storage path from config
-    if config_path:
-        config = ConfigLoader.load(config_path)
+    # Find config file with priority
+    config_file, _ = _find_config_file(config_path)
+
+    if config_file:
+        config = ConfigLoader.load(config_file)
     else:
         config = ConfigLoader.load()
 
@@ -690,9 +692,11 @@ def _list_sessions(config_path: str | None = None) -> None:
 
 def _show_session(session_id: str, config_path: str | None = None) -> None:
     """Show messages in a specific session."""
-    # Get storage path from config
-    if config_path:
-        config = ConfigLoader.load(config_path)
+    # Find config file with priority
+    config_file, _ = _find_config_file(config_path)
+
+    if config_file:
+        config = ConfigLoader.load(config_file)
     else:
         config = ConfigLoader.load()
 
