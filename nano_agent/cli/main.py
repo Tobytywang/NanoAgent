@@ -408,12 +408,12 @@ def run_interactive(
                 Console.print("Goodbye!", style="success")
                 break
 
-            if user_input.lower() == "clear" or user_input.lower() == "/clear":
+            if user_input.lower() == "/clear":
                 agent.reset()
                 Console.print("Conversation history cleared", style="success")
                 continue
 
-            if user_input.lower() == "tools" or user_input.lower() == "/tools":
+            if user_input.lower() == "/tools":
                 tools = agent.tool_registry.list_tools()
                 Console.print(f"Available tools: {', '.join(tools)}", style="info")
                 continue
@@ -438,11 +438,11 @@ def run_interactive(
                 _handle_memory_command(agent, config, user_input[7:].strip())
                 continue
 
-            if user_input.lower() == "report" or user_input.lower() == "/report":
+            if user_input.lower() == "/report":
                 _export_report(agent, report_format, report_output)
                 continue
 
-            if user_input.lower() == "sessions" or user_input.lower() == "/sessions":
+            if user_input.lower() == "/sessions":
                 if hasattr(agent.memory, 'list_sessions'):
                     sessions = agent.memory.list_sessions()
                     if not sessions:
@@ -456,7 +456,7 @@ def run_interactive(
                 continue
 
             # Skill commands
-            if user_input.lower() == "skills" or user_input.lower() == "/skills":
+            if user_input.lower() == "/skills":
                 if hasattr(agent, 'skill_loader'):
                     skills = agent.skill_loader.list_loaded_skills()
                     if not skills:
@@ -470,12 +470,8 @@ def run_interactive(
                     Console.print("Skill system not available", style="warning")
                 continue
 
-            if user_input.lower().startswith("skill ") or user_input.lower().startswith("/skill "):
-                # Handle both "skill reload xxx" and "/skill reload xxx"
-                if user_input.lower().startswith("/skill "):
-                    _handle_skill_command(agent, user_input[7:])
-                else:
-                    _handle_skill_command(agent, user_input[6:])
+            if user_input.lower().startswith("/skill "):
+                _handle_skill_command(agent, user_input[7:])
                 continue
 
             # 重置 Ctrl+C 计数
