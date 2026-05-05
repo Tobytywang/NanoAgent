@@ -614,13 +614,13 @@ def main():
         add_help=False,
         epilog="""
 Examples:
-  nano-agent                          Start interactive session
+  nano-agent                          Resume most recent session (default)
+  nano-agent -n                       Start a new session
   nano-agent -c ~/.nano_agent/config.yaml    Use global config
   nano-agent --report                 Export report after session
-  nano-agent --list-sessions          List saved sessions
-  nano-agent --continue               Resume most recent session
+  nano-agent -l                       List saved sessions
   nano-agent -r session_xxx           Resume a specific session
-  nano-agent --delete-session session_xxx    Delete a session
+  nano-agent -d session_xxx           Delete a session
   nano-agent --cleanup                Remove low-value sessions
 
 Config file priority:
@@ -664,11 +664,16 @@ Config file priority:
         help="[r]esume an existing session"
     )
     parser.add_argument(
-        "--delete-session",
+        "-n", "--new-session",
+        action="store_true",
+        help="Start a [n]ew session (default: resume most recent)"
+    )
+    parser.add_argument(
+        "-d", "--delete-session",
         type=str,
         metavar="ID",
         default=None,
-        help="Delete a specific session by ID"
+        help="[d]elete a specific session by ID"
     )
     parser.add_argument(
         "--cleanup",
@@ -681,12 +686,6 @@ Config file priority:
         default=3,
         metavar="N",
         help="Message count threshold for cleanup (default: 3)"
-    )
-    parser.add_argument(
-        "--continue",
-        dest="continue_last",
-        action="store_true",
-        help="Resume the most recent session"
     )
     parser.add_argument(
         "--non-interactive",
@@ -741,8 +740,8 @@ Config file priority:
         _cleanup_sessions(args.config, args.cleanup_threshold)
         return
 
-    # Handle --continue (resume most recent session)
-    if args.continue_last:
+    # Default behavior: resume most recent session (unless --new-session specified)
+    if not args.new_session and not args.resume:
         config_file, _ = _find_config_file(args.config)
         if config_file:
             config = ConfigLoader.load(config_file)
@@ -1648,6 +1647,12 @@ def _show_help() -> None:
 
     print("\n## 导出")
     print("  /report           导出监控报告")
+
+    print("\n## CLI选项（启动时使用）")
+    print("  -n, --new-session  创建新session（默认延续最近session）")
+    print("  -l, --list-sessions 列出所有session")
+    print("  -d, --delete-session 删除指定session")
+    print("  --cleanup         清理低价值session")
 
     print("\n" + "=" * 50 + "\n")
 
