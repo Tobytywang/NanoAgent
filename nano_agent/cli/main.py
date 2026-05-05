@@ -1769,6 +1769,7 @@ def _init_config_file(config, force: bool = False) -> None:
             "max_messages": config.memory.max_messages,
             "long_term_storage_path": config.memory.long_term_storage_path,
             "auto_extract": config.memory.auto_extract,
+            "clean_threshold": config.memory.clean_threshold,
         },
         "tools": {
             "enabled": ["all"],
