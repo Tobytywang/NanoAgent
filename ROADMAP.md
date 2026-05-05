@@ -189,6 +189,38 @@ class ReflectiveAgent(ReActAgent):
 
 ---
 
+### v0.5.1 - 配置系统优化
+
+**目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
+
+**任务列表**:
+- [ ] 配置自动显示 - `_show_config()` 自动遍历 config 对象字段
+- [ ] 配置自动保存 - `_init_config_file()` 自动生成所有配置字段
+- [ ] 条件显示支持 - 支持类似 `if config.memory.type == "hybrid"` 的条件逻辑
+- [ ] 字段排序控制 - 支持自定义显示顺序
+
+**技术方案**:
+```python
+# 方案：使用 dataclass 字段元数据
+@dataclass
+class MemoryConfig:
+    max_messages: int = field(default=50, metadata={"display": True, "order": 1})
+    clean_threshold: int = field(default=3, metadata={"display": True, "order": 10})
+    long_term_storage_path: str = field(
+        default=".nano_agent/long_term_memory",
+        metadata={"display": True, "condition": "type == 'hybrid'"}
+    )
+
+# _show_config() 自动遍历
+def _show_config(config, agent):
+    for section_name, section_config in get_config_sections(config):
+        for field_name, field_value in get_display_fields(section_config):
+            if should_display(field_name, section_config):
+                print(format_line(field_name, field_value))
+```
+
+---
+
 ### v0.7.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
