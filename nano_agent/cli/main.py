@@ -531,7 +531,7 @@ Config file priority:
         help="List all saved sessions"
     )
     parser.add_argument(
-        "--show-session",
+        "-s", "--show-session",
         type=str,
         metavar="ID",
         default=None,
