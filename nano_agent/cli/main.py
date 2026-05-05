@@ -497,6 +497,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="NanoAgent - A lightweight AI Agent framework",
         formatter_class=argparse.RawTextHelpFormatter,
+        add_help=False,
         epilog="""
 Examples:
   nano-agent                          Start interactive session
@@ -510,6 +511,10 @@ Config file priority:
   2. ./.nano_agent/config.yaml (project)
   3. Built-in defaults
 """
+    )
+    parser.add_argument(
+        "-h", "--help", action="help",
+        help="Show this help message and exit"
     )
     parser.add_argument(
         "-c", "--config",
