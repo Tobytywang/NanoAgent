@@ -387,10 +387,14 @@ def run_interactive(
     Console.print("Type '/?' or 'help' for available commands", style="info")
     Console.print_separator()
 
+    # Get display names from config
+    user_display = config.agent.user_name
+    agent_display = config.agent.agent_name
+
     while True:
         try:
             cwd = os.getcwd()
-            print(f"\n[User] [{cwd}]:")
+            print(f"\n[{user_display}] [{cwd}]:")
             user_input = input("> ").strip()
 
             if not user_input:
@@ -481,7 +485,7 @@ def run_interactive(
             GracefulExitManager.ctrl_c_count = 0
 
             # Run agent
-            Console.print("\n", style="agent", end="")
+            print(f"\n[{agent_display}]:")
             response = agent.run(user_input)
             print(f"> {response}")
 
@@ -1416,6 +1420,8 @@ def _init_config_file(config, force: bool = False) -> None:
         "agent": {
             "max_iterations": config.agent.max_iterations,
             "verbose": config.agent.verbose,
+            "user_name": config.agent.user_name,
+            "agent_name": config.agent.agent_name,
             "system_prompt": config.agent.system_prompt or "You are a helpful AI assistant.",
         },
         "memory": {

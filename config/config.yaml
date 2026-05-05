@@ -18,6 +18,8 @@ llm:
 agent:
   max_iterations: 10
   verbose: true
+  user_name: User                  # Your display name
+  agent_name: Agent                # Agent's display name
   system_prompt: |
     You are a helpful AI assistant with access to tools.
     Use the available tools to help complete tasks.
