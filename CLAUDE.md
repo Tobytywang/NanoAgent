@@ -90,6 +90,13 @@ When adding or modifying features, always update the relevant documentation:
 - **API documentation**: Update `docs/api.md`
 - **Tutorial**: Update `docs/tutorial.md` if it affects user workflow
 
+### Roadmap
+
+When adding or modifying features, always check `ROADMAP.md`:
+- If the feature is described in ROADMAP.md, ensure the implementation matches the description
+- If the feature is NOT described, add it to the appropriate version section
+- Periodically review git commit history to update ROADMAP.md with important feature details
+
 ### Bash Commands
 
 When executing Bash commands, always provide a clear purpose explaining:
