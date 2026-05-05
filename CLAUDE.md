@@ -98,6 +98,16 @@ When adding or modifying features, always update the relevant documentation:
 - **API documentation**: Update `docs/api.md`
 - **Tutorial**: Update `docs/tutorial.md` if it affects user workflow
 
+### Configuration Changes
+
+When adding new configuration fields, you must update **all three** places:
+
+1. **`nano_agent/config/schema.py`** - Add field to the config dataclass (e.g., `MemoryConfig`)
+2. **`_show_config()` in `nano_agent/cli/main.py`** - Display the new field in `/config` output
+3. **`_init_config_file()` in `nano_agent/cli/main.py`** - Include the field in generated config file
+
+This ensures the new config option is visible in `/config` and saved when running `/config init`.
+
 ### Roadmap
 
 When adding or modifying features, always check `ROADMAP.md`:
