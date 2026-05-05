@@ -1385,6 +1385,7 @@ def _show_config(config, agent) -> None:
     print(format_line("Storage Type:", config.memory.storage_type))
     print(format_line("Storage Path:", config.memory.storage_path))
     print(format_line("Max Messages:", str(config.memory.max_messages)))
+    print(format_line("Clean Threshold:", str(config.memory.clean_threshold)))
     if config.memory.type == "hybrid":
         print(format_line("Long-term Path:", config.memory.long_term_storage_path))
         print(format_line("Auto Extract:", str(config.memory.auto_extract)))
