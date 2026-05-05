@@ -167,8 +167,8 @@ class TestFindConfigFile:
             assert found == explicit_config
             assert "specified" in source
 
-    def test_global_config_priority(self):
-        """Test that global config has priority over local config."""
+    def test_local_config_priority(self):
+        """Test that local config has priority over global config."""
         from nano_agent.cli.main import _find_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -194,31 +194,41 @@ class TestFindConfigFile:
                 os.chdir(Path(tmpdir) / "project")
 
                 found, source = _find_config_file()
-                assert found == global_config
-                assert "global" in source
-            finally:
-                os.environ["HOME"] = original_home or ""
-                os.chdir(original_cwd)
-
-    def test_local_config_when_no_global(self):
-        """Test that local config is used when no global config exists."""
-        from nano_agent.cli.main import _find_config_file
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create only local config (no global)
-            local_dir = Path(tmpdir) / ".nano_agent"
-            local_dir.mkdir(parents=True)
-            local_config = local_dir / "config.yaml"
-            local_config.write_text("llm:\n  model: local_model\n")
-
-            original_cwd = os.getcwd()
-            try:
-                os.chdir(tmpdir)
-                found, source = _find_config_file()
                 # Resolve paths for comparison (macOS temp dirs use symlinks)
                 assert found.resolve() == local_config.resolve()
                 assert "local" in source
             finally:
+                os.environ["HOME"] = original_home or ""
+                os.chdir(original_cwd)
+
+    def test_global_config_when_no_local(self):
+        """Test that global config is used when no local config exists."""
+        from nano_agent.cli.main import _find_config_file
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create global config in a separate "home" directory
+            home_dir = Path(tmpdir) / "home"
+            home_dir.mkdir()
+            global_dir = home_dir / ".nano_agent"
+            global_dir.mkdir(parents=True)
+            global_config = global_dir / "config.yaml"
+            global_config.write_text("llm:\n  model: global_model\n")
+
+            # Create a separate project directory without local config
+            project_dir = Path(tmpdir) / "project"
+            project_dir.mkdir()
+
+            import os
+            original_home = os.environ.get("HOME")
+            original_cwd = os.getcwd()
+            try:
+                os.environ["HOME"] = str(home_dir)
+                os.chdir(project_dir)
+                found, source = _find_config_file()
+                assert found.resolve() == global_config.resolve()
+                assert "global" in source
+            finally:
+                os.environ["HOME"] = original_home or ""
                 os.chdir(original_cwd)
 
     def test_no_config_returns_none(self):

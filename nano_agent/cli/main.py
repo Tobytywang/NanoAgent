@@ -186,8 +186,8 @@ def _find_config_file(config_path: str | None = None) -> tuple[Path | None, str]
 
     Priority:
     1. Explicitly specified path (-c option)
-    2. ~/.nano_agent/config.yaml (global)
-    3. ./.nano_agent/config.yaml (project local)
+    2. ./.nano_agent/config.yaml (project local)
+    3. ~/.nano_agent/config.yaml (global)
     4. None (use default config)
 
     Args:
@@ -202,15 +202,15 @@ def _find_config_file(config_path: str | None = None) -> tuple[Path | None, str]
             return path, f"specified: {config_path}"
         return None, "default (specified file not found)"
 
-    # Priority 1: Global config (~/.nano_agent/config.yaml)
-    global_config = Path.home() / ".nano_agent" / "config.yaml"
-    if global_config.exists():
-        return global_config, f"global: {global_config}"
-
-    # Priority 2: Project local config (./.nano_agent/config.yaml)
+    # Priority 1: Project local config (./.nano_agent/config.yaml)
     local_config = Path.cwd() / ".nano_agent" / "config.yaml"
     if local_config.exists():
         return local_config, f"local: {local_config}"
+
+    # Priority 2: Global config (~/.nano_agent/config.yaml)
+    global_config = Path.home() / ".nano_agent" / "config.yaml"
+    if global_config.exists():
+        return global_config, f"global: {global_config}"
 
     return None, "default (no config file found)"
 
@@ -519,8 +519,8 @@ Examples:
   nano-agent -r session_xxx           Resume a session
 
 Config file priority:
-  1. ~/.nano_agent/config.yaml (global)
-  2. ./.nano_agent/config.yaml (project)
+  1. ./.nano_agent/config.yaml (project)
+  2. ~/.nano_agent/config.yaml (global)
   3. Built-in defaults
 """
     )
