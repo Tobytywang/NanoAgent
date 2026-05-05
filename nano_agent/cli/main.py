@@ -620,8 +620,9 @@ Examples:
   nano-agent --report                 Export report after session
   nano-agent -l                       List saved sessions
   nano-agent -r session_xxx           Resume a specific session
+  nano-agent -s session_xxx           Show session details
   nano-agent -d session_xxx           Delete a session
-  nano-agent --cleanup                Remove low-value sessions
+  nano-agent --clean-sessions         Auto-clean low-value sessions
 
 Config file priority:
   1. ./.nano_agent/config.yaml (project)
@@ -653,11 +654,14 @@ Config file priority:
         help="[l]ist all saved sessions"
     )
     parser.add_argument(
-        "-s", "--session", type=str, metavar="ID", default=None,
+        "-s", "--show-session",
+        type=str,
+        metavar="ID",
+        default=None,
         help="[s]how a specific session"
     )
     parser.add_argument(
-        "-r", "--resume",
+        "-r", "--resume-session",
         type=str,
         metavar="ID",
         default=None,
@@ -676,16 +680,16 @@ Config file priority:
         help="[d]elete a specific session by ID"
     )
     parser.add_argument(
-        "--cleanup",
+        "--clean-sessions",
         action="store_true",
-        help="Remove low-value sessions (fewer than threshold messages)"
+        help="Auto-clean low-value sessions (fewer than threshold messages)"
     )
     parser.add_argument(
-        "--cleanup-threshold",
+        "--clean-threshold",
         type=int,
         default=3,
         metavar="N",
-        help="Message count threshold for cleanup (default: 3)"
+        help="Message count threshold for auto-clean (default: 3)"
     )
     parser.add_argument(
         "--non-interactive",
@@ -725,9 +729,9 @@ Config file priority:
         _list_sessions(args.config)
         return
 
-    # Handle --session
-    if args.session:
-        _show_session(args.session, args.config)
+    # Handle --show-session
+    if args.show_session:
+        _show_session(args.show_session, args.config)
         return
 
     # Handle --delete-session
@@ -735,13 +739,13 @@ Config file priority:
         _delete_session(args.delete_session, args.config)
         return
 
-    # Handle --cleanup
-    if args.cleanup:
-        _cleanup_sessions(args.config, args.cleanup_threshold)
+    # Handle --clean-sessions
+    if args.clean_sessions:
+        _cleanup_sessions(args.config, args.clean_threshold)
         return
 
     # Default behavior: resume most recent session (unless --new-session specified)
-    if not args.new_session and not args.resume:
+    if not args.new_session and not args.resume_session:
         config_file, _ = _find_config_file(args.config)
         if config_file:
             config = ConfigLoader.load(config_file)
@@ -750,7 +754,7 @@ Config file priority:
         storage = _get_storage(config)
         recent_session = storage.get_most_recent_session()
         if recent_session:
-            args.resume = recent_session
+            args.resume_session = recent_session
             Console.print(f"Resuming most recent session: {recent_session}", style="info")
         else:
             Console.print("No existing sessions found. Starting new session.", style="info")
@@ -758,14 +762,14 @@ Config file priority:
     # Create agent
     agent = create_agent(args.config)
 
-    # Handle --resume
-    if args.resume:
+    # Handle --resume-session
+    if args.resume_session:
         if hasattr(agent.memory, 'load_session'):
-            success = agent.memory.load_session(args.resume)
+            success = agent.memory.load_session(args.resume_session)
             if not success:
-                Console.print(f"Session '{args.resume}' not found", style="error")
+                Console.print(f"Session '{args.resume_session}' not found", style="error")
                 sys.exit(1)
-            Console.print(f"Resumed session: {args.resume}", style="success")
+            Console.print(f"Resumed session: {args.resume_session}", style="success")
         else:
             Console.print("Session resume not available (requires persistent/hybrid memory)", style="warning")
 
@@ -1649,10 +1653,12 @@ def _show_help() -> None:
     print("  /report           导出监控报告")
 
     print("\n## CLI选项（启动时使用）")
-    print("  -n, --new-session  创建新session（默认延续最近session）")
-    print("  -l, --list-sessions 列出所有session")
+    print("  -n, --new-session    创建新session（默认延续最近session）")
+    print("  -l, --list-sessions  列出所有session")
+    print("  -s, --show-session   显示指定session详情")
+    print("  -r, --resume-session 恢复指定session")
     print("  -d, --delete-session 删除指定session")
-    print("  --cleanup         清理低价值session")
+    print("  --clean-sessions     自动清理低价值session")
 
     print("\n" + "=" * 50 + "\n")
 
