@@ -494,9 +494,14 @@ def run_interactive(
 
 def main():
     """CLI entry point."""
+    # Custom formatter with wider help column for alignment
+    class WideHelpFormatter(argparse.RawTextHelpFormatter):
+        def __init__(self, prog):
+            super().__init__(prog, max_help_position=28, width=100)
+
     parser = argparse.ArgumentParser(
         description="NanoAgent - A lightweight AI Agent framework",
-        formatter_class=argparse.RawTextHelpFormatter,
+        formatter_class=WideHelpFormatter,
         add_help=False,
         epilog="""
 Examples:
