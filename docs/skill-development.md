@@ -283,7 +283,7 @@ skill unload <name>       # 卸载指定技能包
 
 ## 配置
 
-在 `config/config.yaml` 中配置技能包：
+在 `.nano_agent/config.yaml` 中配置技能包：
 
 ```yaml
 skills:

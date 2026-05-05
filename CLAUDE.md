@@ -16,7 +16,7 @@ pip install -e ".[dev]"
 nano-agent
 
 # Run with custom config/model
-nano-agent -c config/config.yaml
+nano-agent -c ~/.nano_agent/config.yaml
 nano-agent -m llama3
 
 # Run tests
@@ -51,7 +51,7 @@ nano_agent/
 
 ## Configuration
 
-Configuration is loaded from YAML files (see `config/config.yaml`):
+Configuration is loaded from YAML files (see `docs/examples/config.yaml`):
 
 ```yaml
 llm:

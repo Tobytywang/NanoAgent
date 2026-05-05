@@ -146,7 +146,7 @@ llm = create_llm(
 from nano_agent.cli.main import create_agent
 
 # 从配置文件创建 Agent
-agent = create_agent("config/config.yaml")
+agent = create_agent("~/.nano_agent/config.yaml")
 response = agent.run("你好")
 ```
 
@@ -157,7 +157,7 @@ response = agent.run("你好")
 ### 3.1 完整配置示例
 
 ```yaml
-# config/config.yaml
+# .nano_agent/config.yaml
 
 # LLM 设置
 llm:

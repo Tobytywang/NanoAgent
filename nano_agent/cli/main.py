@@ -668,11 +668,7 @@ def _list_sessions(config_path: str | None = None) -> None:
     if config_path:
         config = ConfigLoader.load(config_path)
     else:
-        default_path = Path("config/config.yaml")
-        if default_path.exists():
-            config = ConfigLoader.load(default_path)
-        else:
-            config = ConfigLoader.load()
+        config = ConfigLoader.load()
 
     storage = _get_storage(config)
     sessions = storage.list_sessions()
@@ -698,11 +694,7 @@ def _show_session(session_id: str, config_path: str | None = None) -> None:
     if config_path:
         config = ConfigLoader.load(config_path)
     else:
-        default_path = Path("config/config.yaml")
-        if default_path.exists():
-            config = ConfigLoader.load(default_path)
-        else:
-            config = ConfigLoader.load()
+        config = ConfigLoader.load()
 
     storage = _get_storage(config)
 

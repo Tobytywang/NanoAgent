@@ -129,7 +129,7 @@ nano-agent
 nano-agent -m llama3
 
 # 使用自定义配置
-nano-agent -c config/config.yaml
+nano-agent -c ~/.nano_agent/config.yaml
 
 # 非交互模式（从 stdin 读取）
 echo "帮我列出当前目录的文件" | nano-agent --non-interactive
@@ -199,7 +199,7 @@ tools.register(MyCustomTool())
 
 ## 配置说明
 
-编辑 `config/config.yaml`:
+配置文件位于 `.nano_agent/config.yaml`：
 
 ```yaml
 # LLM 设置

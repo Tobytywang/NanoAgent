@@ -131,7 +131,7 @@ llm:
 
     def test_load_project_config(self):
         """Test loading the project's config.yaml."""
-        config = ConfigLoader.load("config/config.yaml")
+        config = ConfigLoader.load("docs/examples/config.yaml")
         # Just verify the config loads correctly and has expected fields
         assert config.llm.model is not None
         assert len(config.llm.model) > 0
