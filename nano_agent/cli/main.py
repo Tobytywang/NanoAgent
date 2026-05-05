@@ -547,11 +547,6 @@ Config file priority:
         help="Resume an existing session"
     )
     parser.add_argument(
-        "-n", "--new-session",
-        action="store_true",
-        help="Start a new session"
-    )
-    parser.add_argument(
         "--non-interactive",
         action="store_true",
         help="Non-interactive mode (read from stdin)"
@@ -584,11 +579,6 @@ Config file priority:
 
     args = parser.parse_args()
 
-    # Check for conflicting arguments
-    if args.resume and args.new_session:
-        Console.print("Error: --resume and --new-session cannot be used together", style="error")
-        sys.exit(1)
-
     # Handle --list-sessions
     if args.list_sessions:
         _list_sessions(args.config)
@@ -612,14 +602,6 @@ Config file priority:
             Console.print(f"Resumed session: {args.resume}", style="success")
         else:
             Console.print("Session resume not available (requires persistent/hybrid memory)", style="warning")
-
-    # Handle --new-session
-    if args.new_session:
-        if hasattr(agent.memory, 'new_session'):
-            new_id = agent.memory.new_session()
-            Console.print(f"Started new session: {new_id}", style="success")
-        else:
-            Console.print("New session not available (requires persistent/hybrid memory)", style="warning")
 
     # Override model if specified
     if args.model:
