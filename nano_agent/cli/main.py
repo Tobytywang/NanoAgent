@@ -496,7 +496,7 @@ def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         description="NanoAgent - A lightweight AI Agent framework",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Examples:
   nano-agent                          Start interactive session
@@ -531,10 +531,7 @@ Config file priority:
         help="List all saved sessions"
     )
     parser.add_argument(
-        "-s", "--show-session",
-        type=str,
-        metavar="ID",
-        default=None,
+        "-s", "--session", type=str, metavar="ID", default=None,
         help="Show a specific session"
     )
     parser.add_argument(
@@ -592,9 +589,9 @@ Config file priority:
         _list_sessions(args.config)
         return
 
-    # Handle --show-session
-    if args.show_session:
-        _show_session(args.show_session, args.config)
+    # Handle --session
+    if args.session:
+        _show_session(args.session, args.config)
         return
 
     # Create agent
