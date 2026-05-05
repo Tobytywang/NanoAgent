@@ -494,54 +494,10 @@ def run_interactive(
 
 def main():
     """CLI entry point."""
-    # Custom formatter with wider help column and highlighted short option letter
+    # Custom formatter with wider help column for alignment
     class WideHelpFormatter(argparse.RawTextHelpFormatter):
         def __init__(self, prog):
             super().__init__(prog, max_help_position=28, width=100)
-
-        def _format_action_invocation(self, action):
-            """Format option string with highlighted short option letter."""
-            if not action.option_strings:
-                return super()._format_action_invocation(action)
-
-            # Get short and long options
-            parts = []
-            short_opt = None
-            long_opt = None
-
-            for opt in action.option_strings:
-                if opt.startswith('--'):
-                    long_opt = opt
-                elif opt.startswith('-'):
-                    short_opt = opt
-
-            # Format with highlighted letter in long option
-            if short_opt and long_opt:
-                # Extract the short letter (e.g., 'h' from '-h')
-                short_letter = short_opt[1]
-                # Find and highlight the letter in long option
-                long_name = long_opt[2:]  # Remove '--'
-                if long_name.lower().startswith(short_letter.lower()):
-                    # Highlight first occurrence
-                    highlighted = f"[{short_letter}]{long_name[1:]}"
-                else:
-                    # Letter not at start, find it
-                    idx = long_name.lower().find(short_letter.lower())
-                    if idx >= 0:
-                        highlighted = f"{long_name[:idx]}[{long_name[idx]}]{long_name[idx+1:]}"
-                    else:
-                        highlighted = long_name
-                parts.append(f"{short_opt}, --{highlighted}")
-            elif long_opt:
-                parts.append(long_opt)
-            elif short_opt:
-                parts.append(short_opt)
-
-            # Add metavar if present
-            if action.nargs != 0 and action.metavar is not None:
-                parts.append(action.metavar)
-
-            return ' '.join(parts)
 
     parser = argparse.ArgumentParser(
         description="NanoAgent - A lightweight AI Agent framework",
@@ -563,37 +519,37 @@ Config file priority:
     )
     parser.add_argument(
         "-h", "--help", action="help",
-        help="Show this help message and exit"
+        help="[h]elp: Show this help message and exit"
     )
     parser.add_argument(
         "-c", "--config",
         type=str,
         default=None,
         metavar="PATH",
-        help="Config file path (see priority below)"
+        help="[c]onfig: Config file path (see priority below)"
     )
     parser.add_argument(
         "-m", "--model",
         type=str,
         default=None,
         metavar="NAME",
-        help="Override model name"
+        help="[m]odel: Override model name"
     )
     parser.add_argument(
         "-l", "--list-sessions",
         action="store_true",
-        help="List all saved sessions"
+        help="[l]ist-sessions: List all saved sessions"
     )
     parser.add_argument(
         "-s", "--session", type=str, metavar="ID", default=None,
-        help="Show a specific session"
+        help="[s]ession: Show a specific session"
     )
     parser.add_argument(
         "-r", "--resume",
         type=str,
         metavar="ID",
         default=None,
-        help="Resume an existing session"
+        help="[r]esume: Resume an existing session"
     )
     parser.add_argument(
         "--non-interactive",
@@ -603,7 +559,7 @@ Config file priority:
     parser.add_argument(
         "-q", "--quiet",
         action="store_true",
-        help="Suppress verbose output"
+        help="[q]uiet: Suppress verbose output"
     )
     parser.add_argument(
         "--report",
