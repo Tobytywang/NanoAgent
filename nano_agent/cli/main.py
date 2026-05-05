@@ -394,7 +394,7 @@ def run_interactive(
                 continue
 
             # 显示帮助信息
-            if user_input.lower() in ["/?", "/help", "help", "?"]:
+            if user_input.lower() in ["/?", "/help", "help", "?", "？", "/？"]:
                 _show_help()
                 continue
 
@@ -1340,7 +1340,7 @@ def _show_help() -> None:
     print("  /exit, /quit      退出（保存摘要）")
     print("  exit, quit        直接退出")
     print("  /clear            清空对话")
-    print("  /?, help          显示帮助")
+    print("  /?, /？, help     显示帮助")
 
     print("\n## 查看信息")
     print("  /config           查看配置")
