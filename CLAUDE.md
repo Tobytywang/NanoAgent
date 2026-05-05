@@ -82,6 +82,7 @@ memory:
 - Write formal test cases in `tests/` directory instead of using `python -c` for ad-hoc testing
 - Run `pytest tests/ -v` to verify all tests pass before committing
 - **When fixing a bug**: Always check if test coverage exists for the affected code. If not, add test cases to prevent regression.
+- **When adding or modifying features**: Always check if test coverage exists. If not, add test cases to verify the new/changed behavior.
 
 ### Documentation
 
