@@ -526,7 +526,7 @@ Config file priority:
         help="Override model name"
     )
     parser.add_argument(
-        "--list-sessions",
+        "-l", "--list-sessions",
         action="store_true",
         help="List all saved sessions"
     )
