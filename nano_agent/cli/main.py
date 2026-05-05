@@ -361,11 +361,6 @@ def run_interactive(
 
     # Load project context at startup and add to system prompt
     project_context = _load_project_context()
-    if project_context:
-        # Append to system prompt
-        current_prompt = agent.memory.system_prompt or ""
-        agent.memory.set_system_prompt(f"{current_prompt}\n\n---\n\n{project_context}")
-        Console.print("Project context loaded from NANOPROJECT.md", style="success")
 
     # 设置优雅退出管理器
     GracefulExitManager.agent = agent
@@ -375,11 +370,19 @@ def run_interactive(
     GracefulExitManager.report_output = report_output
     signal.signal(signal.SIGINT, GracefulExitManager.handler)
 
+    # Print header with all info
     Console.print_header("NanoAgent - AI Assistant")
 
     # Show config source
     if hasattr(agent, '_config_source'):
         Console.print(f"Config: {agent._config_source}", style="info")
+
+    # Show project context status
+    if project_context:
+        # Append to system prompt
+        current_prompt = agent.memory.system_prompt or ""
+        agent.memory.set_system_prompt(f"{current_prompt}\n\n---\n\n{project_context}")
+        Console.print("Project: NANOPROJECT.md loaded", style="success")
 
     Console.print("Type '/?' or 'help' for available commands", style="info")
     Console.print_separator()
