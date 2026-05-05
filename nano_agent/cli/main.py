@@ -519,37 +519,37 @@ Config file priority:
     )
     parser.add_argument(
         "-h", "--help", action="help",
-        help="[h]elp: Show this help message and exit"
+        help="Show this [h]elp message and exit"
     )
     parser.add_argument(
         "-c", "--config",
         type=str,
         default=None,
         metavar="PATH",
-        help="[c]onfig: Config file path (see priority below)"
+        help="[c]onfig file path (see priority below)"
     )
     parser.add_argument(
         "-m", "--model",
         type=str,
         default=None,
         metavar="NAME",
-        help="[m]odel: Override model name"
+        help="Override [m]odel name"
     )
     parser.add_argument(
         "-l", "--list-sessions",
         action="store_true",
-        help="[l]ist-sessions: List all saved sessions"
+        help="[l]ist all saved sessions"
     )
     parser.add_argument(
         "-s", "--session", type=str, metavar="ID", default=None,
-        help="[s]ession: Show a specific session"
+        help="Show a [s]pecific session"
     )
     parser.add_argument(
         "-r", "--resume",
         type=str,
         metavar="ID",
         default=None,
-        help="[r]esume: Resume an existing session"
+        help="[r]esume an existing session"
     )
     parser.add_argument(
         "--non-interactive",
@@ -559,7 +559,7 @@ Config file priority:
     parser.add_argument(
         "-q", "--quiet",
         action="store_true",
-        help="[q]uiet: Suppress verbose output"
+        help="Suppress verbose output ([q]uiet mode)"
     )
     parser.add_argument(
         "--report",
