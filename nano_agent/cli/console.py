@@ -18,6 +18,7 @@ class Console:
         "yellow": "\033[93m",
         "blue": "\033[94m",
         "cyan": "\033[96m",
+        "magenta": "\033[95m",
     }
 
     @classmethod
@@ -58,6 +59,7 @@ class Console:
             "error": ("red", ""),
             "user": ("blue", "[User] "),
             "agent": ("green", "[Agent] "),
+            "header": ("bold", ""),  # Bold for better visibility on light backgrounds
         }
 
         color, prefix = style_map.get(style, ("", ""))
@@ -73,7 +75,7 @@ class Console:
     def print_header(cls, title: str) -> None:
         """Print a header."""
         cls.print_separator("=")
-        cls.print(title, style="info")
+        cls.print(title, style="header")
         cls.print_separator("=")
 
     @classmethod
