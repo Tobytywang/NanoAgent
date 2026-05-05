@@ -66,7 +66,9 @@ class ConfigLoader:
         return AgentConfig(
             max_iterations=data.get("max_iterations", 10),
             verbose=data.get("verbose", True),
-            system_prompt=data.get("system_prompt")
+            system_prompt=data.get("system_prompt"),
+            user_name=data.get("user_name", "User"),
+            agent_name=data.get("agent_name", "Agent")
         )
 
     @classmethod
@@ -126,6 +128,8 @@ class ConfigLoader:
             "agent": {
                 "max_iterations": config.agent.max_iterations,
                 "verbose": config.agent.verbose,
+                "user_name": config.agent.user_name,
+                "agent_name": config.agent.agent_name,
                 "system_prompt": config.agent.system_prompt
             },
             "memory": {

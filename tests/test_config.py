@@ -37,11 +37,21 @@ class TestConfigSchema:
         agent_config = AgentConfig(
             max_iterations=5,
             verbose=False,
-            system_prompt="Custom prompt"
+            system_prompt="Custom prompt",
+            user_name="小明",
+            agent_name="Nano"
         )
         assert agent_config.max_iterations == 5
         assert agent_config.verbose is False
         assert agent_config.system_prompt == "Custom prompt"
+        assert agent_config.user_name == "小明"
+        assert agent_config.agent_name == "Nano"
+
+    def test_agent_config_defaults(self):
+        """Test agent configuration defaults."""
+        agent_config = AgentConfig()
+        assert agent_config.user_name == "User"
+        assert agent_config.agent_name == "Agent"
 
 
 class TestConfigLoader:
@@ -128,6 +138,40 @@ llm:
             loaded = ConfigLoader.load(path)
             assert loaded.llm.model == "test_model"
             assert loaded.agent.max_iterations == 3
+
+    def test_load_user_agent_names(self):
+        """Test loading user_name and agent_name from config."""
+        yaml_content = """
+agent:
+  user_name: 小明
+  agent_name: Nano
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            path = f.name
+
+        try:
+            config = ConfigLoader.load(path)
+            assert config.agent.user_name == "小明"
+            assert config.agent.agent_name == "Nano"
+        finally:
+            os.unlink(path)
+
+    def test_save_user_agent_names(self):
+        """Test saving user_name and agent_name to config."""
+        config = Config(
+            agent=AgentConfig(user_name="Alice", agent_name="Bob")
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "config.yaml")
+            ConfigLoader.save(config, path)
+
+            # Load and verify
+            loaded = ConfigLoader.load(path)
+            assert loaded.agent.user_name == "Alice"
+            assert loaded.agent.agent_name == "Bob"
 
     def test_load_project_config(self):
         """Test loading the project's config.yaml."""

@@ -124,6 +124,13 @@ class OpenAICompatibleLLM(BaseLLM):
         message = choice.get("message", {})
         content = message.get("content", "") or ""
 
+        # Sanitize content to remove invalid Unicode characters (surrogates)
+        if content:
+            try:
+                content = content.encode('utf-8', errors='replace').decode('utf-8')
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                pass
+
         # Parse tool calls
         tool_calls = []
         if "tool_calls" in message:

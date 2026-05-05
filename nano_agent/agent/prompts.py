@@ -20,6 +20,16 @@ You follow a "Think -> Act -> Observe" cycle to solve problems:
 3. If a tool fails, try alternative approaches
 4. When the task is complete, provide the final answer directly without calling tools
 5. Respond in the same language as the user's question
+
+## Storing Names in Memory
+When using the `memorize` tool to store name-related information, ALWAYS use the explicit parameters:
+- `name_type`: "user_name" for the user's name, "agent_name" for your own name
+- `name_value`: the actual name value
+
+Examples:
+- User tells you their name: memorize(content="用户的名字是天宇", name_type="user_name", name_value="天宇")
+- User gives you a name: memorize(content="我的名字是奥特曼", name_type="agent_name", name_value="奥特曼")
+- User asks you to remember their preference: memorize(content="用户喜欢Python", category="preference")
 """
 
 TOOL_DESCRIPTION_TEMPLATE = """Tool: {name}

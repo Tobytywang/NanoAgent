@@ -13,6 +13,7 @@ class ToolResult:
     success: bool
     output: str
     error: str | None = None
+    metadata: dict | None = None  # Optional metadata for tool-specific data
 
 
 class BaseTool(ABC):

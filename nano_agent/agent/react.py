@@ -12,6 +12,16 @@ from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
 
 
+def _safe_str(text: str) -> str:
+    """Safely convert string for printing, removing invalid Unicode characters."""
+    if not text:
+        return text
+    try:
+        return text.encode('utf-8', errors='replace').decode('utf-8')
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return text
+
+
 class ReActAgent(BaseAgent):
     """
     ReAct (Reasoning + Acting) Agent implementation.
@@ -124,7 +134,7 @@ class ReActAgent(BaseAgent):
 
             # There are tool calls - execute them
             if self.verbose and response_text:
-                print(f"[Think] {response_text[:200]}...")
+                print(f"[Think] {_safe_str(response_text[:200])}...")
 
             # Add assistant message with tool calls
             self.memory.add_assistant_message(
@@ -150,9 +160,11 @@ class ReActAgent(BaseAgent):
 
                 if self.verbose:
                     status = "success" if result.success else "failed"
-                    print(f"[Tool Call] {tool_call.name}({tool_call.arguments}) -> {status}")
+                    args_str = _safe_str(str(tool_call.arguments))
+                    print(f"[Tool Call] {tool_call.name}({args_str}) -> {status}")
                     if result.output:
-                        preview = result.output[:200] + "..." if len(result.output) > 200 else result.output
+                        output = _safe_str(result.output)
+                        preview = output[:200] + "..." if len(output) > 200 else output
                         print(f"[Observe] {preview}")
 
                 # Add tool result to memory
@@ -195,7 +207,16 @@ class ReActAgent(BaseAgent):
         Returns:
             ToolResult from the execution
         """
-        return self.execute_tool(tool_call.name, tool_call.arguments)
+        result = self.execute_tool(tool_call.name, tool_call.arguments)
+
+        # Detect name update from memorize tool
+        if tool_call.name == "memorize" and result.success and result.metadata:
+            name_type = result.metadata.get("name_type")
+            name_value = result.metadata.get("name_value")
+            if name_type and name_value:
+                self._pending_name_update = (name_type, name_value)
+
+        return result
 
     def add_tool(self, tool) -> None:
         """

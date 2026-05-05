@@ -5,6 +5,7 @@ CLI entry point for NanoAgent.
 import argparse
 import signal
 import sys
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -391,6 +392,15 @@ def run_interactive(
     user_display = config.agent.user_name
     agent_display = config.agent.agent_name
 
+    # Check long-term memory for stored names (fallback if config not updated)
+    stored_user, stored_agent = _check_names_in_memory(agent.memory)
+    if stored_user and stored_user != user_display:
+        user_display = stored_user
+        config.agent.user_name = stored_user
+    if stored_agent and stored_agent != agent_display:
+        agent_display = stored_agent
+        config.agent.agent_name = stored_agent
+
     while True:
         try:
             cwd = os.getcwd()
@@ -481,13 +491,105 @@ def run_interactive(
                 _handle_skill_command(agent, user_input[7:])
                 continue
 
+            # /setname command - set user/agent display names
+            if user_input.lower().startswith("/setname"):
+                args = user_input[8:].strip().split()
+                if len(args) == 0:
+                    # Show current names
+                    Console.print(f"当前设置: 用户名={user_display}, Agent名={agent_display}", style="info")
+                elif len(args) == 1:
+                    # Set user name only
+                    user_display = args[0]
+                    config.agent.user_name = args[0]
+                    # Store in long-term memory
+                    if hasattr(agent.memory, 'memorize'):
+                        agent.memory.memorize(
+                            content=f"用户的名字是{args[0]}",
+                            category="preference",
+                            metadata={"type": "user_name", "value": args[0]}
+                        )
+                    Console.print(f"用户名已更新: {args[0]}", style="success")
+                elif len(args) >= 2:
+                    if args[0].lower() in ["user", "agent"]:
+                        # Explicit type: /setname user 天宇 or /setname agent Nano
+                        if args[0].lower() == "user":
+                            user_display = args[1]
+                            config.agent.user_name = args[1]
+                            if hasattr(agent.memory, 'memorize'):
+                                agent.memory.memorize(
+                                    content=f"用户的名字是{args[1]}",
+                                    category="preference",
+                                    metadata={"type": "user_name", "value": args[1]}
+                                )
+                            Console.print(f"用户名已更新: {args[1]}", style="success")
+                        else:
+                            agent_display = args[1]
+                            config.agent.agent_name = args[1]
+                            if hasattr(agent.memory, 'memorize'):
+                                agent.memory.memorize(
+                                    content=f"Agent的名字是{args[1]}",
+                                    category="preference",
+                                    metadata={"type": "agent_name", "value": args[1]}
+                                )
+                            Console.print(f"Agent名已更新: {args[1]}", style="success")
+                    else:
+                        # Set both: /setname 天宇 Nano
+                        user_display, agent_display = args[0], args[1]
+                        config.agent.user_name = args[0]
+                        config.agent.agent_name = args[1]
+                        if hasattr(agent.memory, 'memorize'):
+                            agent.memory.memorize(
+                                content=f"用户的名字是{args[0]}",
+                                category="preference",
+                                metadata={"type": "user_name", "value": args[0]}
+                            )
+                            agent.memory.memorize(
+                                content=f"Agent的名字是{args[1]}",
+                                category="preference",
+                                metadata={"type": "agent_name", "value": args[1]}
+                            )
+                        Console.print(f"名字已更新: 用户={args[0]}, Agent={args[1]}", style="success")
+
+                # Save config
+                config_file, _ = _find_config_file()
+                if config_file:
+                    ConfigLoader.save(config, config_file)
+                continue
+
             # 重置 Ctrl+C 计数
             GracefulExitManager.ctrl_c_count = 0
 
             # Run agent
             print(f"\n[{agent_display}]:")
             response = agent.run(user_input)
+            # Sanitize response for printing
+            try:
+                response = response.encode('utf-8', errors='replace').decode('utf-8')
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                pass
             print(f"> {response}")
+
+            # Check for pending name update from memorize tool
+            if hasattr(agent, '_pending_name_update') and agent._pending_name_update:
+                name_type, name_value = agent._pending_name_update
+                # Sanitize name_value to remove invalid Unicode characters
+                try:
+                    name_value = name_value.encode('utf-8', errors='replace').decode('utf-8')
+                except (UnicodeDecodeError, UnicodeEncodeError):
+                    name_value = "User" if name_type == "user_name" else "Agent"
+
+                if name_type == "user_name":
+                    user_display = name_value
+                    config.agent.user_name = name_value
+                elif name_type == "agent_name":
+                    agent_display = name_value
+                    config.agent.agent_name = name_value
+                # Save config
+                config_file, _ = _find_config_file()
+                if config_file:
+                    ConfigLoader.save(config, config_file)
+                Console.print(f"名字已更新: {name_type.replace('_', ' ')} = {name_value}", style="success")
+                agent._pending_name_update = None
 
             # Show monitoring stats after each run
             _show_run_stats(agent, config)
@@ -648,6 +750,72 @@ Config file priority:
             report_format=args.report_format,
             report_output=args.report_output
         )
+
+
+def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
+    """
+    Check long-term memory for stored user/agent names.
+
+    Args:
+        memory: Memory instance to check
+
+    Returns:
+        Tuple of (user_name, agent_name) or (None, None) if not found
+    """
+    import re
+
+    if not hasattr(memory, 'recall'):
+        return None, None
+
+    try:
+        entries = memory.recall("名字 用户名 Agent名", limit=10)
+        user_name = None
+        agent_name = None
+
+        # Patterns for extracting names from content (stop at punctuation)
+        # NOTE: memorize content is generated by the Agent (LLM), so:
+        # - "我的名字" (my name) refers to the Agent's name
+        # - "用户的名字" (user's name) refers to the user's name
+        user_patterns = [
+            r"用户名[是为]\s*([^，。！,.]+)",
+            r"用户的名字[是为]\s*([^，。！,.]+)",
+            r"用户叫\s*([^，。！,.]+)",
+        ]
+        agent_patterns = [
+            r"Agent名[是为]\s*([^，。！,.]+)",
+            r"Agent的名字[是为]\s*([^，。！,.]+)",
+            r"你的名字[是为叫]\s*([^，。！,.]+)",
+            r"你叫\s*([^，。！,.]+)",
+            r"我的名字[是为]\s*([^，。！,.]+)",
+            r"我叫\s*([^，。！,.]+)",
+        ]
+
+        for entry in entries:
+            # First check metadata (new format)
+            if entry.metadata:
+                if entry.metadata.get("type") == "user_name":
+                    user_name = entry.metadata.get("value")
+                elif entry.metadata.get("type") == "agent_name":
+                    agent_name = entry.metadata.get("value")
+
+            # Fallback: check content patterns (old format compatibility)
+            if not user_name:
+                for pattern in user_patterns:
+                    match = re.search(pattern, entry.content)
+                    if match:
+                        user_name = match.group(1).strip()
+                        break
+
+            if not agent_name:
+                for pattern in agent_patterns:
+                    match = re.search(pattern, entry.content)
+                    if match:
+                        agent_name = match.group(1).strip()
+                        break
+
+        return user_name, agent_name
+    except Exception:
+        return None, None
 
 
 def _get_storage(config):
@@ -1351,6 +1519,13 @@ def _show_help() -> None:
     print("  /stats on         启用统计自动显示")
     print("  /stats off        禁用统计自动显示")
 
+    print("\n## 个性化设置")
+    print("  /setname                    查看当前名字")
+    print("  /setname <用户名>           设置用户名")
+    print("  /setname user <用户名>      设置用户名")
+    print("  /setname agent <Agent名>    设置Agent名")
+    print("  /setname <用户名> <Agent名> 同时设置两个")
+
     print("\n## 技能管理")
     print("  /skill reload <n> 重载技能")
     print("  /skill unload <n> 卸载技能")
@@ -1500,7 +1675,11 @@ def _merge_config(default: dict, existing: dict) -> dict:
 
 
 def _init_project(agent) -> None:
-    """扫描项目并使用 LLM 生成 NANOPROJECT.md
+    """扫描项目并使用 LLM 生成或更新 NANOPROJECT.md
+
+    如果 NANOPROJECT.md 已存在，会智能合并更新：
+    - 保留用户手动添加的内容（在特定标记区域外）
+    - 更新自动生成的部分
 
     Args:
         agent: Agent 实例
@@ -1517,6 +1696,21 @@ def _init_project(agent) -> None:
 
         if info['tech_stack']:
             Console.print(f"Tech: {', '.join(info['tech_stack'])}", style="info")
+
+        # 检查是否已存在 NANOPROJECT.md
+        output_path = Path.cwd() / "NANOPROJECT.md"
+        existing_content = None
+        user_notes = ""
+
+        if output_path.exists():
+            existing_content = output_path.read_text(encoding="utf-8")
+            # 提取用户手动添加的内容（在 <!-- user-notes --> 标记区域）
+            user_notes_match = re.search(r'<!-- user-notes -->(.*?)<!-- /user-notes -->', existing_content, re.DOTALL)
+            if user_notes_match:
+                user_notes = user_notes_match.group(1).strip()
+            Console.print("Updating existing NANOPROJECT.md...", style="info")
+        else:
+            Console.print("Creating NANOPROJECT.md...", style="info")
 
         # 使用 LLM 生成项目摘要
         Console.print("\nGenerating project summary with LLM...", style="info")
@@ -1553,23 +1747,53 @@ Please generate NANOPROJECT.md content (in Chinese, concise and professional):""
             tools=None
         )
 
-        # 保存 LLM 生成的摘要
-        output_path = Path.cwd() / "NANOPROJECT.md"
-
         # 添加头部信息
         header = f"""# {info['project_name']} - 项目摘要
 
 > 由 NanoAgent 生成于 {info['scan_time'][:19]}
 > 基于 LLM 分析
+> 使用 /init 命令可更新此文件
 
 ---
 
 """
-        full_content = header + response
+
+        # 添加用户笔记区域（如果存在用户笔记则保留）
+        user_notes_section = ""
+        if user_notes:
+            user_notes_section = f"""
+---
+
+## 用户笔记
+
+<!-- user-notes -->
+{user_notes}
+<!-- /user-notes -->
+
+"""
+        else:
+            # 提供空的用户笔记区域供用户填写
+            user_notes_section = """
+---
+
+## 用户笔记
+
+<!-- user-notes -->
+在此处添加你的项目笔记，/init 更新时会保留此区域内容。
+<!-- /user-notes -->
+
+"""
+
+        full_content = header + response + user_notes_section
 
         output_path.write_text(full_content, encoding="utf-8")
 
-        Console.print(f"\nNANOPROJECT.md created at: {output_path}", style="success")
+        if existing_content:
+            Console.print(f"\nNANOPROJECT.md updated at: {output_path}", style="success")
+            if user_notes:
+                Console.print("User notes preserved.", style="info")
+        else:
+            Console.print(f"\nNANOPROJECT.md created at: {output_path}", style="success")
         Console.print("Project summary generated by LLM.", style="success")
 
         # 将项目信息导入长期记忆（如果启用了 hybrid 模式）

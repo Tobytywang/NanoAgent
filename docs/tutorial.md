@@ -10,8 +10,9 @@
 4. [工具系统](#4-工具系统)
 5. [记忆系统](#5-记忆系统)
 6. [技能包](#6-技能包)
-7. [运行监控](#7-运行监控)
-8. [高级用法](#8-高级用法)
+7. [个性化设置](#7-个性化设置)
+8. [运行监控](#8-运行监控)
+9. [高级用法](#9-高级用法)
 
 ---
 
@@ -446,9 +447,61 @@ Skill 'coding' unloaded successfully
 
 ---
 
-## 7. 运行监控
+## 7. 个性化设置
 
-### 7.1 监控输出
+### 7.1 设置用户名和 Agent 名
+
+你可以自定义对话中显示的用户名和 Agent 名：
+
+```
+> /setname
+当前设置: 用户名=User, Agent名=Agent
+
+> /setname 天宇
+用户名已更新: 天宇
+
+> /setname agent Nano
+Agent名已更新: Nano
+
+> /setname 天宇 Nano
+名字已更新: 用户=天宇, Agent=Nano
+```
+
+### 7.2 自动名字识别
+
+当你告诉 Agent 你的名字时，Agent 会自动识别并更新显示：
+
+```
+[User] [/path/to/project]:
+> 我的名字是天宇
+
+[Agent]:
+好的，我会记住你的名字是天宇。
+名字已更新: user name = 天宇
+
+[天宇] [/path/to/project]:
+> 你好
+```
+
+Agent 支持识别以下表达方式：
+- 用户名：`我的名字是...`、`我叫...`、`用户名是...`
+- Agent 名：`你的名字是...`、`你叫...`、`Agent名是...`
+
+### 7.3 配置文件设置
+
+你也可以在配置文件中直接设置：
+
+```yaml
+agent:
+  user_name: 天宇
+  agent_name: Nano
+```
+
+---
+
+## 8. 运行监控
+
+### 8.1 监控输出
 
 每次 Agent 回复后会显示统计信息：
 
@@ -531,9 +584,9 @@ print(f"LLM 调用: {session_summary['total_llm_calls']}")
 
 ---
 
-## 8. 高级用法
+## 9. 高级用法
 
-### 8.1 自定义 Agent 行为
+### 9.1 自定义 Agent 行为
 
 ```python
 # 自定义系统提示
@@ -554,7 +607,7 @@ memory = ShortTermMemory(
 )
 ```
 
-### 8.2 限制工具使用
+### 9.2 限制工具使用
 
 ```python
 from nano_agent.tools.base import ToolRegistry
@@ -569,7 +622,7 @@ registry.register(FileWriteTool())
 # 不注册 shell_execute，限制系统命令执行
 ```
 
-### 8.3 流式响应
+### 9.3 流式响应
 
 ```python
 # 流式获取响应
@@ -577,7 +630,7 @@ for chunk in agent.run_stream("请写一个快速排序算法"):
     print(chunk, end="", flush=True)
 ```
 
-### 8.4 错误处理
+### 9.4 错误处理
 
 ```python
 from nano_agent.tools.base import ToolResult
@@ -617,7 +670,7 @@ class SafeFileReadTool(BaseTool):
             return ToolResult(success=False, error=f"读取失败: {str(e)}")
 ```
 
-### 8.5 多 Agent 协作示例
+### 9.5 多 Agent 协作示例
 
 ```python
 from nano_agent.agent.react import ReActAgent

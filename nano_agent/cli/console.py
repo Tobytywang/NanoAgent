@@ -6,6 +6,16 @@ import sys
 from typing import Literal
 
 
+def _safe_str(text: str) -> str:
+    """Safely convert string for printing, removing invalid Unicode characters."""
+    if not text:
+        return text
+    try:
+        return text.encode('utf-8', errors='replace').decode('utf-8')
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return text
+
+
 class Console:
     """Console output formatting."""
 
@@ -52,6 +62,8 @@ class Console:
             style: Style type
             end: Line ending
         """
+        # Sanitize message to remove invalid Unicode characters
+        message = _safe_str(message)
         style_map = {
             "info": ("cyan", ""),
             "success": ("green", ""),
@@ -81,6 +93,8 @@ class Console:
     @classmethod
     def print_tool_call(cls, tool_name: str, arguments: dict, result: str) -> None:
         """Print a tool call and its result."""
-        cls.print(f"[Tool] {tool_name}({arguments})", style="info")
-        preview = result[:100] + "..." if len(result) > 100 else result
+        args_str = _safe_str(str(arguments))
+        result_str = _safe_str(result)
+        cls.print(f"[Tool] {tool_name}({args_str})", style="info")
+        preview = result_str[:100] + "..." if len(result_str) > 100 else result_str
         cls.print(f"  -> {preview}", style="success")

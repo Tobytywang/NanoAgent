@@ -281,9 +281,22 @@ class MyTool(BaseTool):
 ```python
 @dataclass
 class ToolResult:
-    success: bool       # 是否成功
-    output: str = ""    # 输出内容
-    error: str = ""     # 错误信息
+    success: bool           # 是否成功
+    output: str = ""        # 输出内容
+    error: str | None = None  # 错误信息
+    metadata: dict | None = None  # 可选元数据（用于传递额外信息）
+```
+
+**metadata 用途示例**：
+
+`MemorizeTool` 使用 metadata 传递检测到的名字信息：
+
+```python
+result = ToolResult(
+    success=True,
+    output="Successfully stored...",
+    metadata={"name_type": "user_name", "name_value": "天宇"}
+)
 ```
 
 ### ToolRegistry
@@ -430,6 +443,9 @@ agent:
   verbose: true
   system_prompt: null
 
+  user_name: User            # 用户显示名
+  agent_name: Agent          # Agent 显示名
+
 memory:
   type: hybrid               # short_term / persistent / hybrid
   max_messages: 50
@@ -526,6 +542,16 @@ nano-agent [选项]
 | `/memory off` | 禁用长期记忆 |
 | `/stats on` | 启用统计自动显示 |
 | `/stats off` | 禁用统计自动显示 |
+
+**个性化设置**
+
+| 命令 | 说明 |
+|------|------|
+| `/setname` | 查看当前名字 |
+| `/setname <用户名>` | 设置用户名 |
+| `/setname user <用户名>` | 设置用户名 |
+| `/setname agent <Agent名>` | 设置 Agent 名 |
+| `/setname <用户名> <Agent名>` | 同时设置两个 |
 
 **技能管理**
 

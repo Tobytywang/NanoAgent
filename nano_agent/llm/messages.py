@@ -48,6 +48,11 @@ class ToolCall:
         args_str = func.get("arguments", "{}")
         # OpenAI format: arguments is always a JSON string
         if isinstance(args_str, str):
+            # Sanitize to remove invalid Unicode characters
+            try:
+                args_str = args_str.encode('utf-8', errors='replace').decode('utf-8')
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                pass
             arguments = json.loads(args_str)
         else:
             arguments = args_str

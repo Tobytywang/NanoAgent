@@ -92,7 +92,8 @@ class HybridMemory(BaseMemory):
         content: str,
         category: str = "fact",
         keywords: list[str] | None = None,
-        importance: float = 0.5
+        importance: float = 0.5,
+        metadata: dict | None = None
     ) -> str:
         """
         Store information in long-term memory.
@@ -102,6 +103,7 @@ class HybridMemory(BaseMemory):
             category: Type of memory (fact, preference, experience, task, note)
             keywords: Keywords for search (auto-extracted if None)
             importance: Importance score (0-1)
+            metadata: Additional metadata
 
         Returns:
             The entry ID
@@ -115,7 +117,8 @@ class HybridMemory(BaseMemory):
             category=category,
             keywords=keywords,
             source_session=self.session_id,
-            importance=importance
+            importance=importance,
+            metadata=metadata
         )
 
     def recall(self, query: str, limit: int = 5) -> list[LongTermEntry]:
