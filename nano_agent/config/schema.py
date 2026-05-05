@@ -99,6 +99,8 @@ class MemoryConfig:
     # Hybrid memory options
     long_term_storage_path: str = ".nano_agent/long_term_memory"
     auto_extract: bool = True  # Auto-extract important info to long-term memory
+    # Session cleanup options
+    clean_threshold: int = 3  # Message count threshold for auto-clean
 
 
 @dataclass

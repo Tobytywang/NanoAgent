@@ -623,6 +623,7 @@ Examples:
   nano-agent -s session_xxx           Show session details
   nano-agent -d session_xxx           Delete a session
   nano-agent --clean-sessions         Auto-clean low-value sessions
+  nano-agent --clean-threshold 5      Set clean threshold to 5
 
 Config file priority:
   1. ./.nano_agent/config.yaml (project)
@@ -682,14 +683,14 @@ Config file priority:
     parser.add_argument(
         "--clean-sessions",
         action="store_true",
-        help="Auto-clean low-value sessions (fewer than threshold messages)"
+        help="Auto-clean low-value sessions (using config threshold)"
     )
     parser.add_argument(
         "--clean-threshold",
         type=int,
-        default=3,
         metavar="N",
-        help="Message count threshold for auto-clean (default: 3)"
+        default=None,
+        help="Set clean threshold in config (requires value)"
     )
     parser.add_argument(
         "--non-interactive",
@@ -739,16 +740,20 @@ Config file priority:
         _delete_session(args.delete_session, args.config)
         return
 
-    # Handle --clean-sessions
-    if args.clean_sessions:
-        _cleanup_sessions(args.config, args.clean_threshold)
+    # Handle --clean-threshold (set config)
+    if args.clean_threshold is not None:
+        _set_clean_threshold(args.config, args.clean_threshold)
         return
 
-    # --clean-threshold requires --clean-sessions
-    if args.clean_threshold != 3:  # User specified a custom threshold
-        Console.print("--clean-threshold requires --clean-sessions", style="error")
-        Console.print("Example: nano-agent --clean-sessions --clean-threshold 5", style="info")
-        sys.exit(1)
+    # Handle --clean-sessions
+    if args.clean_sessions:
+        config_file, _ = _find_config_file(args.config)
+        if config_file:
+            config = ConfigLoader.load(config_file)
+        else:
+            config = ConfigLoader.load()
+        _cleanup_sessions(args.config, config.memory.clean_threshold)
+        return
 
     # Default behavior: resume most recent session (unless --new-session specified)
     if not args.new_session and not args.resume_session:
@@ -1018,6 +1023,34 @@ def _cleanup_sessions(config_path: str | None = None, threshold: int = 3) -> Non
         deleted_count += 1
 
     Console.print(f"Cleaned up {deleted_count} low-value session(s)", style="success")
+
+
+def _set_clean_threshold(config_path: str | None, threshold: int) -> None:
+    """Set clean threshold in config file.
+
+    Args:
+        config_path: Optional config file path
+        threshold: New threshold value
+    """
+    import yaml
+
+    config_file, _ = _find_config_file(config_path)
+
+    if not config_file:
+        # Create default config file
+        config_file = Path.cwd() / ".nano_agent" / "config.yaml"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config = ConfigLoader.load()
+    else:
+        config = ConfigLoader.load(config_file)
+
+    # Update threshold
+    config.memory.clean_threshold = threshold
+
+    # Save config
+    ConfigLoader.save(config, config_file)
+    Console.print(f"Clean threshold set to {threshold}", style="success")
+    Console.print(f"Config saved to: {config_file}", style="info")
 
 
 def _generate_session_summary(agent, config) -> str:
@@ -1665,6 +1698,7 @@ def _show_help() -> None:
     print("  -r, --resume-session 恢复指定session")
     print("  -d, --delete-session 删除指定session")
     print("  --clean-sessions     自动清理低价值session")
+    print("  --clean-threshold N  设置清理阈值")
 
     print("\n" + "=" * 50 + "\n")
 
