@@ -542,7 +542,7 @@ Config file priority:
     )
     parser.add_argument(
         "-s", "--session", type=str, metavar="ID", default=None,
-        help="Show a [s]pecific session"
+        help="[s]how a specific session"
     )
     parser.add_argument(
         "-r", "--resume",
