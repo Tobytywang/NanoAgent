@@ -77,12 +77,19 @@ memory:
 
 ## Development Guidelines
 
+### Before Committing
+
+Always verify the following before committing code changes:
+
+1. **Tests**: Run `pytest tests/ -v` to ensure all tests pass
+2. **Test Coverage**: If fixing a bug or adding/modifying features, add test cases if coverage is missing
+3. **Documentation**: Update relevant documentation (help text, docs/api.md, docs/tutorial.md)
+4. **Roadmap**: Check if ROADMAP.md needs updates for new/changed features
+
 ### Testing
 
 - Write formal test cases in `tests/` directory instead of using `python -c` for ad-hoc testing
-- Run `pytest tests/ -v` to verify all tests pass before committing
-- **When fixing a bug**: Always check if test coverage exists for the affected code. If not, add test cases to prevent regression.
-- **When adding or modifying features**: Always check if test coverage exists. If not, add test cases to verify the new/changed behavior.
+- **Always check test coverage** when fixing bugs or adding/modifying features. Add tests if missing.
 
 ### Documentation
 
