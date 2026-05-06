@@ -177,24 +177,34 @@ examples/plugins/
 
 ---
 
-### v0.5.2 - 渐进式执行与确认
+### v0.6.0 - 渐进式执行与 Git 集成
 
-**目标**: 改善 Agent 的交互模式，避免"一锤子买卖"式的工作方式。
+**目标**: 改善 Agent 的交互模式，实现可控的渐进式执行和状态回退能力。
 
 **背景**:
 实际使用中发现 Agent 存在以下问题：
 1. 一次视图进行过多的开发工作，而不是一步一步慢慢来
 2. 做事情之前缺少规划，没有 plan 就直接开整
 3. 做事情之前没有征求用户同意，就直接开整
+4. 缺少状态管理，尤其是回退功能
 
 **任务列表**:
+
+**渐进式执行与确认**:
 - [ ] 前置规划 - 复杂任务先制定计划，展示给用户确认后再执行
 - [ ] 渐进式执行 - 一次只做一小步，等待用户确认后继续
 - [ ] 用户确认机制 - 关键操作前征求用户同意
 
+**Git 集成与状态回退**:
+- [ ] Git 状态检测 - 检测当前是否在 Git 仓库中
+- [ ] 自动提交 - 每步操作后自动 commit（可配置）
+- [ ] 撤销命令 - `/undo` 回退到上一个状态
+- [ ] 回退历史 - 查看可回退的操作历史
+- [ ] 分支管理 - 可选的分支隔离功能
+
 **技术方案**:
 ```python
-# 执行流程
+# 渐进式执行流程
 class InteractiveAgent(ReActAgent):
     def run_interactive(self, task: str) -> str:
         # 1. 前置规划
@@ -207,35 +217,16 @@ class InteractiveAgent(ReActAgent):
 
         # 3. 渐进式执行
         for step in plan.steps:
-            # 展示即将执行的步骤
             print(f"即将执行: {step}")
-
-            # 用户确认
             if not self.confirm("是否执行此步骤?"):
                 return "已取消"
-
-            # 执行单步
             result = self.execute_step(step)
+            # 每步自动提交
+            self.git_manager.auto_commit(f"Execute: {step.name}")
 
         return result
-```
 
----
-
-### v0.5.3 - Git 集成与状态回退
-
-**目标**: 接入 Git 工作流，支持撤销/回退操作。
-
-**任务列表**:
-- [ ] Git 状态检测 - 检测当前是否在 Git 仓库中
-- [ ] 自动提交 - 每步操作后自动 commit（可配置）
-- [ ] 撤销命令 - `/undo` 回退到上一个状态
-- [ ] 回退历史 - 查看可回退的操作历史
-- [ ] 分支管理 - 可选的分支隔离功能
-
-**技术方案**:
-```python
-# Git 集成示例
+# Git 管理器
 class GitManager:
     def auto_commit(self, message: str):
         """自动提交当前更改"""
@@ -247,18 +238,11 @@ class GitManager:
     def undo(self):
         """撤销上一次操作"""
         self.repo.git.reset('--hard', 'HEAD~1')
-
-# Agent 集成
-class GitAwareAgent(InteractiveAgent):
-    def execute_step(self, step):
-        result = super().execute_step(step)
-        self.git_manager.auto_commit(f"Execute: {step.name}")
-        return result
 ```
 
 ---
 
-### v0.6.1 - 配置系统优化
+### v0.7.0 - 配置系统优化
 
 **目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
 
@@ -290,7 +274,48 @@ def _show_config(config, agent):
 
 ---
 
-### v0.6.2 - Hooks 机制
+### v0.7.0 - 模式切换
+
+**目标**: 支持在 Agent 会话中切换执行模式，提供更灵活的交互方式。
+
+**背景**:
+有时用户希望直接执行基础的 shell 命令（如 ls、cat、grep 等），而不需要经过 Agent 的推理过程。模式切换可以让用户在 Agent 模式和直接命令模式之间灵活切换。
+
+**任务列表**:
+- [ ] `/mode` 命令 - 切换执行模式（agent/shell）
+- [ ] Agent 模式 - 默认模式，通过 Agent 推理执行
+- [ ] Shell 模式 - 直接执行 shell 命令，不经过 Agent
+- [ ] 模式状态显示 - 在提示符中显示当前模式
+- [ ] 模式配置 - 支持配置默认启动模式
+
+**技术方案**:
+```python
+# 模式定义
+class ExecutionMode(Enum):
+    AGENT = "agent"      # Agent 推理模式
+    SHELL = "shell"      # 直接 shell 模式
+
+# 模式切换
+class ModeManager:
+    def __init__(self):
+        self.mode = ExecutionMode.AGENT
+
+    def switch(self, mode: str):
+        self.mode = ExecutionMode(mode)
+        print(f"已切换到 {mode} 模式")
+
+    def execute(self, command: str):
+        if self.mode == ExecutionMode.SHELL:
+            # 直接执行 shell 命令
+            return subprocess.run(command, shell=True)
+        else:
+            # 通过 Agent 推理执行
+            return self.agent.run(command)
+```
+
+---
+
+### v0.8.0 - Hooks 机制
 
 **目标**: 提供优雅的扩展机制，解耦组件间的依赖。
 
@@ -326,7 +351,39 @@ agent.hooks.on_name_changed = lambda t, old, new: update_display(t, new)
 
 ---
 
-### v0.7.0 - 反思与规划能力
+### v0.9.0 - 配置系统优化
+
+**目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
+
+**任务列表**:
+- [ ] 配置自动显示 - `_show_config()` 自动遍历 config 对象字段
+- [ ] 配置自动保存 - `_init_config_file()` 自动生成所有配置字段
+- [ ] 条件显示支持 - 支持类似 `if config.memory.type == "hybrid"` 的条件逻辑
+- [ ] 字段排序控制 - 支持自定义显示顺序
+
+**技术方案**:
+```python
+# 方案：使用 dataclass 字段元数据
+@dataclass
+class MemoryConfig:
+    max_messages: int = field(default=50, metadata={"display": True, "order": 1})
+    clean_threshold: int = field(default=3, metadata={"display": True, "order": 10})
+    long_term_storage_path: str = field(
+        default=".nano_agent/long_term_memory",
+        metadata={"display": True, "condition": "type == 'hybrid'"}
+    )
+
+# _show_config() 自动遍历
+def _show_config(config, agent):
+    for section_name, section_config in get_config_sections(config):
+        for field_name, field_value in get_display_fields(section_config):
+            if should_display(field_name, section_config):
+                print(format_line(field_name, field_value))
+```
+
+---
+
+### v0.10.0 - 反思与规划能力
 
 **目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
 
@@ -355,7 +412,7 @@ class ReflectiveAgent(ReActAgent):
 
 ---
 
-### v0.8.0 - 主动学习能力
+### v0.11.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
 
@@ -382,7 +439,7 @@ class LearningAgent(ReActAgent):
 
 ---
 
-### v0.9.0 - 个性化与角色
+### v0.12.0 - 个性化与角色
 
 **目标**: 支持可配置的 Agent 性格和专业领域深度。
 
@@ -408,7 +465,7 @@ persona:
 
 ---
 
-### v0.10.0 - 多 Agent 协作
+### v0.13.0 - 多 Agent 协作
 
 **目标**: 支持多 Agent 协作和人机协作机制。
 
@@ -433,7 +490,7 @@ persona:
 
 ---
 
-### v0.11.0 - 安全与体验
+### v0.14.0 - 安全与体验
 
 **目标**: 完善安全机制和用户体验。
 
@@ -450,16 +507,16 @@ persona:
 
 | 版本 | 特性 | 说明 |
 |------|------|------|
-| v0.5.1 | 功能优化与增强 | CLI 增强、/init、/config、/memory、/setname 等 |
-| v0.5.2 | 渐进式执行与确认 | 前置规划、逐步执行、用户确认 |
-| v0.5.3 | Git 集成与状态回退 | 自动提交、撤销/回退操作 |
-| v0.6.1 | 配置系统优化 | 自动显示/保存配置项 |
-| v0.6.2 | Hooks 机制 | 解耦组件间依赖，优雅的回调扩展 |
-| v0.7.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
-| v0.8.0 | 主动学习 | 知识提取、语义搜索 |
-| v0.9.0 | 个性化角色 | 可配置性格、专业领域 |
-| v0.10.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
-| v0.11.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
+| v0.5.1 | 功能优化与增强 ✅ | CLI 增强、/init、/config、/memory、/setname 等 |
+| v0.6.0 | 渐进式执行与 Git 集成 | 前置规划、逐步执行、用户确认、/undo 回退 |
+| v0.7.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
+| v0.8.0 | Hooks 机制 | 解耦组件间依赖，优雅的回调扩展 |
+| v0.9.0 | 配置系统优化 | 自动显示/保存配置项 |
+| v0.10.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
+| v0.11.0 | 主动学习 | 知识提取、语义搜索 |
+| v0.12.0 | 个性化角色 | 可配置性格、专业领域 |
+| v0.13.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
+| v0.14.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
 
 ---
 
