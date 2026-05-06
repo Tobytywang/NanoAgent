@@ -24,7 +24,7 @@ class ReportGenerator:
         Returns:
             JSON string
         """
-        return json.dumps(metrics.to_dict(), indent=indent, default=str)
+        return json.dumps(metrics.to_dict(), indent=indent, default=str, ensure_ascii=False)
 
     @staticmethod
     def to_markdown(metrics: RunMetrics) -> str:

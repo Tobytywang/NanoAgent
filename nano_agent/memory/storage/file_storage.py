@@ -35,7 +35,7 @@ class FileStorage(BaseStorage):
         """
         session_file = self.base_dir / f"{entry.session_id}.jsonl"
         with open(session_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry.to_dict()) + "\n")
+            f.write(json.dumps(entry.to_dict(), ensure_ascii=False) + "\n")
         return entry.id
 
     def load_session(self, session_id: str) -> list[MemoryEntry]:
