@@ -14,6 +14,7 @@ class ToolResult:
     output: str
     error: str | None = None
     metadata: dict | None = None  # Optional metadata for tool-specific data
+    undo_data: dict | None = None  # Data needed to undo this operation
 
 
 class BaseTool(ABC):
@@ -27,6 +28,24 @@ class BaseTool(ABC):
     def parameters_schema(self) -> dict:
         """Return JSON Schema format parameter definition."""
         pass
+
+    @property
+    def supports_undo(self) -> bool:
+        """Whether this tool supports undo operation."""
+        return False  # Default: not supported
+
+    def undo(self, undo_data: dict, context: dict) -> bool:
+        """
+        Undo a previously executed operation.
+
+        Args:
+            undo_data: Data returned in ToolResult.undo_data from execute()
+            context: Execution context (contains memory, config, tool_registry, etc.)
+
+        Returns:
+            True if undo was successful, False otherwise
+        """
+        return False  # Default: not implemented
 
     def to_ollama_tool(self) -> dict:
         """Convert to Ollama tool format."""

@@ -61,6 +61,38 @@ Examples:
             "required": ["content"]
         }
 
+    @property
+    def supports_undo(self) -> bool:
+        """MemorizeTool supports undo by deleting the stored entry."""
+        return True
+
+    def undo(self, undo_data: dict, context: dict) -> bool:
+        """
+        Undo memorize operation by deleting the entry.
+
+        Args:
+            undo_data: Contains entry_id of the stored memory
+            context: Contains memory instance
+
+        Returns:
+            True if undo was successful
+        """
+        memory = context.get("memory")
+        if not memory:
+            return False
+
+        entry_id = undo_data.get("entry_id")
+        if not entry_id:
+            return False
+
+        # Delete the memory entry
+        if hasattr(memory, 'forget'):
+            return memory.forget(entry_id)
+        elif hasattr(memory, 'long_term_memory'):
+            return memory.long_term_memory.delete(entry_id)
+
+        return False
+
     def execute(self, content: str, category: str = "fact", importance: float = 0.5, name_type: str = None, name_value: str = None) -> ToolResult:
         if not self._memory:
             return ToolResult(
@@ -137,21 +169,30 @@ Examples:
                 if detected_name_type and detected_name_value:
                     storage_metadata = {"type": detected_name_type, "value": detected_name_value}
 
-            # Store in memory with metadata
-            entry_id = self._memory.memorize(
+            # Store in memory with metadata (returns tuple: entry_id, is_new)
+            entry_id, is_new = self._memory.memorize(
                 content=content,
                 category=category,
                 importance=importance,
                 metadata=storage_metadata
             )
 
-            # Return result with name info for CLI callback
-            result_metadata = {"name_type": detected_name_type, "name_value": detected_name_value} if detected_name_type else None
+            # Return result with entry_id and name info for CLI callback
+            result_metadata = {"entry_id": entry_id, "is_new": is_new}
+            if detected_name_type and detected_name_value:
+                result_metadata["name_type"] = detected_name_type
+                result_metadata["name_value"] = detected_name_value
+
+            if is_new:
+                output = f"Successfully stored in long-term memory (ID: {entry_id})"
+            else:
+                output = f"Updated existing memory (ID: {entry_id})"
 
             return ToolResult(
                 success=True,
-                output=f"Successfully stored in long-term memory (ID: {entry_id})",
-                metadata=result_metadata
+                output=output,
+                metadata=result_metadata,
+                undo_data={"entry_id": entry_id, "is_new": is_new}
             )
         except Exception as e:
             return ToolResult(

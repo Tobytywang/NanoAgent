@@ -129,6 +129,46 @@ class FileWriteTool(BaseTool):
             "required": ["file_path", "content"]
         }
 
+    @property
+    def supports_undo(self) -> bool:
+        """FileWriteTool supports undo by restoring previous content."""
+        return True
+
+    def undo(self, undo_data: dict, context: dict) -> bool:
+        """
+        Undo file write by restoring previous content.
+
+        Args:
+            undo_data: Contains path and previous_content
+            context: Execution context (not used for file operations)
+
+        Returns:
+            True if undo was successful
+        """
+        path_str = undo_data.get("path")
+        previous_content = undo_data.get("previous_content")
+        file_existed = undo_data.get("file_existed", True)
+
+        if not path_str:
+            return False
+
+        try:
+            path = Path(path_str)
+
+            if not file_existed:
+                # File didn't exist before, delete it
+                if path.exists():
+                    path.unlink()
+                return True
+
+            # Restore previous content
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(previous_content or "")
+            return True
+        except Exception:
+            return False
+
     def execute(
         self,
         file_path: str,
@@ -149,6 +189,15 @@ class FileWriteTool(BaseTool):
         try:
             path = Path(file_path).expanduser().resolve()
 
+            # Read previous content for undo (only in write mode)
+            previous_content = None
+            file_existed = False
+            if mode == "write":
+                file_existed = path.exists()
+                if file_existed:
+                    with open(path, "r", encoding="utf-8") as f:
+                        previous_content = f.read()
+
             # Ensure parent directory exists
             path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -157,9 +206,20 @@ class FileWriteTool(BaseTool):
                 f.write(content)
 
             action = "Appended to" if mode == "append" else "Wrote to"
+
+            # Only provide undo_data for write mode (append is harder to undo)
+            undo_data = None
+            if mode == "write":
+                undo_data = {
+                    "path": str(path),
+                    "previous_content": previous_content,
+                    "file_existed": file_existed
+                }
+
             return ToolResult(
                 success=True,
-                output=f"{action} file: {path}"
+                output=f"{action} file: {path}",
+                undo_data=undo_data
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

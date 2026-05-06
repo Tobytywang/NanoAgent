@@ -7,6 +7,7 @@ import uuid
 from typing import Generator
 from .base import BaseAgent
 from .prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
+from .undo import UndoStack
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
@@ -55,6 +56,10 @@ class ReActAgent(BaseAgent):
         self.verbose = verbose
         self.skill_prompt = skill_prompt
         self.tracker = tracker or MetricsTracker()
+        self._undo_stack = UndoStack()
+        self._round_counter = 0
+        self._pending_name_updates: list[tuple[str, str]] = []  # List of (name_type, name_value)
+        self._prev_name_values: dict[str, str] = {}  # Previous name values for undo
         self._setup_system_prompt()
 
     def _setup_system_prompt(self) -> None:
@@ -91,6 +96,10 @@ class ReActAgent(BaseAgent):
         Returns:
             The agent's final response
         """
+        # Start a new undo round
+        self._round_counter += 1
+        self._undo_stack.start_round(f"round_{self._round_counter}")
+
         # Add user message to memory
         self.memory.add_user_message(user_input)
 
@@ -209,14 +218,48 @@ class ReActAgent(BaseAgent):
         """
         result = self.execute_tool(tool_call.name, tool_call.arguments)
 
-        # Detect name update from memorize tool
+        # Track undoable operations
+        if result.success and result.undo_data:
+            tool = self.tool_registry.get(tool_call.name)
+            if tool and tool.supports_undo:
+                self._undo_stack.push(tool_call.name, result.undo_data)
+
+        # Detect name update from memorize tool (for CLI callback)
         if tool_call.name == "memorize" and result.success and result.metadata:
             name_type = result.metadata.get("name_type")
             name_value = result.metadata.get("name_value")
             if name_type and name_value:
-                self._pending_name_update = (name_type, name_value)
+                self._pending_name_updates.append((name_type, name_value))
 
         return result
+
+    def undo_current_round(self, context: dict) -> list[str]:
+        """
+        Undo all operations in the current round.
+
+        Args:
+            context: Execution context (contains memory, config, etc.)
+
+        Returns:
+            List of tool names that were successfully undone
+        """
+        undone = []
+        records = self._undo_stack.get_round_records()
+
+        # Undo in reverse order
+        for record in reversed(records):
+            tool = self.tool_registry.get(record.tool_name)
+            if tool and tool.supports_undo:
+                if tool.undo(record.undo_data, context):
+                    undone.append(record.tool_name)
+                    self._undo_stack.remove_record(record)
+
+        self._undo_stack.clear_round()
+        return undone
+
+    def has_undoable_operations(self) -> bool:
+        """Check if current round has any undoable operations."""
+        return self._undo_stack.has_round_records()
 
     def add_tool(self, tool) -> None:
         """
