@@ -234,6 +234,14 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     else:
         config = ConfigLoader.load()  # Returns default config
 
+    # Initialize logging based on config
+    from ..monitoring.logger import configure_logging
+    configure_logging(
+        level=config.logging.level,
+        console=config.logging.console,
+        file_path=config.logging.file
+    )
+
     # Auto-update .gitignore
     update_gitignore()
 
@@ -430,6 +438,15 @@ def run_interactive(
                 Console.print("Conversation history cleared", style="success")
                 continue
 
+            if user_input.lower() == "/undo":
+                restored = _handle_undo(agent, config)
+                # Update local display variables
+                if "user_name" in restored:
+                    user_display = restored["user_name"]
+                if "agent_name" in restored:
+                    agent_display = restored["agent_name"]
+                continue
+
             if user_input.lower() == "/tools":
                 tools = agent.tool_registry.list_tools()
                 Console.print(f"Available tools: {', '.join(tools)}", style="info")
@@ -569,30 +586,45 @@ def run_interactive(
                 pass
             print(f"> {response}")
 
-            # Check for pending name update from memorize tool
-            if hasattr(agent, '_pending_name_update') and agent._pending_name_update:
-                name_type, name_value = agent._pending_name_update
-                # Sanitize name_value to remove invalid Unicode characters
-                try:
-                    name_value = name_value.encode('utf-8', errors='replace').decode('utf-8')
-                except (UnicodeDecodeError, UnicodeEncodeError):
-                    name_value = "User" if name_type == "user_name" else "Agent"
+            # Check for pending name updates from memorize tool (may be multiple)
+            if hasattr(agent, '_pending_name_updates') and agent._pending_name_updates:
+                # Clear previous name values at the start of each round
+                agent._prev_name_values = {}
 
-                if name_type == "user_name":
-                    user_display = name_value
-                    config.agent.user_name = name_value
-                elif name_type == "agent_name":
-                    agent_display = name_value
-                    config.agent.agent_name = name_value
-                # Save config
+                for name_type, name_value in agent._pending_name_updates:
+                    # Sanitize name_value to remove invalid Unicode characters
+                    try:
+                        name_value = name_value.encode('utf-8', errors='replace').decode('utf-8')
+                    except (UnicodeDecodeError, UnicodeEncodeError):
+                        name_value = "User" if name_type == "user_name" else "Agent"
+
+                    # Save previous value for undo (only save the original value, not overwrite)
+                    if name_type not in agent._prev_name_values:
+                        if name_type == "user_name":
+                            agent._prev_name_values[name_type] = config.agent.user_name
+                        elif name_type == "agent_name":
+                            agent._prev_name_values[name_type] = config.agent.agent_name
+
+                    if name_type == "user_name":
+                        user_display = name_value
+                        config.agent.user_name = name_value
+                    elif name_type == "agent_name":
+                        agent_display = name_value
+                        config.agent.agent_name = name_value
+                    Console.print(f"名字已更新: {name_type.replace('_', ' ')} = {name_value}", style="success")
+
+                # Save config once after all updates
                 config_file, _ = _find_config_file()
                 if config_file:
                     ConfigLoader.save(config, config_file)
-                Console.print(f"名字已更新: {name_type.replace('_', ' ')} = {name_value}", style="success")
-                agent._pending_name_update = None
+                agent._pending_name_updates = []
 
             # Show monitoring stats after each run
             _show_run_stats(agent, config)
+
+            # Show undo hint if there are undoable operations
+            if hasattr(agent, 'has_undoable_operations') and agent.has_undoable_operations():
+                Console.print("💡 输入 /undo 可撤销本轮操作", style="info")
 
         except KeyboardInterrupt:
             # 被 signal handler 处理，继续循环
@@ -693,6 +725,16 @@ Config file priority:
         help="Set clean threshold in config (requires value)"
     )
     parser.add_argument(
+        "--migrate-sessions",
+        action="store_true",
+        help="Migrate sessions from file storage to SQLite"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Dry run for migration (show what would be migrated)"
+    )
+    parser.add_argument(
         "--non-interactive",
         action="store_true",
         help="Non-interactive mode (read from stdin)"
@@ -753,6 +795,11 @@ Config file priority:
         else:
             config = ConfigLoader.load()
         _cleanup_sessions(args.config, config.memory.clean_threshold)
+        return
+
+    # Handle --migrate-sessions
+    if args.migrate_sessions:
+        _migrate_sessions(args.config, dry_run=args.dry_run)
         return
 
     # Default behavior: resume most recent session (unless --new-session specified)
@@ -883,6 +930,58 @@ def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
         return user_name, agent_name
     except Exception:
         return None, None
+
+
+def _migrate_sessions(config_path: str | None = None, dry_run: bool = False) -> None:
+    """Migrate sessions from file storage to SQLite."""
+    from ..memory.migration import migrate_file_to_sqlite, list_all_sessions
+
+    # Find config file
+    config_file, _ = _find_config_file(config_path)
+    if config_file:
+        config = ConfigLoader.load(config_file)
+    else:
+        config = ConfigLoader.load()
+
+    # Determine storage paths
+    file_dir = ".nano_agent/memory"
+    db_path = config.memory.storage_path
+    if not db_path.endswith(".db"):
+        db_path = db_path + ".db"
+
+    Console.print_header("Session Migration")
+
+    # First show current status
+    all_sessions = list_all_sessions(file_dir=file_dir, db_path=db_path)
+
+    print(f"\nFile storage ({file_dir}): {len(all_sessions['file_storage']['sessions'])} sessions")
+    print(f"SQLite storage ({db_path}): {len(all_sessions['sqlite_storage']['sessions'])} sessions")
+    print(f"Total unique sessions: {all_sessions['total_unique_sessions']}")
+
+    if dry_run:
+        print("\n[DRY RUN] Would migrate the following sessions:")
+        for session_id in all_sessions['file_storage']['sessions']:
+            if session_id not in all_sessions['sqlite_storage']['sessions']:
+                info = all_sessions['file_storage']['info'].get(session_id, {})
+                print(f"  - {session_id} ({info.get('message_count', 0)} messages)")
+        return
+
+    # Perform migration
+    print("\nMigrating sessions...")
+    report = migrate_file_to_sqlite(file_dir=file_dir, db_path=db_path, dry_run=False)
+
+    print(f"\nMigration Report:")
+    print(f"  Total file sessions: {report['total_file_sessions']}")
+    print(f"  Already in SQLite: {len(report['already_in_sqlite'])}")
+    print(f"  Successfully migrated: {len(report['migrated'])}")
+
+    if report['errors']:
+        print(f"  Errors: {len(report['errors'])}")
+        for error in report['errors']:
+            print(f"    - {error['session_id']}: {error['error']}")
+
+    if report['migrated']:
+        Console.print(f"\nSuccessfully migrated {len(report['migrated'])} sessions!", style="success")
 
 
 def _get_storage(config):
@@ -1103,6 +1202,57 @@ def _save_session_summary(agent, config, summary: str) -> None:
     message_count = len([m for m in messages if m.get("role") != "system"])
 
     storage.save_summary(session_id, summary, message_count)
+
+
+def _handle_undo(agent, config=None) -> dict:
+    """Handle /undo command to revert all operations in current round.
+
+    Args:
+        agent: Agent instance
+        config: Config object (optional, for reverting name changes)
+
+    Returns:
+        Dict with restored values: {"user_name": ..., "agent_name": ...}
+    """
+    restored = {}
+
+    if not hasattr(agent, 'has_undoable_operations') or not agent.has_undoable_operations():
+        Console.print("没有可撤销的操作", style="info")
+        return restored
+
+    # Build context for undo
+    context = {
+        "memory": agent.memory,
+        "config": config,
+        "tool_registry": agent.tool_registry
+    }
+
+    # Perform undo
+    undone = agent.undo_current_round(context)
+
+    if undone:
+        Console.print(f"已撤销: {', '.join(undone)}", style="success")
+
+        # Handle name updates - restore previous values
+        if config and hasattr(agent, '_prev_name_values') and agent._prev_name_values:
+            for name_type, prev_value in agent._prev_name_values.items():
+                if name_type == "user_name":
+                    config.agent.user_name = prev_value
+                    restored["user_name"] = prev_value
+                    Console.print(f"已恢复用户名: {prev_value}", style="info")
+                elif name_type == "agent_name":
+                    config.agent.agent_name = prev_value
+                    restored["agent_name"] = prev_value
+                    Console.print(f"已恢复Agent名: {prev_value}", style="info")
+            # Save config
+            config_file, _ = _find_config_file()
+            if config_file:
+                ConfigLoader.save(config, config_file)
+            agent._prev_name_values = {}
+    else:
+        Console.print("撤销失败", style="error")
+
+    return restored
 
 
 def _handle_skill_command(agent, command: str) -> None:
@@ -1659,6 +1809,7 @@ def _show_help() -> None:
     print("  /exit, /quit      退出（保存摘要）")
     print("  exit, quit        直接退出")
     print("  /clear            清空对话")
+    print("  /undo             撤销本轮所有操作")
     print("  /?, help          显示帮助")
 
     print("\n## 查看信息")
@@ -1691,15 +1842,6 @@ def _show_help() -> None:
 
     print("\n## 导出")
     print("  /report           导出监控报告")
-
-    print("\n## CLI选项（启动时使用）")
-    print("  -n, --new-session    创建新session（默认延续最近session）")
-    print("  -l, --list-sessions  列出所有session")
-    print("  -s, --show-session   显示指定session详情")
-    print("  -r, --resume-session 恢复指定session")
-    print("  -d, --delete-session 删除指定session")
-    print("  --clean-sessions     自动清理低价值session")
-    print("  --clean-threshold N  设置清理阈值")
 
     print("\n" + "=" * 50 + "\n")
 
