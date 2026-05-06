@@ -66,7 +66,7 @@ class TestLongTermMemory:
 
     def test_add_and_retrieve(self, long_term_memory):
         """Test adding and retrieving memories."""
-        entry_id = long_term_memory.add(
+        entry_id, is_new = long_term_memory.add(
             content="User likes dark mode",
             category="preference",
             keywords=["dark mode", "ui"],
@@ -74,6 +74,7 @@ class TestLongTermMemory:
         )
 
         assert entry_id.startswith("ltm_")
+        assert is_new is True
         assert long_term_memory.count() == 1
 
         entries = long_term_memory.get_all()
@@ -133,7 +134,7 @@ class TestLongTermMemory:
 
     def test_delete_memory(self, long_term_memory):
         """Test deleting a memory."""
-        entry_id = long_term_memory.add(
+        entry_id, is_new = long_term_memory.add(
             content="Test memory",
             category="fact",
             keywords=["test"]
@@ -177,7 +178,7 @@ class TestLongTermMemory:
 
     def test_update_importance(self, long_term_memory):
         """Test updating importance."""
-        entry_id = long_term_memory.add(
+        entry_id, is_new = long_term_memory.add(
             content="Test",
             category="fact",
             keywords=[],
@@ -244,6 +245,71 @@ class TestLongTermMemory:
         # Should contain meaningful words
         assert "名字" in keywords or "用户" in keywords
 
+    def test_dedup_same_metadata_type(self, long_term_memory):
+        """Test that same metadata.type triggers dedup."""
+        # Add first user name
+        entry_id1, is_new1 = long_term_memory.add(
+            content="用户的名字是天宇",
+            category="fact",
+            keywords=["名字", "天宇"],
+            metadata={"type": "user_name", "value": "天宇"}
+        )
+        assert is_new1 is True
+
+        # Add second user name - should update first
+        entry_id2, is_new2 = long_term_memory.add(
+            content="用户的名字是王五",
+            category="fact",
+            keywords=["名字", "王五"],
+            metadata={"type": "user_name", "value": "王五"}
+        )
+        assert is_new2 is False  # Updated existing
+        assert entry_id2 == entry_id1  # Same ID
+        assert long_term_memory.count() == 1  # Only one entry
+
+        # Content should be updated
+        entry = long_term_memory.get_by_id(entry_id1)
+        assert "王五" in entry.content
+
+    def test_dedup_keyword_similarity(self, long_term_memory):
+        """Test that high keyword similarity triggers dedup."""
+        # Add first project info
+        entry_id1, is_new1 = long_term_memory.add(
+            content="项目: NanoAgent, 技术栈: Python",
+            category="fact",
+            keywords=["nanoagent", "python", "项目", "技术栈"]
+        )
+        assert is_new1 is True
+
+        # Add similar project info - should update first
+        entry_id2, is_new2 = long_term_memory.add(
+            content="项目: NanoAgent, 技术栈: Python, 版本: 1.0",
+            category="fact",
+            keywords=["nanoagent", "python", "项目", "技术栈", "版本"]
+        )
+        assert is_new2 is False  # Updated existing
+        assert entry_id2 == entry_id1
+
+    def test_no_dedup_different_category(self, long_term_memory):
+        """Test that different category does not trigger dedup."""
+        # Add as fact
+        entry_id1, is_new1 = long_term_memory.add(
+            content="用户喜欢Python",
+            category="fact",
+            keywords=["python", "用户"]
+        )
+        assert is_new1 is True
+
+        # Add same content as preference - should create new
+        entry_id2, is_new2 = long_term_memory.add(
+            content="用户喜欢Python",
+            category="preference",
+            keywords=["python", "用户"]
+        )
+        assert is_new2 is True  # New entry
+        assert entry_id2 != entry_id1
+        assert long_term_memory.count() == 2
+
 
 class TestHybridMemory:
     """Tests for HybridMemory implementation."""
@@ -273,13 +339,14 @@ class TestHybridMemory:
 
     def test_memorize_to_long_term(self, hybrid_memory):
         """Test storing in long-term memory."""
-        entry_id = hybrid_memory.memorize(
+        entry_id, is_new = hybrid_memory.memorize(
             content="User prefers dark mode",
             category="preference",
             keywords=["dark mode", "ui"]
         )
 
         assert entry_id.startswith("ltm_")
+        assert is_new is True
         assert hybrid_memory.long_term_memory.count() == 1
 
     def test_recall_from_long_term(self, hybrid_memory):
@@ -296,7 +363,7 @@ class TestHybridMemory:
 
     def test_forget_from_long_term(self, hybrid_memory):
         """Test deleting from long-term memory."""
-        entry_id = hybrid_memory.memorize(
+        entry_id, is_new = hybrid_memory.memorize(
             content="Test memory",
             category="fact"
         )

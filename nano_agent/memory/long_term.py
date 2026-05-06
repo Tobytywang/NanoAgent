@@ -122,9 +122,9 @@ class LongTermMemory:
         source_session: str = "",
         importance: float = 0.5,
         metadata: dict | None = None
-    ) -> str:
+    ) -> tuple[str, bool]:
         """
-        Add a new long-term memory entry.
+        Add or update a long-term memory entry.
 
         Args:
             content: The memory content
@@ -135,8 +135,23 @@ class LongTermMemory:
             metadata: Additional metadata
 
         Returns:
-            The entry ID
+            Tuple of (entry_id, is_new) where is_new is True if new entry was created
         """
+        # Check for similar existing entry
+        similar_entry = self._find_similar_entry(content, keywords, category, metadata)
+
+        if similar_entry:
+            # Update existing entry
+            similar_entry.content = content
+            similar_entry.keywords = keywords or []
+            similar_entry.source_session = source_session
+            similar_entry.importance = importance
+            similar_entry.metadata = metadata or {}
+            similar_entry.created_at = datetime.now().isoformat()
+            self._save()
+            return (similar_entry.id, False)
+
+        # Create new entry
         entry = LongTermEntry.create(
             content=content,
             category=category,
@@ -149,7 +164,7 @@ class LongTermMemory:
         self.entries.append(entry)
         self._save()
 
-        return entry.id
+        return (entry.id, True)
 
     def search(self, query: str, limit: int = 5) -> list[LongTermEntry]:
         """
@@ -243,6 +258,66 @@ class LongTermMemory:
                             keywords.append(segment)
 
         return set(k.lower() for k in keywords)
+
+    def _calculate_similarity(self, entry: LongTermEntry, new_keywords: set[str]) -> float:
+        """Calculate similarity between entry and new content based on keyword overlap.
+
+        Args:
+            entry: Existing memory entry
+            new_keywords: Keywords from new content
+
+        Returns:
+            Similarity score from 0.0 to 1.0
+        """
+        entry_keywords = set(k.lower() for k in entry.keywords)
+
+        if not entry_keywords or not new_keywords:
+            return 0.0
+
+        intersection = len(entry_keywords & new_keywords)
+        union = len(entry_keywords | new_keywords)
+
+        return intersection / union if union > 0 else 0.0
+
+    def _find_similar_entry(
+        self,
+        content: str,
+        keywords: list[str] | None,
+        category: str,
+        metadata: dict | None = None
+    ) -> LongTermEntry | None:
+        """Find existing entry that is similar to new content.
+
+        Args:
+            content: New content to store
+            keywords: Keywords for new content
+            category: Category of new content
+            metadata: Metadata of new content
+
+        Returns:
+            Similar entry if found, else None
+        """
+        # Extract keywords from new content
+        new_keywords = set(k.lower() for k in keywords) if keywords else self._extract_search_keywords(content)
+
+        for entry in self.entries:
+            # Same category required
+            if entry.category != category:
+                continue
+
+            # Same metadata.type (e.g., user_name, agent_name) is always duplicate
+            if metadata and entry.metadata:
+                new_type = metadata.get("type")
+                existing_type = entry.metadata.get("type")
+                if new_type and existing_type and new_type == existing_type:
+                    return entry
+
+            # Keyword similarity > 70%
+            similarity = self._calculate_similarity(entry, new_keywords)
+            if similarity > 0.7:
+                return entry
+
+        return None
 
     def get_all(self) -> list[LongTermEntry]:
         """Get all memory entries."""

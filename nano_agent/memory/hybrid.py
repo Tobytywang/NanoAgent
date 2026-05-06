@@ -94,7 +94,7 @@ class HybridMemory(BaseMemory):
         keywords: list[str] | None = None,
         importance: float = 0.5,
         metadata: dict | None = None
-    ) -> str:
+    ) -> tuple[str, bool]:
         """
         Store information in long-term memory.
 
@@ -106,7 +106,7 @@ class HybridMemory(BaseMemory):
             metadata: Additional metadata
 
         Returns:
-            The entry ID
+            Tuple of (entry_id, is_new) where is_new is True if new entry was created
         """
         # Auto-extract keywords if not provided
         if keywords is None:
