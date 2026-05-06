@@ -7,6 +7,7 @@ import json
 from typing import Generator
 from .base import BaseLLM, LLMUsage
 from .messages import Message, ToolCall
+from ..monitoring.logger import get_logger
 
 
 class OllamaLLM(BaseLLM):
@@ -93,8 +94,15 @@ class OllamaLLM(BaseLLM):
         # Parse tool calls
         tool_calls = []
         if "tool_calls" in message:
-            for tc in message["tool_calls"]:
-                tool_calls.append(ToolCall.from_ollama_format(tc))
+            for i, tc in enumerate(message["tool_calls"]):
+                try:
+                    tool_calls.append(ToolCall.from_ollama_format(tc))
+                except ValueError as e:
+                    # Log the error for debugging
+                    logger = get_logger()
+                    logger.error(f"Failed to parse tool call #{i+1}: {e}")
+                    # Re-raise with context - this will be caught by CLI and shown to user
+                    raise ValueError(f"[Tool Call #{i+1}] {e}")
 
         # Parse usage information from Ollama response
         # Ollama returns: prompt_eval_count (input) and eval_count (output)

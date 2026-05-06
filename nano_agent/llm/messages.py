@@ -32,7 +32,17 @@ class ToolCall:
         args_str = func.get("arguments", "{}")
         # Handle both string and dict formats
         if isinstance(args_str, str):
-            arguments = json.loads(args_str)
+            try:
+                arguments = json.loads(args_str)
+            except json.JSONDecodeError as e:
+                # Provide diagnostic information for debugging
+                preview = args_str[:100] + "..." if len(args_str) > 100 else args_str
+                raise ValueError(
+                    f"Failed to parse tool call arguments as JSON: {e}\n"
+                    f"Tool: {func.get('name', 'unknown')}\n"
+                    f"Arguments preview: {preview}\n"
+                    f"This usually indicates the LLM response was truncated or malformed."
+                ) from e
         else:
             arguments = args_str
         return cls(
@@ -53,7 +63,17 @@ class ToolCall:
                 args_str = args_str.encode('utf-8', errors='replace').decode('utf-8')
             except (UnicodeDecodeError, UnicodeEncodeError):
                 pass
-            arguments = json.loads(args_str)
+            try:
+                arguments = json.loads(args_str)
+            except json.JSONDecodeError as e:
+                # Provide diagnostic information for debugging
+                preview = args_str[:100] + "..." if len(args_str) > 100 else args_str
+                raise ValueError(
+                    f"Failed to parse tool call arguments as JSON: {e}\n"
+                    f"Tool: {func.get('name', 'unknown')}\n"
+                    f"Arguments preview: {preview}\n"
+                    f"This usually indicates the LLM response was truncated or malformed."
+                ) from e
         else:
             arguments = args_str
         return cls(
