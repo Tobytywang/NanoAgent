@@ -288,7 +288,10 @@ class TestMemorizeToolNameDetection:
             result = tool.execute(content="今天天气很好", category="fact")
 
             assert result.success is True
-            assert result.metadata is None
+            # metadata should have entry_id but no name_type/name_value
+            assert result.metadata is not None
+            assert "entry_id" in result.metadata
+            assert "name_type" not in result.metadata
 
     def test_name_extraction_stops_at_punctuation(self):
         """Test that name extraction stops at punctuation."""

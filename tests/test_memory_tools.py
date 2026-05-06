@@ -179,7 +179,7 @@ class TestForgetTableTool:
             long_term = LongTermMemory(storage_path=d)
 
             # Add a memory and get its ID
-            memory_id = long_term.add(
+            memory_id, is_new = long_term.add(
                 content="This will be forgotten",
                 keywords=["test"]
             )
@@ -193,6 +193,130 @@ class TestForgetTableTool:
             result = tool.execute(memory_id=memory_id)
 
             assert result.success is True
+
+
+class TestNameExtraction:
+    """Tests for name extraction regex patterns in MemorizeTool."""
+
+    def test_agent_name_my_name(self):
+        """Test extracting agent name from '我的名字是X'."""
+        with tempfile.TemporaryDirectory() as d:
+            storage = FileStorage(base_dir=d)
+            working_memory = ShortTermMemory()
+            long_term = LongTermMemory(storage_path=d)
+
+            memory = HybridMemory(
+                working_memory=working_memory,
+                long_term_memory=long_term
+            )
+
+            tool = MemorizeTool(memory=memory)
+            result = tool.execute(content="我的名字是天宇")
+
+            assert result.success is True
+            assert result.metadata["name_type"] == "agent_name"
+            assert result.metadata["name_value"] == "天宇"
+
+    def test_agent_name_i_call(self):
+        """Test extracting agent name from '我叫X'."""
+        with tempfile.TemporaryDirectory() as d:
+            storage = FileStorage(base_dir=d)
+            working_memory = ShortTermMemory()
+            long_term = LongTermMemory(storage_path=d)
+
+            memory = HybridMemory(
+                working_memory=working_memory,
+                long_term_memory=long_term
+            )
+
+            tool = MemorizeTool(memory=memory)
+            result = tool.execute(content="我叫小明")
+
+            assert result.success is True
+            assert result.metadata["name_type"] == "agent_name"
+            assert result.metadata["name_value"] == "小明"
+
+    def test_user_name_with_comma_not_greedy(self):
+        """Test that regex is not greedy - stops at comma."""
+        # This was the bug: "用户的名字是Nomi，用户王五给我起的名字"
+        # should extract "Nomi", not "Nomi，用户王五给我起的名字"
+        with tempfile.TemporaryDirectory() as d:
+            storage = FileStorage(base_dir=d)
+            working_memory = ShortTermMemory()
+            long_term = LongTermMemory(storage_path=d)
+
+            memory = HybridMemory(
+                working_memory=working_memory,
+                long_term_memory=long_term
+            )
+
+            tool = MemorizeTool(memory=memory)
+            result = tool.execute(content="用户的名字是Nomi，用户王五给我起的名字")
+
+            assert result.success is True
+            assert result.metadata["name_type"] == "user_name"
+            assert result.metadata["name_value"] == "Nomi"
+
+    def test_user_name_user_call(self):
+        """Test extracting user name from '用户叫X'."""
+        with tempfile.TemporaryDirectory() as d:
+            storage = FileStorage(base_dir=d)
+            working_memory = ShortTermMemory()
+            long_term = LongTermMemory(storage_path=d)
+
+            memory = HybridMemory(
+                working_memory=working_memory,
+                long_term_memory=long_term
+            )
+
+            tool = MemorizeTool(memory=memory)
+            result = tool.execute(content="用户叫奥特曼")
+
+            assert result.success is True
+            assert result.metadata["name_type"] == "user_name"
+            assert result.metadata["name_value"] == "奥特曼"
+
+    def test_agent_name_your_name(self):
+        """Test extracting agent name from '你的名字是X'."""
+        with tempfile.TemporaryDirectory() as d:
+            storage = FileStorage(base_dir=d)
+            working_memory = ShortTermMemory()
+            long_term = LongTermMemory(storage_path=d)
+
+            memory = HybridMemory(
+                working_memory=working_memory,
+                long_term_memory=long_term
+            )
+
+            tool = MemorizeTool(memory=memory)
+            result = tool.execute(content="你的名字是牙签")
+
+            assert result.success is True
+            assert result.metadata["name_type"] == "agent_name"
+            assert result.metadata["name_value"] == "牙签"
+
+    def test_explicit_name_parameters(self):
+        """Test using explicit name_type and name_value parameters."""
+        with tempfile.TemporaryDirectory() as d:
+            storage = FileStorage(base_dir=d)
+            working_memory = ShortTermMemory()
+            long_term = LongTermMemory(storage_path=d)
+
+            memory = HybridMemory(
+                working_memory=working_memory,
+                long_term_memory=long_term
+            )
+
+            tool = MemorizeTool(memory=memory)
+            result = tool.execute(
+                content="用户的名字是天宇",
+                name_type="user_name",
+                name_value="天宇"
+            )
+
+            assert result.success is True
+            assert result.metadata["name_type"] == "user_name"
+            assert result.metadata["name_value"] == "天宇"
 
 
 class TestMemoryToolsIntegration:
