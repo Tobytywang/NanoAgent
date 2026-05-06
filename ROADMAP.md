@@ -127,6 +127,9 @@ nano_agent/tools/
 
 **任务列表**:
 - [x] 调试日志输出（`logger.py`）
+  - [x] 可配置日志工具类
+  - [x] CLI 初始化日志（根据 config.logging 配置）
+  - [x] LLM 层集成日志（记录 tool call 解析错误等）
 - [x] 导出运行报告（`reporter.py`, CLI `--report`）
 - [x] 插件化工具加载机制（`plugin.py`）
 - [x] 多存储后端支持（File/SQLite）
@@ -221,6 +224,83 @@ def _show_config(config, agent):
 
 ---
 
+### v0.6.1 - Hooks 机制
+
+**目标**: 提供优雅的扩展机制，解耦组件间的依赖。
+
+**背景**:
+当前 undo 操作需要返回值传递链条来更新 UI 层变量，不够优雅。Hooks 机制可以让组件间通信更加解耦。
+
+**任务列表**:
+- [ ] 定义 `Hooks` 基类和注册机制
+- [ ] 在 Agent 中集成 hooks 点位
+- [ ] 实现 `on_name_changed` hook 用于名字更新
+- [ ] 实现 `on_tool_executed` hook 用于工具执行后回调
+- [ ] 实现 `on_memory_changed` hook 用于记忆变更
+
+**技术方案**:
+```python
+# Hooks 定义
+class AgentHooks:
+    def on_name_changed(self, name_type: str, old_value: str, new_value: str):
+        """名字变更时触发"""
+        pass
+
+    def on_tool_executed(self, tool_name: str, result: ToolResult):
+        """工具执行后触发"""
+        pass
+
+    def on_memory_changed(self, action: str, entry_id: str):
+        """记忆变更时触发"""
+        pass
+
+# CLI 中注册 hooks
+agent.hooks.on_name_changed = lambda t, old, new: update_display(t, new)
+```
+
+---
+
+### v0.6.2 - 事件驱动架构
+
+**目标**: 提供更灵活的事件订阅机制，支持多监听者。
+
+**背景**:
+Hooks 是一对一的回调，事件驱动支持多对多的发布订阅模式，更适合复杂场景。
+
+**任务列表**:
+- [ ] 实现 `Event` 和 `EventEmitter` 基类
+- [ ] 定义 Agent 核心事件类型
+- [ ] 支持同步和异步事件处理
+- [ ] 提供事件过滤和优先级机制
+
+**技术方案**:
+```python
+# 事件定义
+class AgentEvents:
+    name_changed = Event()       # (name_type, old_value, new_value)
+    tool_executed = Event()      # (tool_name, result)
+    memory_changed = Event()     # (action, entry_id)
+    round_started = Event()      # (round_id)
+    round_completed = Event()    # (round_id, stats)
+
+# 订阅事件
+@agent.events.name_changed.subscribe
+def on_name_changed(name_type, old_value, new_value):
+    update_display(name_type, new_value)
+
+# 多监听者
+agent.events.tool_executed.subscribe(logger.log_tool)
+agent.events.tool_executed.subscribe(monitor.track_tool)
+```
+
+**与 Hooks 的区别**:
+| 特性 | Hooks | Events |
+|-----|-------|--------|
+| 监听者数量 | 单个 | 多个 |
+| 触发时机 | 同步 | 同步/异步 |
+| 适用场景 | 简单回调 | 复杂事件流 |
+
+---
 ### v0.7.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
@@ -317,6 +397,8 @@ persona:
 | 版本 | 特性 | 说明 |
 |------|------|------|
 | v0.6.0 | 反思与规划 | Plan-Execute、RCI 反思循环 |
+| v0.6.1 | Hooks 机制 | 解耦组件间依赖，优雅的回调扩展 |
+| v0.6.2 | 事件驱动 | 多监听者订阅，复杂事件流支持 |
 | v0.7.0 | 主动学习 | 知识提取、语义搜索 |
 | v0.8.0 | 个性化角色 | 可配置性格、专业领域 |
 | v0.9.0 | 多 Agent 协作 | 编排框架、Agent 通信 |

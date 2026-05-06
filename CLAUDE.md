@@ -4,20 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NanoAgent is a lightweight AI Agent framework implementing the ReAct (Reasoning + Acting) pattern. It's written in Python 3.10+ and uses Ollama as the local LLM backend.
+Lightweight ReAct Agent framework in Python 3.10+ with Ollama backend.
 
 ## Commands
 
 ```bash
 # Install with dev dependencies
 pip install -e ".[dev]"
-
-# Run interactive agent
-nano-agent
-
-# Run with custom config/model
-nano-agent -c ~/.nano_agent/config.yaml
-nano-agent -m llama3
 
 # Run tests
 pytest tests/ -v
@@ -29,51 +22,52 @@ python tests/run_tests.py --coverage
 black .
 ```
 
+**CLI Usage** (see `nano-agent -h` for full options):
+- `nano-agent` - Resume most recent session (default)
+- `nano-agent -n` - Start new session
+- `nano-agent -l` - List saved sessions
+- `nano-agent -r <ID>` - Resume specific session
+- `nano-agent -d <ID>` - Delete session
+- `nano-agent --clean-sessions` - Auto-clean low-value sessions
+- `nano-agent -c <path>` - Use specific config file
+
 ## Architecture
 
 ```
 nano_agent/
-├── agent/          # ReAct agent implementation (base.py, react.py, prompts.py)
-├── llm/            # LLM client layer (abstract base + Ollama implementation)
-├── memory/         # Conversation history management
-├── tools/          # Built-in tools: python_execute, file_*, shell_execute
-├── config/         # YAML configuration loading and schemas
-└── cli/            # Entry point and console utilities
+├── agent/          # ReAct agent (base.py, react.py, prompts.py, undo.py)
+├── cli/            # Entry point, console utilities
+├── config/         # YAML config loading and schemas
+├── llm/            # LLM client layer (abstract base + Ollama)
+├── memory/         # Memory types (short_term, hybrid, long_term)
+│   └── storage/    # Storage backends (file, sqlite)
+├── monitoring/     # Execution tracking and reporting
+├── skills/         # Skill definitions
+└── tools/          # Built-in tools (python_execute, file_*, shell_execute)
 ```
 
 ## Key Patterns
 
-- **Abstract Base Classes**: All major components (BaseAgent, BaseLLM, BaseMemory, BaseTool) use ABC with `@abstractmethod`
-- **ToolRegistry**: Central registry for tool management
-- **ToolResult**: Dataclass with `success`, `output`, `error` fields for consistent tool outputs
-- **ReAct Loop**: Agent follows Think -> Act -> Observe cycle with configurable `max_iterations`
-- **LLM chat() return**: Tuple of `(text_response, tool_calls)`
+- **Abstract Base Classes**: `BaseAgent`, `BaseLLM`, `BaseMemory`, `BaseTool`, `BaseStorage` use ABC
+- **ToolResult**: Dataclass with `success`, `output`, `error` fields
+- **ToolRegistry / SkillRegistry**: Central registries for tools and skills
+- **ReAct Loop**: Think → Act → Observe cycle with `max_iterations` limit
+- **LLM Interface**: `chat()` returns `(text, tool_calls)`, `chat_stream()` for streaming
 
 ## Configuration
 
-Configuration is loaded from YAML files (see `docs/examples/config.yaml`):
+Config loaded from YAML (priority: project > global > defaults). See `docs/examples/config.yaml`.
 
-```yaml
-llm:
-  provider: ollama
-  model: qwen3.5:9b
-  base_url: http://localhost:11434
-  timeout: 120
-
-agent:
-  max_iterations: 10
-  verbose: true
-
-memory:
-  type: short_term
-  max_messages: 50
-```
+Key sections: `llm`, `agent`, `memory`, `skills`, `plugins`, `logging`. Use `/config` in interactive mode to view current settings.
 
 ## Built-in Tools
 
 - `python_execute`: Execute Python code in subprocess
 - `file_read`/`file_write`/`file_search`: File operations
 - `shell_execute`: Cross-platform shell command execution
+- `web_search`: Web search functionality
+- `memorize`/`recall`/`list_memories`/`forget`: Long-term memory tools
+- `get_stats`: Get execution statistics
 
 ## Development Guidelines
 
@@ -90,6 +84,7 @@ Always verify the following before committing code changes:
 
 - Write formal test cases in `tests/` directory instead of using `python -c` for ad-hoc testing
 - **Always check test coverage** when fixing bugs or adding/modifying features. Add tests if missing.
+- **Run tests after resolving merge conflicts** to verify no syntax errors or broken functionality
 
 ### Documentation
 
@@ -128,3 +123,33 @@ Example:
 # by testing the --list-sessions CLI option
 python -m nano_agent.cli.main --list-sessions
 ```
+
+## Design Philosophy
+
+### User Intervention Control
+
+NanoAgent follows a "critical decision confirmation" model for balancing user control and LLM automation:
+
+**The Problem**: Users want final authority without micromanaging execution details.
+
+**The Solution**: The `undo` mechanism provides "post-hoc veto power":
+1. **Audit transparency**: Show brief summary after each memorize operation
+2. **One-key veto**: User can type `undo` to revert the last operation
+3. **No interruption**: Normal flow continues unless user explicitly intervenes
+
+Example output:
+```
+[记忆] 存储用户名字: "王五" (importance: 0.8)
+       输入 'undo' 撤销，或继续对话
+```
+
+**Why undo beats CLI commands**:
+- `--memories`, `--forget`, `--set-importance` require users to manage details proactively
+- `undo` gives users veto power without forcing them into execution details
+- Like the emperor's veto: ministers handle affairs, emperor can strike down any decision
+
+**Design principles**:
+- Daily operations flow uninterrupted
+- Information is transparent (user sees what happened)
+- User can veto anytime with `undo`
+- CLI commands are fallback for advanced use, not primary workflow
