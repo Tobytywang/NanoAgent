@@ -160,71 +160,136 @@ examples/plugins/
 
 ---
 
-## Future（非核心，延后）
+### v0.5.1 - 功能优化与增强 ✅
 
-### v0.6.0 - 反思与规划能力
+**目标**: 汇总 v0.5.0 之后已实现的功能优化和增强。
 
-**目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
+**已实现功能**:
+- [x] `/init` 命令 - 项目扫描初始化，自动识别项目结构
+- [x] `/config` 命令增强 - 支持 `--force` 强制重新生成配置
+- [x] `/memory` 命令 - 长期记忆开关控制
+- [x] `/stats` 命令增强 - 支持 on/off 切换
+- [x] CLI 命令统一 - 所有命令使用 `/` 前缀
+- [x] 帮助菜单重构 - 按功能场景分类，更清晰的布局
+- [x] CLI 短选项 - `-l` (list-sessions), `-s` (session)
+- [x] 可配置名称 - `user_name` 和 `agent_name` 配置支持
+- [x] `/setname` 命令 - 运行时动态修改用户/Agent 名称
+- [x] 配置文件优先级 - project > global 修复
+- [x] 会话管理 CLI - 新增会话管理选项
+- [x] 自定义 LLM providers - 支持自定义 base_url
+- [x] Undo 机制 - `/undo` 撤销本轮所有操作
+- [x] 记忆去重 - 相似条目自动更新而非重复创建
+- [x] 会话迁移 - `--migrate-sessions` 从 File 到 SQLite
+
+---
+
+### v0.6.0 - 渐进式执行与 Git 集成
+
+**目标**: 改善 Agent 的交互模式，实现可控的渐进式执行和状态回退能力。
+
+**背景**:
+实际使用中发现 Agent 存在以下问题：
+1. 一次视图进行过多的开发工作，而不是一步一步慢慢来
+2. 做事情之前缺少规划，没有 plan 就直接开整
+3. 做事情之前没有征求用户同意，就直接开整
+4. 缺少状态管理，尤其是回退功能
 
 **任务列表**:
-- [ ] 反思能力 - 执行后自我评估结果质量并调整策略
-- [ ] 规划能力 - 复杂任务前置规划，制定计划后再执行
-- [ ] RCI (Reason-Call-Interact) 反思循环实现
-- [ ] Plan-Execute 模式支持
+
+**渐进式执行与确认**:
+- [ ] 前置规划 - 复杂任务先制定计划，展示给用户确认后再执行
+- [ ] 渐进式执行 - 一次只做一小步，等待用户确认后继续
+- [ ] 用户确认机制 - 关键操作前征求用户同意
+
+**Git 集成与状态回退**:
+- [ ] Git 状态检测 - 检测当前是否在 Git 仓库中
+- [ ] 自动提交 - 每步操作后自动 commit（可配置）
+- [ ] 撤销命令 - `/undo` 回退到上一个状态
+- [ ] 回退历史 - 查看可回退的操作历史
+- [ ] 分支管理 - 可选的分支隔离功能
 
 **技术方案**:
 ```python
-# 反思循环示例
-class ReflectiveAgent(ReActAgent):
-    def run_with_reflection(self, task: str) -> str:
-        # 1. 初始执行
-        result = self.run(task)
-        
-        # 2. 反思评估
-        reflection = self.reflect(task, result)
-        
-        # 3. 如果质量不足，调整策略重试
-        if reflection.needs_improvement:
-            result = self.run(task, strategy=reflection.suggested_strategy)
-        
+# 渐进式执行流程
+class InteractiveAgent(ReActAgent):
+    def run_interactive(self, task: str) -> str:
+        # 1. 前置规划
+        plan = self.plan(task)
+        print(f"计划:\n{plan}")
+
+        # 2. 用户确认计划
+        if not self.confirm("是否按此计划执行?"):
+            return "已取消"
+
+        # 3. 渐进式执行
+        for step in plan.steps:
+            print(f"即将执行: {step}")
+            if not self.confirm("是否执行此步骤?"):
+                return "已取消"
+            result = self.execute_step(step)
+            # 每步自动提交
+            self.git_manager.auto_commit(f"Execute: {step.name}")
+
         return result
+
+# Git 管理器
+class GitManager:
+    def auto_commit(self, message: str):
+        """自动提交当前更改"""
+        if not self.is_git_repo():
+            return
+        self.repo.index.add(self.get_changed_files())
+        self.repo.index.commit(message)
+
+    def undo(self):
+        """撤销上一次操作"""
+        self.repo.git.reset('--hard', 'HEAD~1')
 ```
 
 ---
 
-### v0.5.1 - 配置系统优化
+### v0.7.0 - 模式切换
 
-**目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
+**目标**: 支持在 Agent 会话中切换执行模式，提供更灵活的交互方式。
+
+**背景**:
+有时用户希望直接执行基础的 shell 命令（如 ls、cat、grep 等），而不需要经过 Agent 的推理过程。模式切换可以让用户在 Agent 模式和直接命令模式之间灵活切换。
 
 **任务列表**:
-- [ ] 配置自动显示 - `_show_config()` 自动遍历 config 对象字段
-- [ ] 配置自动保存 - `_init_config_file()` 自动生成所有配置字段
-- [ ] 条件显示支持 - 支持类似 `if config.memory.type == "hybrid"` 的条件逻辑
-- [ ] 字段排序控制 - 支持自定义显示顺序
+- [ ] `/mode` 命令 - 切换执行模式（agent/shell）
+- [ ] Agent 模式 - 默认模式，通过 Agent 推理执行
+- [ ] Shell 模式 - 直接执行 shell 命令，不经过 Agent
+- [ ] 模式状态显示 - 在提示符中显示当前模式
+- [ ] 模式配置 - 支持配置默认启动模式
 
 **技术方案**:
 ```python
-# 方案：使用 dataclass 字段元数据
-@dataclass
-class MemoryConfig:
-    max_messages: int = field(default=50, metadata={"display": True, "order": 1})
-    clean_threshold: int = field(default=3, metadata={"display": True, "order": 10})
-    long_term_storage_path: str = field(
-        default=".nano_agent/long_term_memory",
-        metadata={"display": True, "condition": "type == 'hybrid'"}
-    )
+# 模式定义
+class ExecutionMode(Enum):
+    AGENT = "agent"      # Agent 推理模式
+    SHELL = "shell"      # 直接 shell 模式
 
-# _show_config() 自动遍历
-def _show_config(config, agent):
-    for section_name, section_config in get_config_sections(config):
-        for field_name, field_value in get_display_fields(section_config):
-            if should_display(field_name, section_config):
-                print(format_line(field_name, field_value))
+# 模式切换
+class ModeManager:
+    def __init__(self):
+        self.mode = ExecutionMode.AGENT
+
+    def switch(self, mode: str):
+        self.mode = ExecutionMode(mode)
+        print(f"已切换到 {mode} 模式")
+
+    def execute(self, command: str):
+        if self.mode == ExecutionMode.SHELL:
+            # 直接执行 shell 命令
+            return subprocess.run(command, shell=True)
+        else:
+            # 通过 Agent 推理执行
+            return self.agent.run(command)
 ```
 
 ---
 
-### v0.6.1 - Hooks 机制
+### v0.8.0 - Hooks 机制
 
 **目标**: 提供优雅的扩展机制，解耦组件间的依赖。
 
@@ -260,48 +325,68 @@ agent.hooks.on_name_changed = lambda t, old, new: update_display(t, new)
 
 ---
 
-### v0.6.2 - 事件驱动架构
+### v0.9.0 - 配置系统优化
 
-**目标**: 提供更灵活的事件订阅机制，支持多监听者。
-
-**背景**:
-Hooks 是一对一的回调，事件驱动支持多对多的发布订阅模式，更适合复杂场景。
+**目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
 
 **任务列表**:
-- [ ] 实现 `Event` 和 `EventEmitter` 基类
-- [ ] 定义 Agent 核心事件类型
-- [ ] 支持同步和异步事件处理
-- [ ] 提供事件过滤和优先级机制
+- [ ] 配置自动显示 - `_show_config()` 自动遍历 config 对象字段
+- [ ] 配置自动保存 - `_init_config_file()` 自动生成所有配置字段
+- [ ] 条件显示支持 - 支持类似 `if config.memory.type == "hybrid"` 的条件逻辑
+- [ ] 字段排序控制 - 支持自定义显示顺序
 
 **技术方案**:
 ```python
-# 事件定义
-class AgentEvents:
-    name_changed = Event()       # (name_type, old_value, new_value)
-    tool_executed = Event()      # (tool_name, result)
-    memory_changed = Event()     # (action, entry_id)
-    round_started = Event()      # (round_id)
-    round_completed = Event()    # (round_id, stats)
+# 方案：使用 dataclass 字段元数据
+@dataclass
+class MemoryConfig:
+    max_messages: int = field(default=50, metadata={"display": True, "order": 1})
+    clean_threshold: int = field(default=3, metadata={"display": True, "order": 10})
+    long_term_storage_path: str = field(
+        default=".nano_agent/long_term_memory",
+        metadata={"display": True, "condition": "type == 'hybrid'"}
+    )
 
-# 订阅事件
-@agent.events.name_changed.subscribe
-def on_name_changed(name_type, old_value, new_value):
-    update_display(name_type, new_value)
-
-# 多监听者
-agent.events.tool_executed.subscribe(logger.log_tool)
-agent.events.tool_executed.subscribe(monitor.track_tool)
+# _show_config() 自动遍历
+def _show_config(config, agent):
+    for section_name, section_config in get_config_sections(config):
+        for field_name, field_value in get_display_fields(section_config):
+            if should_display(field_name, section_config):
+                print(format_line(field_name, field_value))
 ```
 
-**与 Hooks 的区别**:
-| 特性 | Hooks | Events |
-|-----|-------|--------|
-| 监听者数量 | 单个 | 多个 |
-| 触发时机 | 同步 | 同步/异步 |
-| 适用场景 | 简单回调 | 复杂事件流 |
+---
+
+### v0.10.0 - 反思与规划能力
+
+**目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
+
+**任务列表**:
+- [ ] 反思能力 - 执行后自我评估结果质量并调整策略
+- [ ] RCI (Reason-Call-Interact) 反思循环实现
+- [ ] Plan-Execute 模式增强 - 于反思优化计划
+
+**技术方案**:
+```python
+# 反思循环示例
+class ReflectiveAgent(ReActAgent):
+    def run_with_reflection(self, task: str) -> str:
+        # 1. 初始执行
+        result = self.run(task)
+
+        # 2. 反思评估
+        reflection = self.reflect(task, result)
+
+        # 3. 如果质量不足，调整策略重试
+        if reflection.needs_improvement:
+            result = self.run(task, strategy=reflection.suggested_strategy)
+
+        return result
+```
 
 ---
-### v0.7.0 - 主动学习能力
+
+### v0.11.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
 
@@ -318,17 +403,17 @@ class LearningAgent(ReActAgent):
     def learn_from_interaction(self, interaction: dict):
         # 1. 提取知识点
         knowledge = self.extract_knowledge(interaction)
-        
+
         # 2. 建立关联
         connections = self.find_connections(knowledge)
-        
+
         # 3. 存储到长期记忆
         self.memorize(knowledge, connections)
 ```
 
 ---
 
-### v0.8.0 - 个性化与角色
+### v0.12.0 - 个性化与角色
 
 **目标**: 支持可配置的 Agent 性格和专业领域深度。
 
@@ -354,7 +439,7 @@ persona:
 
 ---
 
-### v0.9.0 - 多 Agent 协作
+### v0.13.0 - 多 Agent 协作
 
 **目标**: 支持多 Agent 协作和人机协作机制。
 
@@ -379,7 +464,7 @@ persona:
 
 ---
 
-### v1.0.0 - 安全与体验
+### v0.14.0 - 安全与体验
 
 **目标**: 完善安全机制和用户体验。
 
@@ -396,13 +481,16 @@ persona:
 
 | 版本 | 特性 | 说明 |
 |------|------|------|
-| v0.6.0 | 反思与规划 | Plan-Execute、RCI 反思循环 |
-| v0.6.1 | Hooks 机制 | 解耦组件间依赖，优雅的回调扩展 |
-| v0.6.2 | 事件驱动 | 多监听者订阅，复杂事件流支持 |
-| v0.7.0 | 主动学习 | 知识提取、语义搜索 |
-| v0.8.0 | 个性化角色 | 可配置性格、专业领域 |
-| v0.9.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
-| v1.0.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
+| v0.5.1 | 功能优化与增强 ✅ | CLI 增强、/init、/config、/memory、/setname、/undo 等 |
+| v0.6.0 | 渐进式执行与 Git 集成 | 前置规划、逐步执行、用户确认、/undo 回退 |
+| v0.7.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
+| v0.8.0 | Hooks 机制 | 解耦组件间依赖，优雅的回调扩展 |
+| v0.9.0 | 配置系统优化 | 自动显示/保存配置项 |
+| v0.10.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
+| v0.11.0 | 主动学习 | 知识提取、语义搜索 |
+| v0.12.0 | 个性化角色 | 可配置性格、专业领域 |
+| v0.13.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
+| v0.14.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
 
 ---
 
