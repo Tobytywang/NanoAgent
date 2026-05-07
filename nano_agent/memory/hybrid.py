@@ -1,22 +1,26 @@
 """
-Hybrid memory implementation - working memory + long-term memory.
+混合内存实现 - 工作内存 + 长期内存。
 """
 
+import re
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from .base import BaseMemory
 from .short_term import ShortTermMemory
 from .long_term import LongTermMemory, LongTermEntry
+from .stopwords import ENGLISH_STOP_WORDS, CHINESE_STOP_WORDS
+from .protocols import SessionCapable
 
 
 @dataclass
 class HybridMemory(BaseMemory):
     """
-    Hybrid memory: working memory (short-term) + long-term memory.
+    混合内存：工作内存（短期）+ 长期内存。
 
-    Working memory holds the current conversation context.
-    Long-term memory persists across sessions and can be searched.
+    工作内存保存当前对话上下文。
+    长期内存跨会话持久化，支持搜索。
     """
 
     working_memory: ShortTermMemory
@@ -26,66 +30,66 @@ class HybridMemory(BaseMemory):
     _llm: Any = field(default=None, repr=False)
 
     def __post_init__(self):
-        """Initialize session ID if not set."""
+        """如未设置则初始化会话 ID。"""
         if not self.session_id:
             import uuid
             self.session_id = f"session_{uuid.uuid4().hex[:8]}"
 
     def set_llm(self, llm) -> None:
-        """Set LLM for auto-extraction."""
+        """设置用于自动提取的 LLM。"""
         self._llm = llm
 
-    # === BaseMemory Interface ===
+    # === BaseMemory 接口 ===
 
     def add(self, message: dict) -> None:
-        """Add a message to working memory."""
+        """添加消息到工作内存。"""
         self.working_memory.add(message)
 
     def get_all(self) -> list:
-        """Get all messages from working memory."""
+        """从工作内存获取所有消息。"""
         return self.working_memory.get_all()
 
     def clear(self) -> None:
-        """Clear working memory (keep long-term memory)."""
+        """清空工作内存（保留长期内存）。"""
         self.working_memory.clear()
 
     def get_context(self, max_messages: int | None = None) -> list:
         """
-        Get context for LLM.
+        获取 LLM 上下文。
 
-        Returns working memory messages, optionally limited.
-        Long-term memory is retrieved separately via recall().
+        返回工作内存消息，可选限制数量。
+        长期内存通过 recall() 方法单独检索。
         """
         return self.working_memory.get_context(max_messages)
 
-    # === Convenience Methods ===
+    # === 便捷方法 ===
 
     def add_user_message(self, content: str) -> None:
-        """Add a user message to working memory."""
+        """添加用户消息到工作内存。"""
         self.working_memory.add_user_message(content)
 
     def add_assistant_message(self, content: str, tool_calls: list | None = None) -> None:
-        """Add an assistant message to working memory."""
+        """添加助手消息到工作内存。"""
         self.working_memory.add_assistant_message(content, tool_calls)
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        """Add a tool result to working memory."""
+        """添加工具结果到工作内存。"""
         self.working_memory.add_tool_result(tool_call_id, content)
 
     def set_system_prompt(self, prompt: str) -> None:
-        """Set the system prompt in working memory."""
+        """设置工作内存中的系统提示。"""
         self.working_memory.set_system_prompt(prompt)
 
     @property
     def system_prompt(self) -> str:
-        """Get the system prompt from working memory."""
+        """从工作内存获取系统提示。"""
         return self.working_memory.system_prompt
 
     def __len__(self) -> int:
-        """Return number of messages in working memory."""
+        """返回工作内存中的消息数量。"""
         return len(self.working_memory)
 
-    # === Long-Term Memory Operations ===
+    # === 长期内存操作 ===
 
     def memorize(
         self,
@@ -96,19 +100,19 @@ class HybridMemory(BaseMemory):
         metadata: dict | None = None
     ) -> tuple[str, bool]:
         """
-        Store information in long-term memory.
+        将信息存储到长期内存。
 
-        Args:
-            content: The information to remember
-            category: Type of memory (fact, preference, experience, task, note)
-            keywords: Keywords for search (auto-extracted if None)
-            importance: Importance score (0-1)
-            metadata: Additional metadata
+        参数:
+            content: 要记忆的信息
+            category: 记忆类型（fact, preference, experience, task, note）
+            keywords: 搜索关键字（如为 None 则自动提取）
+            importance: 重要性评分（0-1）
+            metadata: 附加元数据
 
-        Returns:
-            Tuple of (entry_id, is_new) where is_new is True if new entry was created
+        返回:
+            元组 (entry_id, is_new)，is_new 为 True 表示创建了新条目
         """
-        # Auto-extract keywords if not provided
+        # 如未提供关键字则自动提取
         if keywords is None:
             keywords = self._extract_keywords(content)
 
@@ -123,104 +127,73 @@ class HybridMemory(BaseMemory):
 
     def recall(self, query: str, limit: int = 5) -> list[LongTermEntry]:
         """
-        Search long-term memory.
+        搜索长期内存。
 
-        Args:
-            query: Search query
-            limit: Maximum number of results
+        参数:
+            query: 搜索查询
+            limit: 最大结果数量
 
-        Returns:
-            List of matching memory entries
+        返回:
+            匹配的记忆条目列表
         """
         return self.long_term_memory.search(query, limit)
 
     def get_all_long_term(self) -> list[LongTermEntry]:
-        """Get all long-term memories."""
+        """获取所有长期记忆。"""
         return self.long_term_memory.get_all()
 
     def forget(self, entry_id: str) -> bool:
-        """Delete a long-term memory entry."""
+        """删除长期记忆条目。"""
         return self.long_term_memory.delete(entry_id)
 
     def clear_long_term(self) -> None:
-        """Clear all long-term memories."""
+        """清空所有长期记忆。"""
         self.long_term_memory.clear()
 
-    # === Auto-Extraction ===
+    # === 自动提取 ===
 
     def _extract_keywords(self, content: str) -> list[str]:
         """
-        Extract keywords from content (supports Chinese and English).
+        从内容中提取关键字（支持中英文）。
         """
-        import re
-
-        # English stop words
-        stop_words = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "must", "shall",
-            "can", "need", "dare", "ought", "used", "to", "of", "in",
-            "for", "on", "with", "at", "by", "from", "as", "into",
-            "through", "during", "before", "after", "above", "below",
-            "between", "under", "again", "further", "then", "once",
-            "here", "there", "when", "where", "why", "how", "all", "each",
-            "few", "more", "most", "other", "some", "such", "no", "nor",
-            "not", "only", "own", "same", "so", "than", "too", "very",
-            "just", "and", "but", "if", "or", "because", "until", "while",
-            "this", "that", "these", "those", "i", "me", "my", "myself",
-            "we", "our", "ours", "ourselves", "you", "your", "yours",
-            "yourself", "yourselves", "he", "him", "his", "himself",
-            "she", "her", "hers", "herself", "it", "its", "itself",
-            "they", "them", "their", "theirs", "themselves", "what",
-            "which", "who", "whom", "this", "that", "am"
-        }
-
-        # Chinese stop words (common function words)
-        chinese_stop_words = {
-            "的", "是", "在", "了", "和", "与", "或", "也", "都", "就",
-            "着", "过", "会", "能", "要", "有", "这", "那", "我", "你",
-            "他", "她", "它", "们", "个", "上", "下", "不", "没", "很",
-            "把", "被", "给", "让", "对", "为", "以", "及", "等", "但"
-        }
-
         keywords = []
 
-        # Extract English words (2+ chars)
+        # 提取英文单词（2字符及以上）
         english_words = re.findall(r'[a-zA-Z]{2,}', content.lower())
-        keywords.extend([w for w in english_words if w not in stop_words])
+        keywords.extend([w for w in english_words if w not in ENGLISH_STOP_WORDS])
 
-        # Extract Chinese segments (2-4 chars sliding window)
+        # 提取中文片段（2-4字符滑动窗口）
         chinese_matches = re.findall(r'[一-鿿]+', content)
         for chars in chinese_matches:
-            # Always use sliding window for better matching
+            # 始终使用滑动窗口以获得更好的匹配
             for i in range(len(chars)):
-                for length in [4, 3, 2]:  # Prefer longer segments
+                for length in [4, 3, 2]:  # 优先较长的片段
                     if i + length <= len(chars):
                         segment = chars[i:i+length]
-                        if segment not in chinese_stop_words:
+                        if segment not in CHINESE_STOP_WORDS:
                             keywords.append(segment)
 
-        # Deduplicate and limit (preserve order)
+        # 去重并限制数量（保持顺序）
         keywords = list(dict.fromkeys(keywords))
         return keywords[:15]
 
     def extract_to_long_term(self, content: str | None = None) -> list[str]:
         """
-        Extract important information to long-term memory using LLM.
+        使用 LLM 提取重要信息到长期内存。
 
-        Args:
-            content: Content to analyze (uses recent messages if None)
+        参数:
+            content: 要分析的内容（如为 None 则使用最近的消息）
 
-        Returns:
-            List of extracted entry IDs
+        返回:
+            提取的条目 ID 列表
         """
         if not self._llm:
             return []
 
-        # Get content from recent messages if not provided
+        # 如未提供内容则从最近消息获取
         if content is None:
             messages = self.working_memory.get_all()
-            # Get last few user/assistant messages
+            # 获取最近几条用户/助手消息
             recent = [
                 m for m in messages[-10:]
                 if m.get("role") in ("user", "assistant")
@@ -233,7 +206,7 @@ class HybridMemory(BaseMemory):
         if not content or len(content) < 50:
             return []
 
-        # Use LLM to extract important information
+        # 使用 LLM 提取重要信息
         extraction_prompt = f"""Analyze the following conversation and extract important information that should be remembered for future sessions.
 
 Focus on:
@@ -261,11 +234,11 @@ Only output the JSON array, nothing else."""
                 tools=None
             )
 
-            # Parse response
+            # 解析响应
             import json
             import re
 
-            # Extract JSON from response
+            # 从响应中提取 JSON
             json_match = re.search(r'\[[\s\S]*\]', response)
             if not json_match:
                 return []
@@ -287,34 +260,33 @@ Only output the JSON array, nothing else."""
         except Exception:
             return []
 
-    # === Session Management ===
+    # === 会话管理 ===
 
     def new_session(self) -> str:
-        """Start a new session (clear working memory, keep long-term)."""
-        if hasattr(self.working_memory, 'new_session'):
+        """开始新会话（清空工作内存，保留长期内存）。"""
+        if isinstance(self.working_memory, SessionCapable):
             return self.working_memory.new_session()
         else:
-            import uuid
             self.session_id = f"session_{uuid.uuid4().hex[:8]}"
             self.working_memory.clear()
             return self.session_id
 
     def load_session(self, session_id: str) -> bool:
         """
-        Load an existing session.
+        加载已有会话。
 
-        Args:
-            session_id: The session to load
+        参数:
+            session_id: 要加载的会话 ID
 
-        Returns:
-            True if session was loaded, False if not found
+        返回:
+            如会话已加载返回 True，未找到返回 False
         """
-        if hasattr(self.working_memory, 'load_session'):
+        if isinstance(self.working_memory, SessionCapable):
             return self.working_memory.load_session(session_id)
         return False
 
     def list_sessions(self) -> list[str]:
-        """List all available sessions."""
-        if hasattr(self.working_memory, 'list_sessions'):
+        """列出所有可用会话。"""
+        if isinstance(self.working_memory, SessionCapable):
             return self.working_memory.list_sessions()
         return []

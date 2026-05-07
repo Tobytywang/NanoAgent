@@ -1,5 +1,5 @@
 """
-Long-term memory implementation - persistent knowledge storage.
+长期内存实现 - 持久化知识存储。
 """
 
 import json
@@ -10,10 +10,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from .stopwords import ENGLISH_STOP_WORDS, CHINESE_STOP_WORDS
+
 
 @dataclass
 class LongTermEntry:
-    """A single long-term memory entry."""
+    """单个长期记忆条目。"""
 
     id: str
     content: str
@@ -34,7 +36,7 @@ class LongTermEntry:
         importance: float = 0.5,
         metadata: dict | None = None
     ) -> "LongTermEntry":
-        """Create a new long-term memory entry."""
+        """创建新的长期记忆条目。"""
         return cls(
             id=f"ltm_{uuid.uuid4().hex[:8]}",
             content=content,
@@ -47,7 +49,7 @@ class LongTermEntry:
         )
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
+        """转换为字典以便序列化。"""
         return {
             "id": self.id,
             "content": self.content,
@@ -61,7 +63,7 @@ class LongTermEntry:
 
     @classmethod
     def from_dict(cls, data: dict) -> "LongTermEntry":
-        """Create from dictionary."""
+        """从字典创建实例。"""
         return cls(
             id=data["id"],
             content=data["content"],
@@ -75,7 +77,7 @@ class LongTermEntry:
 
 
 class LongTermMemory:
-    """Long-term memory management with keyword-based search."""
+    """长期内存管理，支持基于关键字的搜索。"""
 
     def __init__(self, storage_path: str = ".nano_agent/long_term_memory"):
         self.storage_path = Path(storage_path)
@@ -84,11 +86,11 @@ class LongTermMemory:
         self._load()
 
     def _get_storage_file(self) -> Path:
-        """Get the storage file path."""
+        """获取存储文件路径。"""
         return self.storage_path / "long_term_memory.jsonl"
 
     def _load(self) -> None:
-        """Load entries from storage."""
+        """从存储加载条目。"""
         storage_file = self._get_storage_file()
         if not storage_file.exists():
             return
@@ -104,11 +106,11 @@ class LongTermMemory:
                     except json.JSONDecodeError:
                         continue
 
-        # Sort by importance (higher first), then by created_at (newer first)
+        # 按重要性排序（高优先），然后按创建时间排序（新优先）
         self.entries.sort(key=lambda e: (-e.importance, e.created_at), reverse=True)
 
     def _save(self) -> None:
-        """Save all entries to storage."""
+        """保存所有条目到存储。"""
         storage_file = self._get_storage_file()
         with open(storage_file, "w", encoding="utf-8") as f:
             for entry in self.entries:
@@ -124,24 +126,24 @@ class LongTermMemory:
         metadata: dict | None = None
     ) -> tuple[str, bool]:
         """
-        Add or update a long-term memory entry.
+        添加或更新长期记忆条目。
 
-        Args:
-            content: The memory content
-            category: Type of memory (fact, preference, experience, task, note)
-            keywords: Keywords for search
-            source_session: Session ID where this memory was created
-            importance: Importance score (0-1)
-            metadata: Additional metadata
+        参数:
+            content: 记忆内容
+            category: 记忆类型（fact, preference, experience, task, note）
+            keywords: 搜索关键字
+            source_session: 创建此记忆的会话 ID
+            importance: 重要性评分（0-1）
+            metadata: 附加元数据
 
-        Returns:
-            Tuple of (entry_id, is_new) where is_new is True if new entry was created
+        返回:
+            元组 (entry_id, is_new)，is_new 为 True 表示创建了新条目
         """
-        # Check for similar existing entry
+        # 检查是否存在相似条目
         similar_entry = self._find_similar_entry(content, keywords, category, metadata)
 
         if similar_entry:
-            # Update existing entry
+            # 更新已有条目
             similar_entry.content = content
             similar_entry.keywords = keywords or []
             similar_entry.source_session = source_session
@@ -151,7 +153,7 @@ class LongTermMemory:
             self._save()
             return (similar_entry.id, False)
 
-        # Create new entry
+        # 创建新条目
         entry = LongTermEntry.create(
             content=content,
             category=category,
@@ -168,106 +170,78 @@ class LongTermMemory:
 
     def search(self, query: str, limit: int = 5) -> list[LongTermEntry]:
         """
-        Search for memories using keyword matching (supports Chinese).
+        使用关键字匹配搜索记忆（支持中文）。
 
-        Args:
-            query: Search query
-            limit: Maximum number of results
+        参数:
+            query: 搜索查询
+            limit: 最大结果数量
 
-        Returns:
-            List of matching entries
+        返回:
+            匹配的条目列表
         """
-        # Extract keywords from query
+        # 从查询中提取关键字
         query_keywords = self._extract_search_keywords(query)
 
         if not query_keywords:
             return []
 
-        # Score each entry
+        # 为每个条目评分
         scored_entries = []
         for entry in self.entries:
-            # Check keyword matches
+            # 检查关键字匹配
             entry_keywords = set(k.lower() for k in entry.keywords)
             content_keywords = self._extract_search_keywords(entry.content)
 
-            # Calculate match score
+            # 计算匹配分数
             keyword_matches = len(query_keywords & entry_keywords)
             content_matches = len(query_keywords & content_keywords)
 
-            # Weighted score: keywords worth more than content matches
+            # 加权评分：关键字匹配权重高于内容匹配
             score = keyword_matches * 2 + content_matches
 
             if score > 0:
-                # Boost by importance
+                # 按重要性加权
                 final_score = score * (0.5 + entry.importance * 0.5)
                 scored_entries.append((final_score, entry))
 
-        # Sort by score (descending)
+        # 按分数降序排序
         scored_entries.sort(key=lambda x: x[0], reverse=True)
 
         return [entry for _, entry in scored_entries[:limit]]
 
     def _extract_search_keywords(self, text: str) -> set[str]:
         """
-        Extract keywords for search (supports Chinese and English).
+        提取搜索关键字（支持中英文）。
         """
-        # English stop words
-        stop_words = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "must", "shall",
-            "can", "need", "dare", "ought", "used", "to", "of", "in",
-            "for", "on", "with", "at", "by", "from", "as", "into",
-            "through", "during", "before", "after", "above", "below",
-            "between", "under", "again", "further", "then", "once",
-            "here", "there", "when", "where", "why", "how", "all", "each",
-            "few", "more", "most", "other", "some", "such", "no", "nor",
-            "not", "only", "own", "same", "so", "than", "too", "very",
-            "just", "and", "but", "if", "or", "because", "until", "while",
-            "this", "that", "these", "those", "i", "me", "my", "myself",
-            "we", "our", "ours", "ourselves", "you", "your", "yours",
-            "yourself", "yourselves", "he", "him", "his", "himself",
-            "she", "her", "hers", "herself", "it", "its", "itself",
-            "they", "them", "their", "theirs", "themselves", "what",
-            "which", "who", "whom", "this", "that", "am"
-        }
-
-        # Chinese stop words
-        chinese_stop_words = {
-            "的", "是", "在", "了", "和", "与", "或", "也", "都", "就",
-            "着", "过", "会", "能", "要", "有", "这", "那", "我", "你",
-            "他", "她", "它", "们", "个", "上", "下", "不", "没", "很",
-            "把", "被", "给", "让", "对", "为", "以", "及", "等", "但"
-        }
-
         keywords = []
 
-        # Extract English words
+        # 提取英文单词
         english_words = re.findall(r'[a-zA-Z]{2,}', text.lower())
-        keywords.extend([w for w in english_words if w not in stop_words])
+        keywords.extend([w for w in english_words if w not in ENGLISH_STOP_WORDS])
 
-        # Extract Chinese segments
+        # 提取中文片段
         chinese_matches = re.findall(r'[一-鿿]+', text)
         for chars in chinese_matches:
-            # Always use sliding window for better matching
+            # 始终使用滑动窗口以获得更好的匹配
             for i in range(len(chars)):
                 for length in [4, 3, 2]:
                     if i + length <= len(chars):
                         segment = chars[i:i+length]
-                        if segment not in chinese_stop_words:
+                        if segment not in CHINESE_STOP_WORDS:
                             keywords.append(segment)
 
         return set(k.lower() for k in keywords)
 
     def _calculate_similarity(self, entry: LongTermEntry, new_keywords: set[str]) -> float:
-        """Calculate similarity between entry and new content based on keyword overlap.
+        """
+        基于关键字重叠计算条目与新内容的相似度。
 
-        Args:
-            entry: Existing memory entry
-            new_keywords: Keywords from new content
+        参数:
+            entry: 已有的记忆条目
+            new_keywords: 新内容的关键字
 
-        Returns:
-            Similarity score from 0.0 to 1.0
+        返回:
+            相似度评分，范围 0.0 到 1.0
         """
         entry_keywords = set(k.lower() for k in entry.keywords)
 
@@ -286,33 +260,34 @@ class LongTermMemory:
         category: str,
         metadata: dict | None = None
     ) -> LongTermEntry | None:
-        """Find existing entry that is similar to new content.
-
-        Args:
-            content: New content to store
-            keywords: Keywords for new content
-            category: Category of new content
-            metadata: Metadata of new content
-
-        Returns:
-            Similar entry if found, else None
         """
-        # Extract keywords from new content
+        查找与新内容相似的已有条目。
+
+        参数:
+            content: 要存储的新内容
+            keywords: 新内容的关键字
+            category: 新内容的类别
+            metadata: 新内容的元数据
+
+        返回:
+            如找到相似条目则返回，否则返回 None
+        """
+        # 从新内容提取关键字
         new_keywords = set(k.lower() for k in keywords) if keywords else self._extract_search_keywords(content)
 
         for entry in self.entries:
-            # Same category required
+            # 要求类别相同
             if entry.category != category:
                 continue
 
-            # Same metadata.type (e.g., user_name, agent_name) is always duplicate
+            # 元数据中 type 相同（如 user_name、agent_name）则视为重复
             if metadata and entry.metadata:
                 new_type = metadata.get("type")
                 existing_type = entry.metadata.get("type")
                 if new_type and existing_type and new_type == existing_type:
                     return entry
 
-            # Keyword similarity > 70%
+            # 关键字相似度超过 70%
             similarity = self._calculate_similarity(entry, new_keywords)
             if similarity > 0.7:
                 return entry
@@ -320,15 +295,15 @@ class LongTermMemory:
         return None
 
     def get_all(self) -> list[LongTermEntry]:
-        """Get all memory entries."""
+        """获取所有记忆条目。"""
         return self.entries.copy()
 
     def get_by_category(self, category: str) -> list[LongTermEntry]:
-        """Get entries by category."""
+        """按类别获取条目。"""
         return [e for e in self.entries if e.category == category]
 
     def get_by_id(self, entry_id: str) -> LongTermEntry | None:
-        """Get entry by ID."""
+        """按 ID 获取条目。"""
         for entry in self.entries:
             if entry.id == entry_id:
                 return entry
@@ -336,13 +311,13 @@ class LongTermMemory:
 
     def delete(self, entry_id: str) -> bool:
         """
-        Delete a memory entry.
+        删除记忆条目。
 
-        Args:
-            entry_id: The entry ID to delete
+        参数:
+            entry_id: 要删除的条目 ID
 
-        Returns:
-            True if deleted, False if not found
+        返回:
+            删除成功返回 True，未找到返回 False
         """
         for i, entry in enumerate(self.entries):
             if entry.id == entry_id:
@@ -352,16 +327,16 @@ class LongTermMemory:
         return False
 
     def clear(self) -> None:
-        """Clear all memories."""
+        """清空所有记忆。"""
         self.entries = []
         self._save()
 
     def count(self) -> int:
-        """Get total number of memories."""
+        """获取记忆总数。"""
         return len(self.entries)
 
     def update_importance(self, entry_id: str, importance: float) -> bool:
-        """Update the importance of an entry."""
+        """更新条目的重要性。"""
         entry = self.get_by_id(entry_id)
         if entry:
             entry.importance = max(0.0, min(1.0, importance))
