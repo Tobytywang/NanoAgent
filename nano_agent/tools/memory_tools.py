@@ -4,6 +4,7 @@ Memory tools for long-term memory operations.
 
 import re
 from .base import BaseTool, ToolResult
+from ..utils.patterns import USER_NAME_PATTERNS, AGENT_NAME_PATTERNS
 
 
 class MemorizeTool(BaseTool):
@@ -127,23 +128,7 @@ Examples:
                 # - "我的名字" (my name) refers to the Agent's name
                 # - "用户的名字" (user's name) refers to the user's name
 
-                # User name patterns (explicit user reference)
-                user_patterns = [
-                    r"用户名[是为]\s*([^，。！,.]+)",
-                    r"用户的名字[是为]\s*([^，。！,.]+)",
-                    r"用户叫\s*([^，。！,.]+)",
-                ]
-                # Agent name patterns (self-reference or user addressing agent)
-                agent_patterns = [
-                    r"Agent名[是为]\s*([^，。！,.]+)",
-                    r"Agent的名字[是为]\s*([^，。！,.]+)",
-                    r"你的名字[是为叫]\s*([^，。！,.]+)",
-                    r"你叫\s*([^，。！,.]+)",
-                    r"我的名字[是为]\s*([^，。！,.]+)",
-                    r"我叫\s*([^，。！,.]+)",
-                ]
-
-                for pattern in user_patterns:
+                for pattern in USER_NAME_PATTERNS:
                     match = re.search(pattern, content)
                     if match:
                         detected_name_type = "user_name"
@@ -151,7 +136,7 @@ Examples:
                         break
 
                 if not detected_name_type:
-                    for pattern in agent_patterns:
+                    for pattern in AGENT_NAME_PATTERNS:
                         match = re.search(pattern, content)
                         if match:
                             detected_name_type = "agent_name"
