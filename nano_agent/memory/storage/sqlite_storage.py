@@ -1,5 +1,5 @@
 """
-SQLite storage backend for persistent memory.
+持久化内存的 SQLite 存储后端。
 """
 
 import sqlite3
@@ -11,21 +11,21 @@ from .base import BaseStorage, MemoryEntry
 
 
 class SQLiteStorage(BaseStorage):
-    """SQLite-based storage backend for persistent memory."""
+    """持久化内存的 SQLite 存储后端。"""
 
     def __init__(self, db_path: str = ".nano_agent/memory.db"):
         """
-        Initialize SQLite storage.
+        初始化 SQLite 存储。
 
-        Args:
-            db_path: Path to SQLite database file
+        参数:
+            db_path: SQLite 数据库文件路径
         """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _init_db(self) -> None:
-        """Initialize database schema."""
+        """初始化数据库模式。"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS memory_entries (
@@ -58,13 +58,13 @@ class SQLiteStorage(BaseStorage):
 
     def save(self, entry: MemoryEntry) -> str:
         """
-        Save a memory entry.
+        保存记忆条目。
 
-        Args:
-            entry: The memory entry to save
+        参数:
+            entry: 要保存的记忆条目
 
-        Returns:
-            The entry id
+        返回:
+            条目 ID
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
@@ -84,13 +84,13 @@ class SQLiteStorage(BaseStorage):
 
     def load_session(self, session_id: str) -> list[MemoryEntry]:
         """
-        Load all entries for a session.
+        加载会话的所有条目。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            List of memory entries, ordered by timestamp
+        返回:
+            记忆条目列表，按时间戳排序
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -115,14 +115,14 @@ class SQLiteStorage(BaseStorage):
 
     def load_recent(self, session_id: str, limit: int) -> list[MemoryEntry]:
         """
-        Load recent entries for a session.
+        加载会话的最近条目。
 
-        Args:
-            session_id: The session identifier
-            limit: Maximum number of entries to load
+        参数:
+            session_id: 会话标识符
+            limit: 最大加载条目数
 
-        Returns:
-            List of recent memory entries
+        返回:
+            最近的记忆条目列表
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -148,10 +148,10 @@ class SQLiteStorage(BaseStorage):
 
     def delete_session(self, session_id: str) -> None:
         """
-        Delete all entries for a session.
+        删除会话的所有条目。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
@@ -161,10 +161,10 @@ class SQLiteStorage(BaseStorage):
 
     def delete_summary(self, session_id: str) -> None:
         """
-        Delete summary record for a session.
+        删除会话的摘要记录。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
@@ -174,10 +174,10 @@ class SQLiteStorage(BaseStorage):
 
     def get_most_recent_session(self) -> str | None:
         """
-        Get the most recently active session.
+        获取最近活动的会话。
 
-        Returns:
-            Session ID of most recent session, or None if no sessions exist
+        返回:
+            最近会话的 ID，如无会话则返回 None
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
@@ -192,13 +192,13 @@ class SQLiteStorage(BaseStorage):
 
     def get_sessions_below_threshold(self, threshold: int) -> list[str]:
         """
-        Get sessions with message count below threshold.
+        获取消息数量低于阈值的会话。
 
-        Args:
-            threshold: Minimum message count (exclusive)
+        参数:
+            threshold: 最小消息数量（不包含）
 
-        Returns:
-            List of session IDs with fewer messages than threshold
+        返回:
+            消息数量少于阈值的会话 ID 列表
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
@@ -211,10 +211,10 @@ class SQLiteStorage(BaseStorage):
 
     def list_sessions(self) -> list[str]:
         """
-        List all session identifiers.
+        列出所有会话标识符。
 
-        Returns:
-            List of session ids
+        返回:
+            会话 ID 列表
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
@@ -225,13 +225,13 @@ class SQLiteStorage(BaseStorage):
 
     def session_exists(self, session_id: str) -> bool:
         """
-        Check if a session exists.
+        检查会话是否存在。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            True if session exists
+        返回:
+            会话存在返回 True
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
@@ -241,13 +241,13 @@ class SQLiteStorage(BaseStorage):
 
     def get_session_info(self, session_id: str) -> dict[str, Any]:
         """
-        Get session information.
+        获取会话信息。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            Dictionary with session info
+        返回:
+            包含会话信息的字典
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
@@ -267,17 +267,17 @@ class SQLiteStorage(BaseStorage):
             }
 
     def clear(self) -> None:
-        """Clear all entries from the database."""
+        """清空数据库中的所有条目。"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM memory_entries")
             conn.commit()
 
     def get_stats(self) -> dict[str, Any]:
         """
-        Get storage statistics.
+        获取存储统计信息。
 
-        Returns:
-            Dictionary with storage stats
+        返回:
+            包含存储统计的字典
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
@@ -295,12 +295,12 @@ class SQLiteStorage(BaseStorage):
 
     def save_summary(self, session_id: str, summary: str, message_count: int) -> None:
         """
-        Save session summary.
+        保存会话摘要。
 
-        Args:
-            session_id: The session identifier
-            summary: The summary text
-            message_count: Number of messages in the session
+        参数:
+            session_id: 会话标识符
+            summary: 摘要文本
+            message_count: 会话中的消息数量
         """
         from datetime import datetime
         with sqlite3.connect(self.db_path) as conn:
@@ -318,13 +318,13 @@ class SQLiteStorage(BaseStorage):
 
     def load_summary(self, session_id: str) -> dict | None:
         """
-        Load session summary.
+        加载会话摘要。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            Summary dict or None if not exists
+        返回:
+            摘要字典，如不存在返回 None
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -345,13 +345,13 @@ class SQLiteStorage(BaseStorage):
 
     def summary_exists(self, session_id: str) -> bool:
         """
-        Check if a session summary exists.
+        检查会话摘要是否存在。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            True if summary exists
+        返回:
+            摘要存在返回 True
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""

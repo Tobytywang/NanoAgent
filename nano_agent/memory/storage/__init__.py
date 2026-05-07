@@ -1,5 +1,5 @@
 """
-Storage module for persistent memory.
+持久化内存的存储模块。
 """
 
 from .base import BaseStorage, MemoryEntry

@@ -1,5 +1,5 @@
 """
-Short-term memory implementation - conversation history management.
+短期记忆实现 - 对话历史管理
 """
 
 from dataclasses import dataclass, field
@@ -9,24 +9,24 @@ from .base import BaseMemory
 
 @dataclass
 class ShortTermMemory(BaseMemory):
-    """Short-term memory: conversation history management."""
+    """短期记忆：对话历史管理"""
 
-    max_messages: int = 50  # Maximum number of messages to keep
+    max_messages: int = 50  # 最大消息数量
     system_prompt: str = "You are a helpful AI assistant."
     _messages: list = field(default_factory=list)
 
     def __post_init__(self):
-        """Initialize with system message."""
+        """用系统消息初始化"""
         if not self._messages:
             self._messages = [{"role": "system", "content": self.system_prompt}]
 
     def add(self, message: dict) -> None:
-        """Add a message to history."""
+        """添加消息到历史"""
         self._messages.append(message)
         self._trim_if_needed()
 
     def add_user_message(self, content: str) -> None:
-        """Add a user message."""
+        """添加用户消息"""
         self.add({"role": "user", "content": content})
 
     def add_assistant_message(
@@ -34,14 +34,14 @@ class ShortTermMemory(BaseMemory):
         content: str,
         tool_calls: list | None = None
     ) -> None:
-        """Add an assistant message, optionally with tool calls."""
+        """添加助手消息，可选包含工具调用"""
         msg = {"role": "assistant", "content": content}
         if tool_calls:
             msg["tool_calls"] = tool_calls
         self.add(msg)
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        """Add a tool execution result."""
+        """添加工具执行结果"""
         self.add({
             "role": "tool",
             "tool_call_id": tool_call_id,
@@ -49,19 +49,19 @@ class ShortTermMemory(BaseMemory):
         })
 
     def get_all(self) -> list:
-        """Get all messages."""
+        """获取所有消息"""
         return self._messages.copy()
 
     def clear(self) -> None:
-        """Clear history (keep system message)."""
+        """清除历史（保留系统消息）"""
         self._messages = [{"role": "system", "content": self.system_prompt}]
 
     def get_context(self, max_messages: int | None = None) -> list:
-        """Get context, optionally limited to max_messages."""
+        """获取上下文，可选限制最大消息数"""
         if max_messages is None:
             return self.get_all()
 
-        # Always keep system message
+        # 始终保留系统消息
         if len(self._messages) <= max_messages:
             return self.get_all()
 
@@ -70,21 +70,21 @@ class ShortTermMemory(BaseMemory):
         return [system_msg] + recent
 
     def _trim_if_needed(self) -> None:
-        """Trim old messages if exceeding limit."""
+        """超出限制时裁剪旧消息"""
         if len(self._messages) > self.max_messages:
-            # Keep system message and recent messages
+            # 保留系统消息和最近消息
             system_msg = self._messages[0]
             recent = self._messages[-(self.max_messages - 1):]
             self._messages = [system_msg] + recent
 
     def set_system_prompt(self, prompt: str) -> None:
-        """Set or update the system prompt."""
-        self.system_prompt = prompt  # Update the attribute
+        """设置或更新系统提示"""
+        self.system_prompt = prompt  # 更新属性
         if self._messages and self._messages[0]["role"] == "system":
             self._messages[0]["content"] = prompt
         else:
             self._messages.insert(0, {"role": "system", "content": prompt})
 
     def __len__(self) -> int:
-        """Return number of messages."""
+        """返回消息数量"""
         return len(self._messages)

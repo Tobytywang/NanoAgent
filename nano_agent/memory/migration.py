@@ -1,5 +1,5 @@
 """
-Migration tools for memory storage.
+内存存储迁移工具。
 """
 
 import json
@@ -10,7 +10,7 @@ from .storage import FileStorage, SQLiteStorage, MemoryEntry
 
 
 def _safe_str(text: str) -> str:
-    """Safely convert string, removing invalid Unicode characters."""
+    """安全转换字符串，移除无效的 Unicode 字符。"""
     if not text:
         return text
     try:
@@ -25,23 +25,23 @@ def migrate_file_to_sqlite(
     dry_run: bool = False
 ) -> dict:
     """
-    Migrate sessions from file storage to SQLite storage.
+    从文件存储迁移会话到 SQLite 存储。
 
-    Args:
-        file_dir: Directory containing file-based sessions
-        db_path: Path to SQLite database
-        dry_run: If True, only report what would be migrated without actually migrating
+    参数:
+        file_dir: 包含基于文件的会话的目录
+        db_path: SQLite 数据库路径
+        dry_run: 如为 True，仅报告将要迁移的内容，不实际执行迁移
 
-    Returns:
-        Migration report dict
+    返回:
+        迁移报告字典
     """
     file_storage = FileStorage(base_dir=file_dir)
     sqlite_storage = SQLiteStorage(db_path=db_path)
 
-    # Get all sessions from file storage
+    # 获取文件存储中的所有会话
     file_sessions = file_storage.list_sessions()
 
-    # Get existing sessions in SQLite
+    # 获取 SQLite 中已存在的会话
     sqlite_sessions = set(sqlite_storage.list_sessions())
 
     report = {
@@ -64,12 +64,12 @@ def migrate_file_to_sqlite(
             continue
 
         try:
-            # Load entries from file
+            # 从文件加载条目
             entries = file_storage.load_session(session_id)
 
-            # Save to SQLite (sanitize content to handle surrogates)
+            # 保存到 SQLite（清理内容以处理代理字符）
             for entry in entries:
-                # Sanitize content to remove invalid Unicode characters
+                # 清理内容以移除无效的 Unicode 字符
                 safe_content = _safe_str(entry.content)
                 safe_entry = MemoryEntry(
                     id=entry.id,
@@ -81,7 +81,7 @@ def migrate_file_to_sqlite(
                 )
                 sqlite_storage.save(safe_entry)
 
-            # Migrate summary if exists
+            # 如存在摘要则迁移
             summary = file_storage.load_summary(session_id)
             if summary:
                 safe_summary = _safe_str(summary.get("summary", ""))
@@ -107,14 +107,14 @@ def list_all_sessions(
     db_path: str = ".nano_agent/memory.db"
 ) -> dict:
     """
-    List all sessions from both file and SQLite storage.
+    列出文件和 SQLite 存储中的所有会话。
 
-    Args:
-        file_dir: Directory containing file-based sessions
-        db_path: Path to SQLite database
+    参数:
+        file_dir: 包含基于文件的会话的目录
+        db_path: SQLite 数据库路径
 
-    Returns:
-        Dict with sessions from both sources
+    返回:
+        包含两种存储源会话的字典
     """
     file_storage = FileStorage(base_dir=file_dir)
     sqlite_storage = SQLiteStorage(db_path=db_path)
@@ -122,7 +122,7 @@ def list_all_sessions(
     file_sessions = file_storage.list_sessions()
     sqlite_sessions = sqlite_storage.list_sessions()
 
-    # Get session info for each
+    # 获取每个会话的信息
     file_info = {}
     for session_id in file_sessions:
         info = file_storage.get_session_info(session_id)

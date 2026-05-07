@@ -1,5 +1,5 @@
 """
-Base memory interface.
+记忆基类接口
 """
 
 from abc import ABC, abstractmethod
@@ -7,24 +7,24 @@ from typing import Any
 
 
 class BaseMemory(ABC):
-    """Abstract base class for memory systems."""
+    """记忆系统抽象基类"""
 
     @abstractmethod
     def add(self, message: Any) -> None:
-        """Add a message to memory."""
+        """添加消息到记忆"""
         pass
 
     @abstractmethod
     def get_all(self) -> list:
-        """Get all messages."""
+        """获取所有消息"""
         pass
 
     @abstractmethod
     def clear(self) -> None:
-        """Clear all messages."""
+        """清除所有消息"""
         pass
 
     @abstractmethod
     def get_context(self, max_items: int | None = None) -> list:
-        """Get context, optionally limited to max_items."""
+        """获取上下文，可选限制最大条目数"""
         pass

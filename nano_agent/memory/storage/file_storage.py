@@ -1,5 +1,5 @@
 """
-File-based storage implementation for persistent memory.
+持久化内存的基于文件的存储实现。
 """
 
 import json
@@ -11,27 +11,27 @@ from .base import BaseStorage, MemoryEntry
 
 
 class FileStorage(BaseStorage):
-    """File-based storage using JSONL format."""
+    """使用 JSONL 格式的基于文件的存储。"""
 
     def __init__(self, base_dir: str = ".nano_agent/memory"):
         """
-        Initialize file storage.
+        初始化文件存储。
 
-        Args:
-            base_dir: Base directory for storing memory files
+        参数:
+            base_dir: 存储内存文件的基目录
         """
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def save(self, entry: MemoryEntry) -> str:
         """
-        Save a memory entry to a JSONL file.
+        将记忆条目保存到 JSONL 文件。
 
-        Args:
-            entry: The memory entry to save
+        参数:
+            entry: 要保存的记忆条目
 
-        Returns:
-            The entry id
+        返回:
+            条目 ID
         """
         session_file = self.base_dir / f"{entry.session_id}.jsonl"
         with open(session_file, "a", encoding="utf-8") as f:
@@ -40,13 +40,13 @@ class FileStorage(BaseStorage):
 
     def load_session(self, session_id: str) -> list[MemoryEntry]:
         """
-        Load all entries for a session.
+        加载会话的所有条目。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            List of memory entries, ordered by timestamp
+        返回:
+            记忆条目列表，按时间戳排序
         """
         session_file = self.base_dir / f"{session_id}.jsonl"
         if not session_file.exists():
@@ -59,30 +59,30 @@ class FileStorage(BaseStorage):
                 if line:
                     entries.append(MemoryEntry.from_dict(json.loads(line)))
 
-        # Sort by timestamp
+        # 按时间戳排序
         entries.sort(key=lambda e: e.timestamp)
         return entries
 
     def load_recent(self, session_id: str, limit: int) -> list[MemoryEntry]:
         """
-        Load recent entries for a session.
+        加载会话的最近条目。
 
-        Args:
-            session_id: The session identifier
-            limit: Maximum number of entries to load
+        参数:
+            session_id: 会话标识符
+            limit: 最大加载条目数
 
-        Returns:
-            List of recent memory entries
+        返回:
+            最近的记忆条目列表
         """
         entries = self.load_session(session_id)
         return entries[-limit:] if limit < len(entries) else entries
 
     def delete_session(self, session_id: str) -> None:
         """
-        Delete all entries for a session.
+        删除会话的所有条目。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
         """
         session_file = self.base_dir / f"{session_id}.jsonl"
         if session_file.exists():
@@ -90,10 +90,10 @@ class FileStorage(BaseStorage):
 
     def delete_summary(self, session_id: str) -> None:
         """
-        Delete summary file for a session.
+        删除会话的摘要文件。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
         """
         summary_file = self.base_dir / f"{session_id}_summary.json"
         if summary_file.exists():
@@ -101,10 +101,10 @@ class FileStorage(BaseStorage):
 
     def get_most_recent_session(self) -> str | None:
         """
-        Get the most recently active session based on last_message timestamp.
+        基于最后消息时间戳获取最近活动的会话。
 
-        Returns:
-            Session ID of most recent session, or None if no sessions exist
+        返回:
+            最近会话的 ID，如无会话则返回 None
         """
         sessions = self.list_sessions()
         if not sessions:
@@ -125,13 +125,13 @@ class FileStorage(BaseStorage):
 
     def get_sessions_below_threshold(self, threshold: int) -> list[str]:
         """
-        Get sessions with message count below threshold.
+        获取消息数量低于阈值的会话。
 
-        Args:
-            threshold: Minimum message count (exclusive)
+        参数:
+            threshold: 最小消息数量（不包含）
 
-        Returns:
-            List of session IDs with fewer messages than threshold
+        返回:
+            消息数量少于阈值的会话 ID 列表
         """
         sessions = self.list_sessions()
         low_value = []
@@ -145,10 +145,10 @@ class FileStorage(BaseStorage):
 
     def list_sessions(self) -> list[str]:
         """
-        List all session identifiers.
+        列出所有会话标识符。
 
-        Returns:
-            List of session ids
+        返回:
+            会话 ID 列表
         """
         sessions = []
         for file in self.base_dir.glob("*.jsonl"):
@@ -157,26 +157,26 @@ class FileStorage(BaseStorage):
 
     def session_exists(self, session_id: str) -> bool:
         """
-        Check if a session exists.
+        检查会话是否存在。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            True if session exists
+        返回:
+            会话存在返回 True
         """
         session_file = self.base_dir / f"{session_id}.jsonl"
         return session_file.exists()
 
     def get_session_info(self, session_id: str) -> Optional[dict]:
         """
-        Get session metadata.
+        获取会话元数据。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            Session info dict or None if not exists
+        返回:
+            会话信息字典，如不存在返回 None
         """
         entries = self.load_session(session_id)
         if not entries:
@@ -191,12 +191,12 @@ class FileStorage(BaseStorage):
 
     def save_summary(self, session_id: str, summary: str, message_count: int) -> None:
         """
-        Save session summary to a JSON file.
+        将会话摘要保存到 JSON 文件。
 
-        Args:
-            session_id: The session identifier
-            summary: The summary text
-            message_count: Number of messages in the session
+        参数:
+            session_id: 会话标识符
+            summary: 摘要文本
+            message_count: 会话中的消息数量
         """
         summary_file = self.base_dir / f"{session_id}_summary.json"
         data = {
@@ -210,13 +210,13 @@ class FileStorage(BaseStorage):
 
     def load_summary(self, session_id: str) -> Optional[dict]:
         """
-        Load session summary from a JSON file.
+        从 JSON 文件加载会话摘要。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            Summary dict or None if not exists
+        返回:
+            摘要字典，如不存在返回 None
         """
         summary_file = self.base_dir / f"{session_id}_summary.json"
         if not summary_file.exists():
@@ -227,13 +227,13 @@ class FileStorage(BaseStorage):
 
     def summary_exists(self, session_id: str) -> bool:
         """
-        Check if a session summary exists.
+        检查会话摘要是否存在。
 
-        Args:
-            session_id: The session identifier
+        参数:
+            session_id: 会话标识符
 
-        Returns:
-            True if summary exists
+        返回:
+            摘要存在返回 True
         """
         summary_file = self.base_dir / f"{session_id}_summary.json"
         return summary_file.exists()
