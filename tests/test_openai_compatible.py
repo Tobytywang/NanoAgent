@@ -7,6 +7,8 @@ import json
 import pytest
 from unittest.mock import patch, Mock
 
+pytestmark = pytest.mark.unit
+
 from nano_agent.llm.openai_compatible import OpenAICompatibleLLM
 from nano_agent.llm.messages import ToolCall
 

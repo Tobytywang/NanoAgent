@@ -3,6 +3,8 @@ Tests for tool system.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
 import tempfile
 import os
 from pathlib import Path

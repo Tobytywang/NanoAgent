@@ -545,3 +545,375 @@ persona:
 - 添加单元测试
 - 更新文档
 - 更新配置示例
+
+---
+
+## 测试系统规划（与功能版本并行）
+
+> **说明**: 测试计划与功能版本并行推进，不使用功能版本号。测试阶段以 T（Test）为前缀标识。
+
+### 测试覆盖率现状
+
+| 模块 | 当前覆盖率 | 目标覆盖率 | 优先级 |
+|------|-----------|-----------|--------|
+| cli/main.py | 9% | 70% | P0 |
+| memory/migration.py | 0% | 90% | P1 |
+| tools/plugin.py | 17% | 80% | P1 |
+| tools/web_search.py | 20% | 75% | P2 |
+| monitoring/reporter.py | 24% | 80% | P2 |
+| cli/scanner.py | 12% | 70% | P2 |
+| llm/ollama.py | 30% | 70% | P2 |
+| **总体** | **50%** | **75%** | - |
+
+---
+
+### T1 阶段 - 测试基础设施完善
+
+**目标**: 建立完善的测试基础设施，提升核心模块测试覆盖率。
+
+**关联功能版本**: v0.6.0 渐进式执行与 Git 集成
+
+**任务列表**:
+
+**测试框架增强**:
+- [ ] 引入 pytest-mock 统一 mock 策略
+- [ ] 建立 fixture 工厂模式，减少测试代码重复
+- [ ] 添加测试覆盖率门禁（CI 中强制最低 60%）
+- [ ] 建立 mock 数据目录 `tests/fixtures/`
+
+**CLI 模块测试 (P0)**:
+- [ ] 会话管理测试 - 新建、恢复、删除、列表
+- [ ] 命令解析测试 - `/config`, `/memory`, `/stats` 等
+- [ ] 交互流程测试 - 用户输入、Agent 响应、错误处理
+- [ ] 信号处理测试 - Ctrl+C 退出流程
+- [ ] 使用 `click.testing.CliRunner` 或 `pytest-console-scripts`
+
+**Migration 模块测试 (P1)**:
+- [ ] File → SQLite 迁移测试
+- [ ] 空数据迁移边界测试
+- [ ] 损坏数据恢复测试
+- [ ] 大数据量迁移性能测试
+- [ ] 幂等性测试（重复迁移）
+
+**Plugin 模块测试 (P1)**:
+- [ ] 从模块加载工具测试
+- [ ] 从文件加载工具测试
+- [ ] 从目录加载工具测试
+- [ ] 加载失败处理测试
+- [ ] 工具卸载测试
+
+**WebSearch 模块测试 (P2)**:
+- [ ] HTML 解析逻辑测试（使用 fixture 文件）
+- [ ] Bing 搜索结果提取测试
+- [ ] 超时处理测试
+- [ ] 网络错误处理测试
+- [ ] 使用 `responses` 或 `pytest-httpserver` mock HTTP
+
+**Monitoring 模块测试 (P2)**:
+- [ ] JSON 报告生成测试
+- [ ] Markdown 报告生成测试
+- [ ] 统计数据聚合测试
+- [ ] 边界情况测试（空数据、大数据）
+
+**Scanner 模块测试 (P2)**:
+- [ ] 项目结构扫描测试
+- [ ] 技术栈检测测试
+- [ ] Git 信息获取测试
+- [ ] Markdown 生成测试
+
+---
+
+### T2 阶段 - 代码可测试性改进
+
+**目标**: 重构代码以提升可测试性，降低测试编写难度。
+
+**关联功能版本**: v0.7.0 模式切换、v0.8.0 Hooks 机制
+
+**可测试性问题与改进**:
+
+**问题 1: 紧耦合的外部依赖**
+- **现状**: CLI 直接调用 `requests`、`subprocess`、文件系统
+- **影响**: 测试需要真实环境，难以隔离
+- **改进方案**:
+  ```python
+  # 引入依赖注入模式
+  class OllamaLLM:
+      def __init__(self, model: str, http_client: HttpClient = None):
+          self._http = http_client or RequestsHttpClient()
+
+  # 测试时注入 mock
+  def test_ollama_chat():
+      mock_http = MockHttpClient(response={"message": {"content": "test"}})
+      llm = OllamaLLM("llama3", http_client=mock_http)
+      # ...
+  ```
+
+**问题 2: 全局状态管理**
+- **现状**: `GracefulExitManager` 使用类属性管理状态
+- **影响**: 测试间状态污染，需要手动重置
+- **改进方案**:
+  ```python
+  # 改为实例化管理
+  class ExitManager:
+      def __init__(self):
+          self.ctrl_c_count = 0
+          self.generating_summary = False
+
+  # CLI 中创建实例
+  exit_manager = ExitManager()
+  ```
+
+**问题 3: 宽泛的异常捕获**
+- **现状**: 大量 `except Exception: pass` 隐藏错误
+- **影响**: 测试无法捕获失败场景
+- **改进方案**:
+  ```python
+  # 使用具体异常类型
+  except (IOError, OSError) as e:
+      logger.warning(f"File operation failed: {e}")
+
+  # 或显式记录
+  except Exception as e:
+      logger.error(f"Unexpected error: {e}", exc_info=True)
+  ```
+
+**问题 4: 难以 mock 的静态方法**
+- **现状**: `ReportGenerator.to_json()` 等静态方法
+- **影响**: 无法在测试中替换实现
+- **改进方案**:
+  ```python
+  # 改为实例方法或使用策略模式
+  class ReportGenerator:
+      def __init__(self, formatter: Formatter = None):
+          self._formatter = formatter or JsonFormatter()
+
+      def generate(self, metrics: RunMetrics) -> str:
+          return self._formatter.format(metrics.to_dict())
+  ```
+
+**问题 5: 接口类型不明确**
+- **现状**: `BaseMemory.add(message: Any)` 使用 Any 类型
+- **影响**: 测试无法验证输入类型正确性
+- **改进方案**:
+  ```python
+  from typing import TypeVar, Generic
+
+  M = TypeVar('M')
+
+  class BaseMemory(ABC, Generic[M]):
+      @abstractmethod
+      def add(self, message: M) -> None:
+          pass
+
+  class ShortTermMemory(BaseMemory[dict]):
+      def add(self, message: dict) -> None:
+          # 类型检查器可验证
+          pass
+  ```
+
+**任务列表**:
+- [ ] 引入依赖注入框架（或手动实现）
+- [ ] 重构全局状态为实例管理
+- [ ] 替换宽泛异常为具体异常
+- [ ] 添加类型注解，启用 mypy 检查
+- [ ] 提取接口抽象层（HttpClient, FileSystem, SubprocessRunner）
+- [ ] 建立 mock 实现库 `tests/mocks/`
+
+---
+
+### T3 阶段 - 测试自动化与质量门禁
+
+**目标**: 建立自动化测试流程，确保代码质量。
+
+**关联功能版本**: v0.9.0 配置系统优化
+
+**任务列表**:
+
+**CI/CD 集成**:
+- [ ] GitHub Actions 测试工作流
+- [ ] 测试覆盖率报告上传（Codecov/Coveralls）
+- [ ] 覆盖率门禁检查（最低 60%，新增代码 80%）
+- [ ] 多 Python 版本测试（3.10, 3.11, 3.12）
+
+**测试分类**:
+- [ ] 单元测试 - 快速、隔离、无外部依赖
+- [ ] 集成测试 - 真实依赖、端到端
+- [ ] 标记测试 - `@pytest.mark.unit`, `@pytest.mark.integration`
+- [ ] 分层运行 - `pytest -m unit` 快速反馈
+
+**测试数据管理**:
+- [ ] 建立 fixture 工厂（消息、配置、工具）
+- [ ] 模块化 fixture 定义
+- [ ] 测试数据版本管理
+
+**测试文档**:
+- [ ] 测试编写指南 `docs/testing.md`
+- [ ] Mock 使用规范
+- [ ] 测试命名约定
+
+---
+
+### 测试用例补充计划
+
+#### CLI 模块测试用例 (`tests/test_cli.py`)
+
+```python
+# 会话管理测试
+class TestSessionManagement:
+    def test_new_session_creates_unique_id(self): ...
+    def test_resume_session_loads_messages(self): ...
+    def test_delete_session_removes_data(self): ...
+    def test_list_sessions_shows_all(self): ...
+    def test_clean_sessions_removes_low_value(self): ...
+
+# 命令解析测试
+class TestCommandParsing:
+    def test_config_command_shows_all_fields(self): ...
+    def test_memory_command_toggles_long_term(self): ...
+    def test_stats_command_shows_statistics(self): ...
+    def test_setname_updates_display_names(self): ...
+    def test_undo_reverts_last_operation(self): ...
+
+# 交互流程测试
+class TestInteractionFlow:
+    def test_user_input_processed_correctly(self): ...
+    def test_agent_response_displayed(self): ...
+    def test_tool_execution_shown_in_stats(self): ...
+    def test_error_recovered_gracefully(self): ...
+    def test_ctrl_c_exits_with_summary(self): ...
+```
+
+#### Migration 模块测试用例 (`tests/test_migration.py`)
+
+```python
+class TestFileToSqliteMigration:
+    def test_migrate_empty_file_storage(self): ...
+    def test_migrate_single_session(self): ...
+    def test_migrate_multiple_sessions(self): ...
+    def test_migrate_with_summary(self): ...
+    def test_migrate_handles_unicode(self): ...
+    def test_migrate_is_idempotent(self): ...
+    def test_dry_run_reports_only(self): ...
+    def test_migrate_large_session_performance(self): ...
+
+class TestMigrationErrorHandling:
+    def test_handles_corrupted_file(self): ...
+    def test_handles_permission_error(self): ...
+    def test_handles_disk_full(self): ...
+    def test_reports_errors_in_result(self): ...
+```
+
+#### Plugin 模块测试用例 (`tests/test_plugin.py`)
+
+```python
+class TestPluginLoader:
+    def test_load_from_module(self): ...
+    def test_load_from_file(self): ...
+    def test_load_from_directory(self): ...
+    def test_load_handles_import_error(self): ...
+    def test_load_handles_instantiation_error(self): ...
+    def test_unload_tool(self): ...
+    def test_list_loaded_plugins(self): ...
+
+class TestPluginFromConfig:
+    def test_load_from_directories(self): ...
+    def test_load_from_modules(self): ...
+    def test_load_from_files(self): ...
+    def test_combined_config(self): ...
+```
+
+#### WebSearch 模块测试用例 (`tests/test_web_search.py`)
+
+```python
+class TestWebSearchTool:
+    def test_search_returns_results(self): ...
+    def test_parse_bing_results(self): ...
+    def test_handle_timeout(self): ...
+    def test_handle_network_error(self): ...
+    def test_empty_results_message(self): ...
+    def test_unicode_query_encoding(self): ...
+
+# 使用 fixture 文件
+@pytest.fixture
+def bing_response_html():
+    return Path("tests/fixtures/bing_response.html").read_text()
+
+def test_parse_real_bing_response(bing_response_html):
+    tool = WebSearchTool()
+    results = tool._parse_search_results(bing_response_html)
+    assert len(results) > 0
+```
+
+---
+
+### 测试最佳实践
+
+**1. 测试命名约定**
+```python
+# 格式: test_<method>_<scenario>_<expected_result>
+def test_add_message_with_valid_dict_succeeds(): ...
+def test_add_message_with_invalid_type_raises_error(): ...
+```
+
+**2. Arrange-Act-Assert 模式**
+```python
+def test_memory_add():
+    # Arrange
+    memory = ShortTermMemory()
+    message = {"role": "user", "content": "test"}
+
+    # Act
+    memory.add(message)
+
+    # Assert
+    assert len(memory) == 2  # system + user
+```
+
+**3. 使用 Factory Boy 或手动工厂**
+```python
+# tests/factories.py
+def create_message(role="user", content="test"):
+    return {"role": role, "content": content}
+
+def create_config(**overrides):
+    defaults = {"llm": {"model": "test-model"}}
+    defaults.update(overrides)
+    return Config.from_dict(defaults)
+```
+
+**4. Mock 外部依赖**
+```python
+@pytest.fixture
+def mock_http():
+    with patch("requests.post") as mock:
+        mock.return_value.json.return_value = {"message": {"content": "OK"}}
+        yield mock
+
+def test_ollama_chat_with_mock(mock_http):
+    llm = OllamaLLM("test-model")
+    text, _, _ = llm.chat([{"role": "user", "content": "hi"}])
+    assert text == "OK"
+```
+
+**5. 参数化测试减少重复**
+```python
+@pytest.mark.parametrize("role,expected", [
+    ("user", "user"),
+    ("assistant", "assistant"),
+    ("system", "system"),
+])
+def test_message_roles(role, expected):
+    msg = create_message(role=role)
+    assert msg["role"] == expected
+```
+
+---
+
+### 测试覆盖率目标时间线
+
+| 测试阶段 | 目标覆盖率 | 关键里程碑 | 关联功能版本 |
+|------|-----------|-----------|--------|
+| T1 | 60% | CLI、Migration、Plugin 测试完成 | v0.6.0 |
+| T2 | 70% | 可测试性重构完成 | v0.7.0, v0.8.0 |
+| T3 | 75% | CI 门禁建立，全模块测试完成 | v0.9.0 |
+| T4+ | 80% | 持续维护，新增功能同步测试 | v0.10.0+ |

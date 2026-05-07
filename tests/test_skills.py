@@ -3,6 +3,8 @@ Tests for skill mechanism.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
 import tempfile
 from pathlib import Path
 

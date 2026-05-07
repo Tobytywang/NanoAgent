@@ -3,6 +3,8 @@ Tests for session management functionality.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
 import tempfile
 from pathlib import Path
 

@@ -3,6 +3,8 @@ Tests for Agent system.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
 from unittest.mock import Mock, MagicMock
 
 from nano_agent.agent.base import BaseAgent
