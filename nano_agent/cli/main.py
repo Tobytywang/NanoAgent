@@ -462,6 +462,22 @@ def run_interactive(
                 Console.print(f"Available tools: {', '.join(tools)}", style="info")
                 continue
 
+            # Plan commands
+            if user_input.lower() == "/plans":
+                from .plan_mode import list_plans
+                print(list_plans())
+                continue
+
+            if user_input.lower().startswith("/plan "):
+                from .plan_mode import run_plan_mode_interactive
+                task = user_input[6:].strip()
+                if task:
+                    result = run_plan_mode_interactive(agent.llm, config, task)
+                    print(result)
+                else:
+                    Console.print("用法: /plan <任务描述>", style="info")
+                continue
+
             if user_input.lower().startswith("/stats"):
                 _handle_stats_command(agent, config, user_input[6:].strip())
                 continue
@@ -1830,6 +1846,7 @@ def _show_help() -> None:
     print("  /tools            查看工具列表")
     print("  /skills           查看技能列表")
     print("  /sessions         查看会话列表")
+    print("  /plans            查看已保存的计划")
 
     print("\n## 项目管理")
     print("  /init             初始化项目")
@@ -1839,6 +1856,10 @@ def _show_help() -> None:
     print("  /memory off       禁用长期记忆")
     print("  /stats on         启用统计自动显示")
     print("  /stats off        禁用统计自动显示")
+
+    print("\n## 规划模式")
+    print("  /plan <任务>      进入规划模式，制定分阶段计划")
+    print("  /plans            列出所有已保存的计划")
 
     print("\n## 个性化设置")
     print("  /setname                    查看当前名字")

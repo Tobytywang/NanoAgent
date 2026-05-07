@@ -420,7 +420,7 @@ class ContextManager:
 
 ---
 
-### v0.6.2 - 前置规划
+### v0.6.2 - 前置规划 ✅
 
 **目标**: 复杂任务先制定计划，展示给用户确认后再执行。
 
@@ -430,12 +430,12 @@ class ContextManager:
 **架构对应**: 独立的 PlanMode 类，支持多轮规划和持久化
 
 **任务列表**:
-- [ ] 定义 `Plan` 和 `PlanPhase` 数据结构
-- [ ] 实现 `PlanMode` 类 - 多轮规划逻辑
-- [ ] 实现 Plan 文件操作工具 - SavePlanTool, ListPlansTool, LoadPlanTool
-- [ ] Plan 持久化 - `.nano_agent/plans/` 目录
-- [ ] CLI 命令支持 - `/plan`, `/plans`
-- [ ] 单元测试 - 20+ 测试用例
+- [x] 定义 `Plan` 和 `PlanPhase` 数据结构
+- [x] 实现 `PlanMode` 类 - 多轮规划逻辑
+- [x] 实现 Plan 文件操作工具 - SavePlanTool, ListPlansTool, LoadPlanTool
+- [x] Plan 持久化 - `.nano_agent/plans/` 目录
+- [x] CLI 命令支持 - `/plan`, `/plans`
+- [x] 单元测试 - 20+ 测试用例
 
 **新增文件**:
 ```
@@ -1007,7 +1007,7 @@ persona:
 | v0.5.1 | 功能优化与增强 ✅ | CLI 增强、/init、/config、/memory、/setname、/undo 等 |
 | v0.6.0 | 编排层与执行层分离 ✅ | AgentOrchestrator、阶段拆分、事件流、预算检查、会话管理 |
 | v0.6.1 | 上下文管理 ✅ | ContextManager、三层压缩策略、九段式摘要、Token 估算 |
-| v0.6.2 | 前置规划 | PlanMode、Plan 持久化、多轮规划、CLI 命令 |
+| v0.6.2 | 前置规划 ✅ | PlanMode、Plan 持久化、多轮规划、CLI 命令 |
 | v0.6.3 | PlanMode 演进优化 | EventEmitter 集成、I/O 无关设计、CLI 包装层 |
 | v0.6.4 | 渐进式执行与用户确认 | RiskLevel 分级、ConfirmationManager、工具确认 |
 | v0.6.5 | Git 集成与状态回退 | GitManager、自动提交、/undo 增强 |

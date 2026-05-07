@@ -7,7 +7,10 @@ layer (AgentOrchestrator) for the NanoAgent framework.
 
 from .base import BaseAgent
 from .react import ReActAgent
-from .types import ExecutionResult, ThinkResult, ExecutionEvent, AgentEvent
+from .types import (
+    ExecutionResult, ThinkResult, ExecutionEvent, AgentEvent,
+    Plan, PlanPhase
+)
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .orchestrator import AgentOrchestrator, SessionStats
@@ -27,6 +30,8 @@ __all__ = [
     "ThinkResult",
     "ExecutionEvent",
     "AgentEvent",
+    "Plan",
+    "PlanPhase",
     # Events
     "EventEmitter",
     # Budget
