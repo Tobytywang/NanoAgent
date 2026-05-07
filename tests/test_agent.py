@@ -91,7 +91,7 @@ class TestReActAgent:
         result = agent.execute_tool("unknown_tool", {})
 
         assert result.success is False
-        assert "Unknown tool" in result.error
+        assert "未知工具" in result.error or "Unknown tool" in result.error
 
     def test_run_without_tool_calls(self):
         """Test run when LLM returns no tool calls."""
