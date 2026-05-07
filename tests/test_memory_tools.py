@@ -3,6 +3,8 @@ Tests for memory tools.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
 import tempfile
 from pathlib import Path
 

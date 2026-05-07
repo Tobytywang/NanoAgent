@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from nano_agent.tools.base import BaseTool, ToolResult
 from nano_agent.tools.memory_tools import MemorizeTool
 from nano_agent.tools.file_ops import FileWriteTool

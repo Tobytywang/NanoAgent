@@ -3,6 +3,8 @@ Tests for LLM message data structures.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
 from nano_agent.llm.messages import (
     Message,
     ToolCall,

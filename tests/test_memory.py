@@ -3,6 +3,9 @@ Tests for memory system.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
+
 from nano_agent.memory.base import BaseMemory
 from nano_agent.memory.short_term import ShortTermMemory
 
