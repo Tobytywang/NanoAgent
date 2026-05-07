@@ -1,1 +1,1 @@
-"""CLI module - Command line interface."""
+"""CLI 模块 - 命令行界面"""

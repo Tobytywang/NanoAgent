@@ -1,5 +1,5 @@
 """
-Project scanner for generating NANOPROJECT.md.
+项目扫描器 - 生成 NANOPROJECT.md
 """
 
 import os
@@ -10,9 +10,9 @@ from typing import Any
 
 
 class ProjectScanner:
-    """Scan project and generate summary."""
+    """扫描项目并生成摘要"""
 
-    # Directories to skip during scanning
+    # 扫描时跳过的目录
     SKIP_DIRS = {
         ".git", ".svn", ".hg",
         "__pycache__", ".pytest_cache", ".mypy_cache",
@@ -21,7 +21,7 @@ class ProjectScanner:
         "dist", "build", "*.egg-info",
     }
 
-    # Files to include for project info
+    # 用于获取项目信息的文件
     INFO_FILES = {
         "README.md", "README.rst", "README.txt",
         "pyproject.toml", "setup.py", "requirements.txt",
@@ -31,20 +31,20 @@ class ProjectScanner:
 
     def __init__(self, project_root: Path | None = None):
         """
-        Initialize scanner.
+        初始化扫描器。
 
         Args:
-            project_root: Project root directory, defaults to cwd
+            project_root: 项目根目录，默认为当前工作目录
         """
         self.project_root = project_root or Path.cwd()
         self.project_name = self.project_root.name
 
     def scan(self) -> dict[str, Any]:
         """
-        Scan the project and collect information.
+        扫描项目并收集信息。
 
         Returns:
-            Dictionary with project information
+            包含项目信息的字典
         """
         info = {
             "project_name": self.project_name,
@@ -58,7 +58,7 @@ class ProjectScanner:
         return info
 
     def _scan_structure(self) -> dict[str, Any]:
-        """Scan project directory structure."""
+        """扫描项目目录结构"""
         structure = {
             "directories": [],
             "files": [],
@@ -67,7 +67,7 @@ class ProjectScanner:
         }
 
         for root, dirs, files in os.walk(self.project_root):
-            # Skip hidden and excluded directories
+            # 跳过隐藏和排除的目录
             dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self.SKIP_DIRS]
 
             rel_root = Path(root).relative_to(self.project_root)
@@ -81,7 +81,7 @@ class ProjectScanner:
                     structure["files"].append(str(rel_root / f))
                     structure["total_files"] += 1
 
-        # Limit to top directories
+        # 限制为顶层目录
         structure["top_dirs"] = sorted(set(
             d.split("/")[0] for d in structure["directories"] if "/" in d or d
         ))[:20]
@@ -89,7 +89,7 @@ class ProjectScanner:
         return structure
 
     def _detect_tech_stack(self) -> list[str]:
-        """Detect technology stack from config files."""
+        """从配置文件检测技术栈"""
         tech = []
 
         # Python
@@ -123,7 +123,7 @@ class ProjectScanner:
         return tech
 
     def _get_git_info(self) -> dict[str, Any]:
-        """Get Git repository information."""
+        """获取 Git 仓库信息"""
         git_info = {
             "is_git_repo": False,
             "branch": None,
@@ -138,7 +138,7 @@ class ProjectScanner:
         git_info["is_git_repo"] = True
 
         try:
-            # Get current branch
+            # 获取当前分支
             result = subprocess.run(
                 ["git", "branch", "--show-current"],
                 capture_output=True, text=True, timeout=5
@@ -146,7 +146,7 @@ class ProjectScanner:
             if result.returncode == 0:
                 git_info["branch"] = result.stdout.strip()
 
-            # Get recent commits
+            # 获取最近提交
             result = subprocess.run(
                 ["git", "log", "--oneline", "-10"],
                 capture_output=True, text=True, timeout=5
@@ -156,7 +156,7 @@ class ProjectScanner:
                     line.strip() for line in result.stdout.strip().split("\n") if line.strip()
                 ]
 
-            # Get remote URL
+            # 获取远程 URL
             result = subprocess.run(
                 ["git", "remote", "get-url", "origin"],
                 capture_output=True, text=True, timeout=5
@@ -170,7 +170,7 @@ class ProjectScanner:
         return git_info
 
     def _scan_documents(self) -> dict[str, str]:
-        """Scan documentation files."""
+        """扫描文档文件"""
         docs = {}
 
         # README
@@ -178,12 +178,12 @@ class ProjectScanner:
         if readme_path.exists():
             try:
                 content = readme_path.read_text(encoding="utf-8")
-                # Extract first 500 chars as summary
+                # 提取前 500 字符作为摘要
                 docs["readme_preview"] = content[:500] + "..." if len(content) > 500 else content
             except Exception:
                 pass
 
-        # docs directory
+        # docs 目录
         docs_dir = self.project_root / "docs"
         if docs_dir.exists() and docs_dir.is_dir():
             docs["docs_files"] = [
@@ -194,14 +194,14 @@ class ProjectScanner:
         return docs
 
     def _scan_code(self) -> dict[str, Any]:
-        """Scan code files for summary."""
+        """扫描代码文件生成摘要"""
         code_info = {
             "languages": {},
             "main_files": [],
             "entry_points": [],
         }
 
-        # Language extensions
+        # 语言扩展名映射
         lang_exts = {
             ".py": "Python",
             ".js": "JavaScript",
@@ -213,7 +213,7 @@ class ProjectScanner:
             ".c": "C",
         }
 
-        # Entry point patterns
+        # 入口点模式
         entry_patterns = ["main.py", "app.py", "__main__.py", "index.js", "main.go"]
 
         for root, dirs, files in os.walk(self.project_root):
@@ -233,13 +233,13 @@ class ProjectScanner:
 
     def generate_markdown(self, info: dict[str, Any] | None = None) -> str:
         """
-        Generate NANOPROJECT.md content.
+        生成 NANOPROJECT.md 内容。
 
         Args:
-            info: Project info dict, if None will scan
+            info: 项目信息字典，None 时会自动扫描
 
         Returns:
-            Markdown content
+            Markdown 内容
         """
         if info is None:
             info = self.scan()
@@ -273,7 +273,7 @@ class ProjectScanner:
             for d in structure["top_dirs"]:
                 lines.append(f"- `{d}/`")
 
-        # Git info
+        # Git 信息
         git = info["git_info"]
         if git["is_git_repo"]:
             lines.extend(["", "---", "", "## Git Information", ""])
@@ -288,20 +288,20 @@ class ProjectScanner:
                 for commit in git["recent_commits"][:5]:
                     lines.append(f"  - {commit}")
 
-        # Entry points
+        # 入口点
         if info["code_summary"]["entry_points"]:
             lines.extend(["", "---", "", "## Entry Points", ""])
             for ep in info["code_summary"]["entry_points"]:
                 lines.append(f"- `{ep}`")
 
-        # Documents
+        # 文档
         docs = info["documents"]
         if docs.get("docs_files"):
             lines.extend(["", "---", "", "## Documentation", ""])
             for doc in docs["docs_files"]:
                 lines.append(f"- `docs/{doc}`")
 
-        # Code languages
+        # 代码语言统计
         languages = info["code_summary"]["languages"]
         if languages:
             lines.extend(["", "---", "", "## Code Statistics", ""])
@@ -314,14 +314,14 @@ class ProjectScanner:
 
     def save(self, path: Path | None = None, info: dict[str, Any] | None = None) -> Path:
         """
-        Save NANOPROJECT.md to file.
+        保存 NANOPROJECT.md 到文件。
 
         Args:
-            path: Output path, defaults to project_root/NANOPROJECT.md
-            info: Project info, if None will scan
+            path: 输出路径，默认为 project_root/NANOPROJECT.md
+            info: 项目信息，None 时会自动扫描
 
         Returns:
-            Path to saved file
+            保存文件的路径
         """
         if path is None:
             path = self.project_root / "NANOPROJECT.md"
@@ -332,10 +332,10 @@ class ProjectScanner:
 
     def is_new_project(self) -> bool:
         """
-        Check if this is a new project (not yet scanned).
+        检查是否为新项目（尚未扫描）。
 
         Returns:
-            True if NANOPROJECT.md or .nano_agent/ doesn't exist
+            如果 NANOPROJECT.md 或 .nano_agent/ 不存在则返回 True
         """
         nanoproject = self.project_root / "NANOPROJECT.md"
         nano_agent = self.project_root / ".nano_agent"
