@@ -13,7 +13,7 @@ from ..llm import create_llm_from_config
 from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorage, SQLiteStorage, LongTermMemory
 from ..tools.base import ToolRegistry
 from ..tools.builtin import register_builtin_tools
-from ..agent.react import ReActAgent
+from ..agent import ReActAgent, AgentOrchestrator, AgentEvent
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
@@ -216,15 +216,15 @@ def _find_config_file(config_path: str | None = None) -> tuple[Path | None, str]
     return None, "default (no config file found)"
 
 
-def create_agent(config_path: str | None = None) -> ReActAgent:
+def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     """
-    Create and configure a ReAct agent.
+    Create and configure an agent orchestrator.
 
     Args:
         config_path: Path to configuration file
 
     Returns:
-        Configured ReActAgent instance
+        Configured AgentOrchestrator instance
     """
     # Find and load configuration with priority
     config_file, config_source = _find_config_file(config_path)
@@ -303,7 +303,13 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     # Store config source for display
     agent._config_source = config_source
 
-    return agent
+    # Create orchestrator
+    orchestrator = AgentOrchestrator(agent, config)
+
+    # Store config source on orchestrator too
+    orchestrator._config_source = config_source
+
+    return orchestrator
 
 
 def _load_project_context() -> str:
@@ -350,7 +356,7 @@ def _load_project_context() -> str:
 
 
 def run_interactive(
-    agent: ReActAgent,
+    orchestrator: AgentOrchestrator,
     config,
     report_enabled: bool = False,
     report_format: str = "json",
@@ -360,13 +366,16 @@ def run_interactive(
     Run interactive chat loop.
 
     Args:
-        agent: The agent to interact with
+        orchestrator: The agent orchestrator to interact with
         config: The configuration object
         report_enabled: Whether to export report on exit
         report_format: Report format (json, markdown, summary)
         report_output: Report output path
     """
     import os
+
+    # Get the underlying agent for compatibility
+    agent = orchestrator.agent
 
     # Load project context at startup and add to system prompt
     project_context = _load_project_context()
@@ -383,8 +392,8 @@ def run_interactive(
     Console.print_header("NanoAgent - AI Assistant")
 
     # Show config source
-    if hasattr(agent, '_config_source'):
-        Console.print(f"Config: {agent._config_source}", style="info")
+    if hasattr(orchestrator, '_config_source'):
+        Console.print(f"Config: {orchestrator._config_source}", style="info")
 
     # Show project context status
     if project_context:
@@ -576,10 +585,11 @@ def run_interactive(
             # 重置 Ctrl+C 计数
             GracefulExitManager.ctrl_c_count = 0
 
-            # Run agent
+            # Run agent through orchestrator
             print(f"\n[{agent_display}]:")
-            response = agent.run(user_input)
+            result = orchestrator.run(user_input)
             # Sanitize response for printing
+            response = result.response
             try:
                 response = response.encode('utf-8', errors='replace').decode('utf-8')
             except (UnicodeDecodeError, UnicodeEncodeError):

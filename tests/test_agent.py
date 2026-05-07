@@ -102,9 +102,11 @@ class TestReActAgent:
         registry = ToolRegistry()
 
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
-        response = agent.run("Hi")
+        result = agent.run("Hi")
 
-        assert response == "Hello! How can I help?"
+        assert result.response == "Hello! How can I help?"
+        assert result.success is True
+        assert result.iterations == 1
         # Check memory has user and assistant messages
         messages = memory.get_all()
         assert len(messages) == 3  # system + user + assistant
@@ -127,9 +129,10 @@ class TestReActAgent:
         registry.register(MockTool())
 
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
-        response = agent.run("Process test")
+        result = agent.run("Process test")
 
-        assert "Processed: test" in response
+        assert "Processed: test" in result.response
+        assert result.success is True
 
     def test_max_iterations_limit(self):
         """Test that agent stops at max iterations."""
@@ -150,9 +153,10 @@ class TestReActAgent:
             max_iterations=3,
             verbose=False
         )
-        response = agent.run("Do something")
+        result = agent.run("Do something")
 
-        assert "iteration limit" in response.lower()
+        assert "iteration limit" in result.response.lower()
+        assert result.success is False
 
     def test_reset(self):
         """Test agent reset."""
