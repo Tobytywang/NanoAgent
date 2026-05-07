@@ -1,25 +1,16 @@
 """
-Console output utilities for CLI.
+CLI 控制台输出工具
 """
 
 import sys
 from typing import Literal
-
-
-def _safe_str(text: str) -> str:
-    """Safely convert string for printing, removing invalid Unicode characters."""
-    if not text:
-        return text
-    try:
-        return text.encode('utf-8', errors='replace').decode('utf-8')
-    except (UnicodeDecodeError, UnicodeEncodeError):
-        return text
+from ..utils.strings import safe_str
 
 
 class Console:
-    """Console output formatting."""
+    """控制台输出格式化"""
 
-    # ANSI color codes
+    # ANSI 颜色代码
     COLORS = {
         "reset": "\033[0m",
         "bold": "\033[1m",
@@ -33,16 +24,16 @@ class Console:
 
     @classmethod
     def _supports_color(cls) -> bool:
-        """Check if terminal supports colors."""
-        # Windows may not support ANSI colors in some terminals
+        """检查终端是否支持颜色"""
+        # Windows 某些终端可能不支持 ANSI 颜色
         if sys.platform == "win32":
-            # Check for Windows Terminal or other modern terminals
+            # 检查 Windows Terminal 或其他现代终端
             return "WT_SESSION" in sys.environ or "TERM" in sys.environ
         return True
 
     @classmethod
     def _colorize(cls, text: str, color: str) -> str:
-        """Add color to text."""
+        """为文本添加颜色"""
         if not cls._supports_color():
             return text
         return f"{cls.COLORS.get(color, '')}{text}{cls.COLORS['reset']}"
@@ -55,15 +46,15 @@ class Console:
         end: str = "\n"
     ) -> None:
         """
-        Print a styled message.
+        打印带样式的消息。
 
         Args:
-            message: The message to print
-            style: Style type
-            end: Line ending
+            message: 要打印的消息
+            style: 样式类型
+            end: 行结束符
         """
-        # Sanitize message to remove invalid Unicode characters
-        message = _safe_str(message)
+        # 清理消息中的无效 Unicode 字符
+        message = safe_str(message)
         style_map = {
             "info": ("cyan", ""),
             "success": ("green", ""),
@@ -71,7 +62,7 @@ class Console:
             "error": ("red", ""),
             "user": ("blue", "[User] "),
             "agent": ("green", "[Agent] "),
-            "header": ("bold", ""),  # Bold for better visibility on light backgrounds
+            "header": ("bold", ""),  # 加粗以提高浅色背景下的可见性
         }
 
         color, prefix = style_map.get(style, ("", ""))
@@ -80,21 +71,21 @@ class Console:
 
     @classmethod
     def print_separator(cls, char: str = "-", length: int = 50) -> None:
-        """Print a separator line."""
+        """打印分隔线"""
         print(char * length)
 
     @classmethod
     def print_header(cls, title: str) -> None:
-        """Print a header."""
+        """打印标题"""
         cls.print_separator("=")
         cls.print(title, style="header")
         cls.print_separator("=")
 
     @classmethod
     def print_tool_call(cls, tool_name: str, arguments: dict, result: str) -> None:
-        """Print a tool call and its result."""
-        args_str = _safe_str(str(arguments))
-        result_str = _safe_str(result)
+        """打印工具调用及其结果"""
+        args_str = safe_str(str(arguments))
+        result_str = safe_str(result)
         cls.print(f"[Tool] {tool_name}({args_str})", style="info")
         preview = result_str[:100] + "..." if len(result_str) > 100 else result_str
         cls.print(f"  -> {preview}", style="success")

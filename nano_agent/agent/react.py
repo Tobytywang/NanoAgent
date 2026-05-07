@@ -1,5 +1,5 @@
 """
-ReAct Agent implementation.
+ReAct Agent 实现
 """
 
 import time
@@ -11,23 +11,14 @@ from .undo import UndoStack
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
-
-
-def _safe_str(text: str) -> str:
-    """Safely convert string for printing, removing invalid Unicode characters."""
-    if not text:
-        return text
-    try:
-        return text.encode('utf-8', errors='replace').decode('utf-8')
-    except (UnicodeDecodeError, UnicodeEncodeError):
-        return text
+from ..utils.strings import safe_str
 
 
 class ReActAgent(BaseAgent):
     """
-    ReAct (Reasoning + Acting) Agent implementation.
+    ReAct (Reasoning + Acting) Agent 实现。
 
-    Follows the Think -> Act -> Observe cycle to solve problems.
+    遵循 思考 -> 行动 -> 观察 循环来解决问题。
     """
 
     def __init__(
@@ -41,16 +32,16 @@ class ReActAgent(BaseAgent):
         tracker: MetricsTracker | None = None,
     ):
         """
-        Initialize the ReAct agent.
+        初始化 ReAct Agent。
 
         Args:
-            llm: LLM client instance
-            memory: Memory system instance
-            tool_registry: Tool registry instance
-            max_iterations: Maximum reasoning iterations
-            verbose: Whether to print debug information
-            skill_prompt: Additional prompt from skills
-            tracker: Metrics tracker for monitoring
+            llm: LLM 客户端实例
+            memory: 记忆系统实例
+            tool_registry: 工具注册表实例
+            max_iterations: 最大推理迭代次数
+            verbose: 是否打印调试信息
+            skill_prompt: 来自技能的额外提示
+            tracker: 监控指标追踪器
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -58,23 +49,23 @@ class ReActAgent(BaseAgent):
         self.tracker = tracker or MetricsTracker()
         self._undo_stack = UndoStack()
         self._round_counter = 0
-        self._pending_name_updates: list[tuple[str, str]] = []  # List of (name_type, name_value)
-        self._prev_name_values: dict[str, str] = {}  # Previous name values for undo
+        self._pending_name_updates: list[tuple[str, str]] = []  # (name_type, name_value) 列表
+        self._prev_name_values: dict[str, str] = {}  # 用于撤销的上一次名字值
         self._setup_system_prompt()
 
     def _setup_system_prompt(self) -> None:
-        """Set up the system prompt with tool descriptions."""
+        """设置包含工具描述的系统提示"""
         tools_desc = self._format_tools_description()
         system_prompt = REACT_SYSTEM_PROMPT.format(tools_description=tools_desc)
 
-        # Add skill prompt if available
+        # 如果有技能提示，添加到系统提示
         if self.skill_prompt:
             system_prompt = f"{system_prompt}\n\n## Skills\n\n{self.skill_prompt}"
 
         self.memory.set_system_prompt(system_prompt)
 
     def _format_tools_description(self) -> str:
-        """Format tool descriptions for the system prompt."""
+        """格式化工具描述用于系统提示"""
         descriptions = []
         for tool_name in self.tool_registry.list_tools():
             tool = self.tool_registry.get(tool_name)
@@ -88,22 +79,22 @@ class ReActAgent(BaseAgent):
 
     def run(self, user_input: str) -> str:
         """
-        Run the ReAct loop to process user input.
+        运行 ReAct 循环处理用户输入。
 
         Args:
-            user_input: The user's input text
+            user_input: 用户输入文本
 
         Returns:
-            The agent's final response
+            Agent 的最终响应
         """
-        # Start a new undo round
+        # 开始新的撤销轮次
         self._round_counter += 1
         self._undo_stack.start_round(f"round_{self._round_counter}")
 
-        # Add user message to memory
+        # 添加用户消息到记忆
         self.memory.add_user_message(user_input)
 
-        # Start tracking
+        # 开始追踪
         self.tracker.start_run(user_input)
 
         iteration = 0
@@ -114,7 +105,7 @@ class ReActAgent(BaseAgent):
             if self.verbose:
                 print(f"\n[Iteration {iteration}/{self.max_iterations}]")
 
-            # Call LLM with current context
+            # 调用 LLM 处理当前上下文
             messages = self.memory.get_all()
             tools_schema = self.tool_registry.get_all_schemas()
 
@@ -125,7 +116,7 @@ class ReActAgent(BaseAgent):
             )
             llm_latency = (time.perf_counter() - llm_start) * 1000
 
-            # Record LLM call
+            # 记录 LLM 调用
             self.tracker.record_llm_call(
                 model=self.llm.model,
                 prompt_tokens=usage.prompt_tokens,
@@ -134,30 +125,30 @@ class ReActAgent(BaseAgent):
                 tool_calls_count=len(tool_calls),
             )
 
-            # If no tool calls, return the final answer
+            # 如果没有工具调用，返回最终答案
             if not tool_calls:
                 self.memory.add_assistant_message(response_text)
                 self.tracker.end_iteration()
                 self.tracker.end_run(response_text)
                 return response_text
 
-            # There are tool calls - execute them
+            # 有工具调用 - 执行它们
             if self.verbose and response_text:
-                print(f"[Think] {_safe_str(response_text[:200])}...")
+                print(f"[Think] {safe_str(response_text[:200])}...")
 
-            # Add assistant message with tool calls
+            # 添加包含工具调用的助手消息
             self.memory.add_assistant_message(
                 response_text,
                 tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
-            # Execute each tool call
+            # 执行每个工具调用
             for tool_call in tool_calls:
                 tool_start = time.perf_counter()
                 result = self._execute_tool_call(tool_call)
                 tool_latency = (time.perf_counter() - tool_start) * 1000
 
-                # Record tool execution
+                # 记录工具执行
                 self.tracker.record_tool_execution(
                     tool_name=tool_call.name,
                     arguments=tool_call.arguments,
@@ -168,16 +159,16 @@ class ReActAgent(BaseAgent):
                 )
 
                 if self.verbose:
-                    status = "success" if result.success else "failed"
-                    args_str = _safe_str(str(tool_call.arguments))
+                    status = "成功" if result.success else "失败"
+                    args_str = safe_str(str(tool_call.arguments))
                     print(f"[Tool Call] {tool_call.name}({args_str}) -> {status}")
                     if result.output:
-                        output = _safe_str(result.output)
+                        output = safe_str(result.output)
                         preview = output[:200] + "..." if len(output) > 200 else output
                         print(f"[Observe] {preview}")
 
-                # Add tool result to memory
-                result_content = result.output if result.success else f"Error: {result.error}"
+                # 添加工具结果到记忆
+                result_content = result.output if result.success else f"错误: {result.error}"
                 self.memory.add_tool_result(
                     tool_call_id=tool_call.id,
                     content=result_content
@@ -185,46 +176,46 @@ class ReActAgent(BaseAgent):
 
             self.tracker.end_iteration()
 
-        # Reached max iterations
-        response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
+        # 达到最大迭代次数
+        response = "抱歉，我无法在迭代限制内完成此任务。请尝试简化您的请求。"
         self.tracker.end_run(response)
         return response
 
     def run_stream(self, user_input: str) -> Generator[str, None, None]:
         """
-        Stream the response (simplified version).
+        流式返回响应（简化版本）。
 
-        For now, this runs the full loop and yields the final result.
-        True streaming with tool calls requires more complex handling.
+        目前运行完整循环并返回最终结果。
+        带工具调用的真正流式处理需要更复杂的实现。
 
         Args:
-            user_input: The user's input text
+            user_input: 用户输入文本
 
         Yields:
-            Text chunks from the response
+            响应的文本片段
         """
         result = self.run(user_input)
         yield result
 
     def _execute_tool_call(self, tool_call: ToolCall) -> ToolResult:
         """
-        Execute a single tool call.
+        执行单个工具调用。
 
         Args:
-            tool_call: The tool call to execute
+            tool_call: 要执行的工具调用
 
         Returns:
-            ToolResult from the execution
+            执行结果的 ToolResult
         """
         result = self.execute_tool(tool_call.name, tool_call.arguments)
 
-        # Track undoable operations
+        # 追踪可撤销操作
         if result.success and result.undo_data:
             tool = self.tool_registry.get(tool_call.name)
             if tool and tool.supports_undo:
                 self._undo_stack.push(tool_call.name, result.undo_data)
 
-        # Detect name update from memorize tool (for CLI callback)
+        # 检测 memorize 工具的名字更新（用于 CLI 回调）
         if tool_call.name == "memorize" and result.success and result.metadata:
             name_type = result.metadata.get("name_type")
             name_value = result.metadata.get("name_value")
@@ -235,18 +226,18 @@ class ReActAgent(BaseAgent):
 
     def undo_current_round(self, context: dict) -> list[str]:
         """
-        Undo all operations in the current round.
+        撤销当前轮次的所有操作。
 
         Args:
-            context: Execution context (contains memory, config, etc.)
+            context: 执行上下文（包含 memory, config 等）
 
         Returns:
-            List of tool names that were successfully undone
+            成功撤销的工具名称列表
         """
         undone = []
         records = self._undo_stack.get_round_records()
 
-        # Undo in reverse order
+        # 按逆序撤销
         for record in reversed(records):
             tool = self.tool_registry.get(record.tool_name)
             if tool and tool.supports_undo:
@@ -258,16 +249,16 @@ class ReActAgent(BaseAgent):
         return undone
 
     def has_undoable_operations(self) -> bool:
-        """Check if current round has any undoable operations."""
+        """检查当前轮次是否有可撤销操作"""
         return self._undo_stack.has_round_records()
 
     def add_tool(self, tool) -> None:
         """
-        Add a new tool to the agent.
+        添加新工具到 Agent。
 
         Args:
-            tool: Tool instance to add
+            tool: 要添加的工具实例
         """
         self.tool_registry.register(tool)
-        # Update system prompt with new tool
+        # 用新工具更新系统提示
         self._setup_system_prompt()
