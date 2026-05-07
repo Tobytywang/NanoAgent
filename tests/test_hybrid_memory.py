@@ -3,6 +3,8 @@ Tests for hybrid memory functionality.
 """
 
 import pytest
+
+pytestmark = pytest.mark.unit
 import tempfile
 from pathlib import Path
 
@@ -52,17 +54,6 @@ class TestLongTermEntry:
 
 class TestLongTermMemory:
     """Tests for LongTermMemory implementation."""
-
-    @pytest.fixture
-    def temp_dir(self):
-        """Create a temporary directory for testing."""
-        with tempfile.TemporaryDirectory() as d:
-            yield d
-
-    @pytest.fixture
-    def long_term_memory(self, temp_dir):
-        """Create a LongTermMemory instance."""
-        return LongTermMemory(storage_path=temp_dir)
 
     def test_add_and_retrieve(self, long_term_memory):
         """Test adding and retrieving memories."""
@@ -313,22 +304,6 @@ class TestLongTermMemory:
 
 class TestHybridMemory:
     """Tests for HybridMemory implementation."""
-
-    @pytest.fixture
-    def temp_dir(self):
-        """Create a temporary directory for testing."""
-        with tempfile.TemporaryDirectory() as d:
-            yield d
-
-    @pytest.fixture
-    def hybrid_memory(self, temp_dir):
-        """Create a HybridMemory instance."""
-        working = ShortTermMemory(max_messages=50, system_prompt="Test prompt")
-        long_term = LongTermMemory(storage_path=temp_dir)
-        return HybridMemory(
-            working_memory=working,
-            long_term_memory=long_term
-        )
 
     def test_add_to_working_memory(self, hybrid_memory):
         """Test adding messages to working memory."""

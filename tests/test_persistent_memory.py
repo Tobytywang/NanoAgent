@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 from datetime import datetime
 
+pytestmark = pytest.mark.unit
+
 from nano_agent.memory.storage.base import BaseStorage, MemoryEntry
 from nano_agent.memory.storage.file_storage import FileStorage
 from nano_agent.memory.persistent import PersistentMemory
@@ -63,25 +65,13 @@ class TestMemoryEntry:
 class TestFileStorage:
     """Tests for FileStorage implementation."""
 
-    @pytest.fixture
-    def temp_dir(self):
-        """Create a temporary directory for testing."""
-        with tempfile.TemporaryDirectory() as d:
-            yield d
-
-    @pytest.fixture
-    def storage(self, temp_dir):
-        """Create a FileStorage instance."""
-        return FileStorage(base_dir=temp_dir)
-
-    def test_init_creates_directory(self):
+    def test_init_creates_directory(self, temp_dir):
         """Test that init creates the base directory."""
-        with tempfile.TemporaryDirectory() as d:
-            base = Path(d) / "memory"
-            storage = FileStorage(base_dir=str(base))
-            assert base.exists()
+        base = temp_dir / "memory"
+        storage = FileStorage(base_dir=str(base))
+        assert base.exists()
 
-    def test_save_and_load_session(self, storage):
+    def test_save_and_load_session(self, temp_storage):
         """Test saving and loading a session."""
         entry1 = MemoryEntry.create(
             session_id="session1",
@@ -94,20 +84,20 @@ class TestFileStorage:
             content="Hi there!"
         )
 
-        storage.save(entry1)
-        storage.save(entry2)
+        temp_storage.save(entry1)
+        temp_storage.save(entry2)
 
-        entries = storage.load_session("session1")
+        entries = temp_storage.load_session("session1")
         assert len(entries) == 2
         assert entries[0].content == "Hello"
         assert entries[1].content == "Hi there!"
 
-    def test_load_nonexistent_session(self, storage):
+    def test_load_nonexistent_session(self, temp_storage):
         """Test loading a session that doesn't exist."""
-        entries = storage.load_session("nonexistent")
+        entries = temp_storage.load_session("nonexistent")
         assert entries == []
 
-    def test_load_recent(self, storage):
+    def test_load_recent(self, temp_storage):
         """Test loading recent entries."""
         for i in range(5):
             entry = MemoryEntry.create(
@@ -115,56 +105,56 @@ class TestFileStorage:
                 role="user",
                 content=f"Message {i}"
             )
-            storage.save(entry)
+            temp_storage.save(entry)
 
-        recent = storage.load_recent("session1", limit=2)
+        recent = temp_storage.load_recent("session1", limit=2)
         assert len(recent) == 2
         assert recent[0].content == "Message 3"
         assert recent[1].content == "Message 4"
 
-    def test_delete_session(self, storage):
+    def test_delete_session(self, temp_storage):
         """Test deleting a session."""
         entry = MemoryEntry.create(
             session_id="session1",
             role="user",
             content="Test"
         )
-        storage.save(entry)
+        temp_storage.save(entry)
 
-        assert storage.session_exists("session1")
-        storage.delete_session("session1")
-        assert not storage.session_exists("session1")
+        assert temp_storage.session_exists("session1")
+        temp_storage.delete_session("session1")
+        assert not temp_storage.session_exists("session1")
 
-    def test_list_sessions(self, storage):
+    def test_list_sessions(self, temp_storage):
         """Test listing all sessions."""
         entry1 = MemoryEntry.create(session_id="session1", role="user", content="A")
         entry2 = MemoryEntry.create(session_id="session2", role="user", content="B")
 
-        storage.save(entry1)
-        storage.save(entry2)
+        temp_storage.save(entry1)
+        temp_storage.save(entry2)
 
-        sessions = storage.list_sessions()
+        sessions = temp_storage.list_sessions()
         assert "session1" in sessions
         assert "session2" in sessions
 
-    def test_session_exists(self, storage):
+    def test_session_exists(self, temp_storage):
         """Test checking if session exists."""
-        assert not storage.session_exists("nonexistent")
+        assert not temp_storage.session_exists("nonexistent")
 
         entry = MemoryEntry.create(session_id="exists", role="user", content="Test")
-        storage.save(entry)
-        assert storage.session_exists("exists")
+        temp_storage.save(entry)
+        assert temp_storage.session_exists("exists")
 
-    def test_get_session_info(self, storage):
+    def test_get_session_info(self, temp_storage):
         """Test getting session info."""
         entry = MemoryEntry.create(
             session_id="session1",
             role="user",
             content="Test"
         )
-        storage.save(entry)
+        temp_storage.save(entry)
 
-        info = storage.get_session_info("session1")
+        info = temp_storage.get_session_info("session1")
         assert info is not None
         assert info["session_id"] == "session1"
         assert info["message_count"] == 1
@@ -173,21 +163,10 @@ class TestFileStorage:
 class TestPersistentMemory:
     """Tests for PersistentMemory implementation."""
 
-    @pytest.fixture
-    def temp_dir(self):
-        """Create a temporary directory for testing."""
-        with tempfile.TemporaryDirectory() as d:
-            yield d
-
-    @pytest.fixture
-    def storage(self, temp_dir):
-        """Create a FileStorage instance."""
-        return FileStorage(base_dir=temp_dir)
-
-    def test_init_new_session(self, storage):
+    def test_init_new_session(self, temp_storage):
         """Test initializing a new session."""
         memory = PersistentMemory(
-            storage=storage,
+            storage=temp_storage,
             max_messages=50,
             system_prompt="Test prompt"
         )
@@ -196,20 +175,20 @@ class TestPersistentMemory:
         assert not memory.is_loaded()  # New session, not loaded
         assert len(memory) == 1  # Only system message
 
-    def test_init_with_specific_session_id(self, storage):
+    def test_init_with_specific_session_id(self, temp_storage):
         """Test initializing with a specific session id."""
         memory = PersistentMemory(
-            storage=storage,
+            storage=temp_storage,
             session_id="my_session",
             max_messages=50
         )
 
         assert memory.session_id == "my_session"
 
-    def test_add_and_persist_messages(self, storage):
+    def test_add_and_persist_messages(self, temp_storage):
         """Test adding messages and persisting them."""
         memory = PersistentMemory(
-            storage=storage,
+            storage=temp_storage,
             max_messages=50,
             system_prompt="Test"
         )
@@ -220,7 +199,7 @@ class TestPersistentMemory:
 
         # Create new memory instance with same session and system prompt
         memory2 = PersistentMemory(
-            storage=storage,
+            storage=temp_storage,
             session_id=session_id,
             max_messages=50,
             system_prompt="Test"
@@ -233,9 +212,9 @@ class TestPersistentMemory:
         assert messages[1]["content"] == "Hello"
         assert messages[2]["content"] == "Hi there!"
 
-    def test_add_tool_result(self, storage):
+    def test_add_tool_result(self, temp_storage):
         """Test adding tool results."""
-        memory = PersistentMemory(storage=storage, max_messages=50)
+        memory = PersistentMemory(storage=temp_storage, max_messages=50)
 
         memory.add_user_message("Test")
         memory.add_assistant_message("", tool_calls=[{"id": "call_123"}])
@@ -246,9 +225,9 @@ class TestPersistentMemory:
         assert messages[3]["role"] == "tool"
         assert messages[3]["tool_call_id"] == "call_123"
 
-    def test_clear(self, storage):
+    def test_clear(self, temp_storage):
         """Test clearing memory."""
-        memory = PersistentMemory(storage=storage, max_messages=50)
+        memory = PersistentMemory(storage=temp_storage, max_messages=50)
         session_id = memory.session_id
 
         memory.add_user_message("Test")
@@ -256,11 +235,11 @@ class TestPersistentMemory:
 
         memory.clear()
         assert len(memory) == 1  # Only system message
-        assert not storage.session_exists(session_id)
+        assert not temp_storage.session_exists(session_id)
 
-    def test_new_session(self, storage):
+    def test_new_session(self, temp_storage):
         """Test starting a new session."""
-        memory = PersistentMemory(storage=storage, max_messages=50)
+        memory = PersistentMemory(storage=temp_storage, max_messages=50)
         old_session = memory.session_id
 
         memory.add_user_message("Test")
@@ -269,15 +248,15 @@ class TestPersistentMemory:
         assert new_session != old_session
         assert len(memory) == 1  # Only system message
 
-    def test_load_session(self, storage):
+    def test_load_session(self, temp_storage):
         """Test loading an existing session."""
         # Create and populate first session
-        memory1 = PersistentMemory(storage=storage, max_messages=50)
+        memory1 = PersistentMemory(storage=temp_storage, max_messages=50)
         session_id = memory1.session_id
         memory1.add_user_message("First message")
 
         # Create new session
-        memory2 = PersistentMemory(storage=storage, max_messages=50)
+        memory2 = PersistentMemory(storage=temp_storage, max_messages=50)
         memory2.add_user_message("Second message")
 
         # Load first session
@@ -288,20 +267,20 @@ class TestPersistentMemory:
         messages = memory2.get_all()
         assert messages[1]["content"] == "First message"
 
-    def test_list_sessions(self, storage):
+    def test_list_sessions(self, temp_storage):
         """Test listing sessions."""
-        memory1 = PersistentMemory(storage=storage, max_messages=50)
+        memory1 = PersistentMemory(storage=temp_storage, max_messages=50)
         memory1.add_user_message("Session 1")
 
-        memory2 = PersistentMemory(storage=storage, max_messages=50)
+        memory2 = PersistentMemory(storage=temp_storage, max_messages=50)
         memory2.add_user_message("Session 2")
 
         sessions = memory1.list_sessions()
         assert len(sessions) == 2
 
-    def test_get_context_with_limit(self, storage):
+    def test_get_context_with_limit(self, temp_storage):
         """Test getting context with message limit."""
-        memory = PersistentMemory(storage=storage, max_messages=50)
+        memory = PersistentMemory(storage=temp_storage, max_messages=50)
 
         for i in range(10):
             memory.add_user_message(f"Message {i}")
@@ -311,9 +290,9 @@ class TestPersistentMemory:
         assert context[0]["role"] == "system"  # Always keep system
         assert context[1]["content"] == "Message 6"  # Recent messages
 
-    def test_trim_if_needed(self, storage):
+    def test_trim_if_needed(self, temp_storage):
         """Test trimming old messages when exceeding limit."""
-        memory = PersistentMemory(storage=storage, max_messages=5)
+        memory = PersistentMemory(storage=temp_storage, max_messages=5)
 
         for i in range(10):
             memory.add_user_message(f"Message {i}")
@@ -366,16 +345,14 @@ class TestCreateMemory:
         memory = create_memory(config)
         assert isinstance(memory, ShortTermMemory)
 
-    def test_create_persistent_memory(self):
+    def test_create_persistent_memory(self, temp_dir):
         """Test creating persistent memory."""
         from nano_agent.cli.main import create_memory
         from nano_agent.config.schema import Config
-        import tempfile
 
-        with tempfile.TemporaryDirectory() as d:
-            config = Config()
-            config.memory.type = "persistent"
-            config.memory.storage_path = d
+        config = Config()
+        config.memory.type = "persistent"
+        config.memory.storage_path = str(temp_dir)
 
-            memory = create_memory(config)
-            assert isinstance(memory, PersistentMemory)
+        memory = create_memory(config)
+        assert isinstance(memory, PersistentMemory)
