@@ -1,5 +1,5 @@
 """
-CLI entry point for NanoAgent.
+NanoAgent CLI 入口点
 """
 
 import argparse
@@ -17,8 +17,10 @@ from ..agent.react import ReActAgent
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
+from ..utils.patterns import USER_NAME_PATTERNS, AGENT_NAME_PATTERNS
 from .console import Console
 from .scanner import ProjectScanner
+from .constants import Commands, CommandPrefix
 
 
 class GracefulExitManager:
@@ -419,26 +421,26 @@ def run_interactive(
                 continue
 
             # 显示帮助信息
-            if user_input.lower() in ["/?", "/help", "help", "?", "？", "/？"]:
+            if user_input.lower() in Commands.HELP:
                 _show_help()
                 continue
 
             # 优雅退出命令（生成摘要）
-            if user_input.lower() in ["/exit", "/quit", "/bye"]:
+            if user_input.lower() in Commands.EXIT:
                 GracefulExitManager.exit_with_summary()
                 break
 
             # 直接退出命令（不生成摘要）
-            if user_input.lower() in ["exit", "quit"]:
+            if user_input.lower() in Commands.EXIT_DIRECT:
                 Console.print("Goodbye!", style="success")
                 break
 
-            if user_input.lower() == "/clear":
+            if user_input.lower() == Commands.CLEAR:
                 agent.reset()
                 Console.print("Conversation history cleared", style="success")
                 continue
 
-            if user_input.lower() == "/undo":
+            if user_input.lower() == Commands.UNDO:
                 restored = _handle_undo(agent, config)
                 # Update local display variables
                 if "user_name" in restored:
@@ -447,36 +449,36 @@ def run_interactive(
                     agent_display = restored["agent_name"]
                 continue
 
-            if user_input.lower() == "/tools":
+            if user_input.lower() == Commands.TOOLS:
                 tools = agent.tool_registry.list_tools()
                 Console.print(f"Available tools: {', '.join(tools)}", style="info")
                 continue
 
-            if user_input.lower().startswith("/stats"):
+            if user_input.lower().startswith(CommandPrefix.STATS):
                 _handle_stats_command(agent, config, user_input[6:].strip())
                 continue
 
-            if user_input.lower() == "/init":
+            if user_input.lower() == Commands.INIT:
                 _init_project(agent)
                 continue
 
-            if user_input.lower() == "/config":
+            if user_input.lower() == Commands.CONFIG:
                 _show_config(config, agent)
                 continue
 
-            if user_input.lower().startswith("/config "):
+            if user_input.lower().startswith(CommandPrefix.CONFIG):
                 _handle_config_command(agent, config, user_input[8:])
                 continue
 
-            if user_input.lower().startswith("/memory"):
+            if user_input.lower().startswith(CommandPrefix.MEMORY):
                 _handle_memory_command(agent, config, user_input[7:].strip())
                 continue
 
-            if user_input.lower() == "/report":
+            if user_input.lower() == Commands.REPORT:
                 _export_report(agent, report_format, report_output)
                 continue
 
-            if user_input.lower() == "/sessions":
+            if user_input.lower() == Commands.SESSIONS:
                 if hasattr(agent.memory, 'list_sessions'):
                     sessions = agent.memory.list_sessions()
                     if not sessions:
@@ -490,7 +492,7 @@ def run_interactive(
                 continue
 
             # Skill commands
-            if user_input.lower() == "/skills":
+            if user_input.lower() == Commands.SKILLS:
                 if hasattr(agent, 'skill_loader'):
                     skills = agent.skill_loader.list_loaded_skills()
                     if not skills:
@@ -504,12 +506,12 @@ def run_interactive(
                     Console.print("Skill system not available", style="warning")
                 continue
 
-            if user_input.lower().startswith("/skill "):
+            if user_input.lower().startswith(CommandPrefix.SKILL):
                 _handle_skill_command(agent, user_input[7:])
                 continue
 
             # /setname command - set user/agent display names
-            if user_input.lower().startswith("/setname"):
+            if user_input.lower().startswith(CommandPrefix.SETNAME):
                 args = user_input[8:].strip().split()
                 if len(args) == 0:
                     # Show current names
@@ -624,7 +626,7 @@ def run_interactive(
 
             # Show undo hint if there are undoable operations
             if hasattr(agent, 'has_undoable_operations') and agent.has_undoable_operations():
-                Console.print("💡 输入 /undo 可撤销本轮操作", style="info")
+                Console.print(f"💡 输入 {Commands.UNDO} 可撤销本轮操作", style="info")
 
         except KeyboardInterrupt:
             # 被 signal handler 处理，继续循环
@@ -890,19 +892,6 @@ def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
         # NOTE: memorize content is generated by the Agent (LLM), so:
         # - "我的名字" (my name) refers to the Agent's name
         # - "用户的名字" (user's name) refers to the user's name
-        user_patterns = [
-            r"用户名[是为]\s*([^，。！,.]+)",
-            r"用户的名字[是为]\s*([^，。！,.]+)",
-            r"用户叫\s*([^，。！,.]+)",
-        ]
-        agent_patterns = [
-            r"Agent名[是为]\s*([^，。！,.]+)",
-            r"Agent的名字[是为]\s*([^，。！,.]+)",
-            r"你的名字[是为叫]\s*([^，。！,.]+)",
-            r"你叫\s*([^，。！,.]+)",
-            r"我的名字[是为]\s*([^，。！,.]+)",
-            r"我叫\s*([^，。！,.]+)",
-        ]
 
         for entry in entries:
             # First check metadata (new format)
@@ -914,14 +903,14 @@ def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
 
             # Fallback: check content patterns (old format compatibility)
             if not user_name:
-                for pattern in user_patterns:
+                for pattern in USER_NAME_PATTERNS:
                     match = re.search(pattern, entry.content)
                     if match:
                         user_name = match.group(1).strip()
                         break
 
             if not agent_name:
-                for pattern in agent_patterns:
+                for pattern in AGENT_NAME_PATTERNS:
                     match = re.search(pattern, entry.content)
                     if match:
                         agent_name = match.group(1).strip()
@@ -2142,7 +2131,7 @@ def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
         ltm.add(
             content=project_info,
             category="project_info",
-            metadata={"source": "/init", "project_name": info['project_name']}
+            metadata={"source": Commands.INIT, "project_name": info['project_name']}
         )
 
         # 保存项目摘要（截取关键部分）
@@ -2150,7 +2139,7 @@ def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
         ltm.add(
             content=f"项目摘要:\n{summary_preview}",
             category="project_summary",
-            metadata={"source": "/init", "project_name": info['project_name']}
+            metadata={"source": Commands.INIT, "project_name": info['project_name']}
         )
 
         Console.print("Project info saved to long-term memory.", style="success")
