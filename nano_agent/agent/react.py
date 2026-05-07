@@ -1,24 +1,42 @@
 """
-ReAct Agent 实现
+ReAct Agent implementation.
+
+This module implements the execution layer of the agent architecture,
+following the Think -> Act -> Observe cycle.
 """
 
 import time
-import uuid
 from typing import Generator
+
 from .base import BaseAgent
 from .prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
+from .types import ExecutionResult, ThinkResult, AgentEvent
+from .events import EventEmitter
+from .budget import Budget, BudgetChecker
 from .undo import UndoStack
+from .context import ContextManager
+from .confirmation import ConfirmationManager, ConfirmationConfig
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
-from ..utils.strings import safe_str
+
+
+def _safe_str(text: str) -> str:
+    """Safely convert string for printing, removing invalid Unicode characters."""
+    if not text:
+        return text
+    try:
+        return text.encode('utf-8', errors='replace').decode('utf-8')
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return text
 
 
 class ReActAgent(BaseAgent):
     """
-    ReAct (Reasoning + Acting) Agent 实现。
+    ReAct (Reasoning + Acting) Agent implementation.
 
-    遵循 思考 -> 行动 -> 观察 循环来解决问题。
+    This is the execution layer that follows the Think -> Act -> Observe cycle.
+    It is designed to be controlled by the orchestration layer (AgentOrchestrator).
     """
 
     def __init__(
@@ -30,42 +48,71 @@ class ReActAgent(BaseAgent):
         verbose: bool = True,
         skill_prompt: str = "",
         tracker: MetricsTracker | None = None,
+        events: EventEmitter | None = None,
+        budget: Budget | None = None,
+        context_config=None,
+        confirmation_config: ConfirmationConfig | None = None,
     ):
         """
-        初始化 ReAct Agent。
+        Initialize the ReAct agent.
 
         Args:
-            llm: LLM 客户端实例
-            memory: 记忆系统实例
-            tool_registry: 工具注册表实例
-            max_iterations: 最大推理迭代次数
-            verbose: 是否打印调试信息
-            skill_prompt: 来自技能的额外提示
-            tracker: 监控指标追踪器
+            llm: LLM client instance
+            memory: Memory system instance
+            tool_registry: Tool registry instance
+            max_iterations: Maximum reasoning iterations
+            verbose: Whether to print debug information
+            skill_prompt: Additional prompt from skills
+            tracker: Metrics tracker for monitoring
+            events: Event emitter for external listeners
+            budget: Budget constraints for execution
+            context_config: Context management configuration
+            confirmation_config: Confirmation mechanism configuration
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
         self.skill_prompt = skill_prompt
         self.tracker = tracker or MetricsTracker()
+        self.events = events or EventEmitter()
+        self.budget_checker = BudgetChecker(budget or Budget(max_iterations=max_iterations))
+
+        # Context manager
+        self.context_manager = ContextManager(
+            memory=memory,
+            llm=llm,
+            config=context_config,
+            verbose=verbose
+        ) if context_config else None
+
+        # Confirmation manager
+        self.confirmation = ConfirmationManager(confirmation_config)
+
+        # Execution state
         self._undo_stack = UndoStack()
         self._round_counter = 0
-        self._pending_name_updates: list[tuple[str, str]] = []  # (name_type, name_value) 列表
-        self._prev_name_values: dict[str, str] = {}  # 用于撤销的上一次名字值
+        self._tool_call_records: list[dict] = []
+        self._total_tokens: int = 0
+        self._session_id: str = ""
+
+        # CLI compatibility (will be removed in future versions)
+        self._pending_name_updates: list[tuple[str, str]] = []
+        self._prev_name_values: dict[str, str] = {}
+
         self._setup_system_prompt()
 
     def _setup_system_prompt(self) -> None:
-        """设置包含工具描述的系统提示"""
+        """Set up the system prompt with tool descriptions."""
         tools_desc = self._format_tools_description()
         system_prompt = REACT_SYSTEM_PROMPT.format(tools_description=tools_desc)
 
-        # 如果有技能提示，添加到系统提示
+        # Add skill prompt if available
         if self.skill_prompt:
             system_prompt = f"{system_prompt}\n\n## Skills\n\n{self.skill_prompt}"
 
         self.memory.set_system_prompt(system_prompt)
 
     def _format_tools_description(self) -> str:
-        """格式化工具描述用于系统提示"""
+        """Format tool descriptions for the system prompt."""
         descriptions = []
         for tool_name in self.tool_registry.list_tools():
             tool = self.tool_registry.get(tool_name)
@@ -77,145 +124,319 @@ class ReActAgent(BaseAgent):
             descriptions.append(desc)
         return "\n".join(descriptions)
 
-    def run(self, user_input: str) -> str:
+    def run(
+        self,
+        user_input: str,
+        dry_run: bool = False,
+        session_id: str = ""
+    ) -> ExecutionResult:
         """
-        运行 ReAct 循环处理用户输入。
+        Run the ReAct loop to process user input.
 
         Args:
-            user_input: 用户输入文本
+            user_input: The user's input text
+            dry_run: If True, tools are not actually executed
+            session_id: Session identifier for tracking
 
         Returns:
-            Agent 的最终响应
+            ExecutionResult containing response and execution metadata
         """
-        # 开始新的撤销轮次
-        self._round_counter += 1
-        self._undo_stack.start_round(f"round_{self._round_counter}")
-
-        # 添加用户消息到记忆
-        self.memory.add_user_message(user_input)
-
-        # 开始追踪
-        self.tracker.start_run(user_input)
+        # Prepare execution
+        self._prepare_run(user_input, session_id)
 
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
+
+            # Budget check
+            if not self.budget_checker.can_continue(
+                iteration, self._total_tokens, len(self._tool_call_records)
+            ):
+                break
+
             self.tracker.start_iteration(iteration)
 
             if self.verbose:
                 print(f"\n[Iteration {iteration}/{self.max_iterations}]")
 
-            # 调用 LLM 处理当前上下文
-            messages = self.memory.get_all()
-            tools_schema = self.tool_registry.get_all_schemas()
-
-            llm_start = time.perf_counter()
-            response_text, tool_calls, usage = self.llm.chat(
-                messages=messages,
-                tools=tools_schema if tools_schema else None
-            )
-            llm_latency = (time.perf_counter() - llm_start) * 1000
-
-            # 记录 LLM 调用
-            self.tracker.record_llm_call(
-                model=self.llm.model,
-                prompt_tokens=usage.prompt_tokens,
-                completion_tokens=usage.completion_tokens,
-                latency_ms=llm_latency,
-                tool_calls_count=len(tool_calls),
-            )
-
-            # 如果没有工具调用，返回最终答案
-            if not tool_calls:
-                self.memory.add_assistant_message(response_text)
+            # Think phase
+            think = self._think()
+            if think.is_final:
                 self.tracker.end_iteration()
-                self.tracker.end_run(response_text)
-                return response_text
+                self.tracker.end_run(think.response_text)
+                return self._build_result(think.response_text, iteration, success=True)
 
-            # 有工具调用 - 执行它们
-            if self.verbose and response_text:
-                print(f"[Think] {safe_str(response_text[:200])}...")
+            # Act and Observe phases
+            for tool_call in think.tool_calls:
+                result = self._act(tool_call, dry_run)
+                self._observe(tool_call, result)
 
-            # 添加包含工具调用的助手消息
+            self.tracker.end_iteration()
+
+        # Reached max iterations or budget exhausted
+        response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
+        self.tracker.end_run(response)
+        return self._build_result(response, iteration, success=False)
+
+    def _prepare_run(self, user_input: str, session_id: str) -> None:
+        """
+        Prepare for execution.
+
+        Args:
+            user_input: The user's input text
+            session_id: Session identifier
+        """
+        # Reset execution state
+        self._round_counter += 1
+        self._undo_stack.start_round(f"round_{self._round_counter}")
+        self._tool_call_records = []
+        self._total_tokens = 0
+        self._session_id = session_id
+        self._pending_name_updates = []
+
+        # Add user message to memory
+        self.memory.add_user_message(user_input)
+
+        # Start tracking
+        self.tracker.start_run(user_input)
+
+        # Emit start event
+        self.events.emit(AgentEvent.RUN_START, {"input": user_input, "session_id": session_id})
+
+    def _think(self) -> ThinkResult:
+        """
+        Think phase: Call LLM and get response.
+
+        Returns:
+            ThinkResult containing response text and any tool calls
+        """
+        self.events.emit(AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1})
+
+        # Context pressure check and compression
+        if self.context_manager:
+            self.context_manager.check_and_compress()
+
+        # Get context and tools
+        messages = self.memory.get_all()
+        tools_schema = self.tool_registry.get_all_schemas()
+
+        # Call LLM
+        llm_start = time.perf_counter()
+        response_text, tool_calls, usage = self.llm.chat(
+            messages=messages,
+            tools=tools_schema if tools_schema else None
+        )
+        llm_latency = (time.perf_counter() - llm_start) * 1000
+
+        # Record LLM call
+        self.tracker.record_llm_call(
+            model=self.llm.model,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            latency_ms=llm_latency,
+            tool_calls_count=len(tool_calls),
+        )
+
+        # Update token count
+        self._total_tokens += usage.total_tokens
+
+        # Verbose output
+        if self.verbose and response_text:
+            print(f"[Think] {_safe_str(response_text[:200])}...")
+
+        # Add assistant message to memory if there are tool calls
+        if tool_calls:
             self.memory.add_assistant_message(
                 response_text,
                 tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
-            # 执行每个工具调用
-            for tool_call in tool_calls:
-                tool_start = time.perf_counter()
-                result = self._execute_tool_call(tool_call)
-                tool_latency = (time.perf_counter() - tool_start) * 1000
+        return ThinkResult(
+            response_text=response_text,
+            tool_calls=tool_calls or [],
+            usage=usage,
+            is_final=not tool_calls
+        )
 
-                # 记录工具执行
-                self.tracker.record_tool_execution(
-                    tool_name=tool_call.name,
-                    arguments=tool_call.arguments,
-                    success=result.success,
-                    latency_ms=tool_latency,
-                    output_length=len(result.output) if result.output else 0,
-                    error=result.error,
-                )
+    def _act(self, tool_call: ToolCall, dry_run: bool = False) -> ToolResult:
+        """
+        Act phase: Execute a tool call.
 
-                if self.verbose:
-                    status = "成功" if result.success else "失败"
-                    args_str = safe_str(str(tool_call.arguments))
-                    print(f"[Tool Call] {tool_call.name}({args_str}) -> {status}")
-                    if result.output:
-                        output = safe_str(result.output)
-                        preview = output[:200] + "..." if len(output) > 200 else output
-                        print(f"[Observe] {preview}")
+        Args:
+            tool_call: The tool call to execute
+            dry_run: If True, return placeholder result without executing
 
-                # 添加工具结果到记忆
-                result_content = result.output if result.success else f"错误: {result.error}"
-                self.memory.add_tool_result(
-                    tool_call_id=tool_call.id,
-                    content=result_content
-                )
+        Returns:
+            ToolResult from the execution
+        """
+        # Emit tool call event
+        self.events.emit(AgentEvent.TOOL_CALL, {
+            "tool": tool_call.name,
+            "arguments": tool_call.arguments
+        })
 
-            self.tracker.end_iteration()
+        # Handle dry-run mode
+        if dry_run:
+            result = ToolResult(
+                success=True,
+                output="[预览模式] 未实际执行"
+            )
+        else:
+            # Check if confirmation is needed
+            tool = self.tool_registry.get(tool_call.name)
+            if tool and self.confirmation.needs_confirmation(tool):
+                # Request confirmation
+                self.confirmation.request_confirmation()
+                self.events.emit(AgentEvent.CONFIRMATION_REQUIRED, {
+                    "tool": tool_call.name,
+                    "arguments": tool_call.arguments,
+                    "risk_level": tool.risk_level.value
+                })
 
-        # 达到最大迭代次数
-        response = "抱歉，我无法在迭代限制内完成此任务。请尝试简化您的请求。"
-        self.tracker.end_run(response)
-        return response
+                # Wait for confirmation (blocking)
+                confirmed = self.confirmation.wait_for_result()
+
+                if not confirmed:
+                    # User denied
+                    result = ToolResult(
+                        success=False,
+                        output="",
+                        error="用户取消操作"
+                    )
+                    # Record and return early
+                    self._tool_call_records.append({
+                        "name": tool_call.name,
+                        "arguments": tool_call.arguments,
+                        "success": False,
+                        "output_preview": None,
+                    })
+                    self.events.emit(AgentEvent.TOOL_RESULT, {
+                        "tool": tool_call.name,
+                        "result": result
+                    })
+                    return result
+
+            # Execute the tool
+            tool_start = time.perf_counter()
+            result = self._execute_tool_call(tool_call)
+            tool_latency = (time.perf_counter() - tool_start) * 1000
+
+            # Record tool execution
+            self.tracker.record_tool_execution(
+                tool_name=tool_call.name,
+                arguments=tool_call.arguments,
+                success=result.success,
+                latency_ms=tool_latency,
+                output_length=len(result.output) if result.output else 0,
+                error=result.error,
+            )
+
+        # Record tool call
+        self._tool_call_records.append({
+            "name": tool_call.name,
+            "arguments": tool_call.arguments,
+            "success": result.success,
+            "output_preview": result.output[:100] if result.output else None,
+        })
+
+        # Emit tool result event
+        self.events.emit(AgentEvent.TOOL_RESULT, {
+            "tool": tool_call.name,
+            "result": result
+        })
+
+        # Verbose output
+        if self.verbose:
+            status = "success" if result.success else "failed"
+            args_str = _safe_str(str(tool_call.arguments))
+            print(f"[Tool Call] {tool_call.name}({args_str}) -> {status}")
+            if result.output:
+                output = _safe_str(result.output)
+                preview = output[:200] + "..." if len(output) > 200 else output
+                print(f"[Observe] {preview}")
+
+        return result
+
+    def _observe(self, tool_call: ToolCall, result: ToolResult) -> None:
+        """
+        Observe phase: Record tool result to memory.
+
+        Args:
+            tool_call: The tool call that was executed
+            result: The result from the tool execution
+        """
+        result_content = result.output if result.success else f"Error: {result.error}"
+        self.memory.add_tool_result(
+            tool_call_id=tool_call.id,
+            content=result_content
+        )
+
+    def _build_result(
+        self,
+        response: str,
+        iterations: int,
+        success: bool
+    ) -> ExecutionResult:
+        """
+        Build the execution result.
+
+        Args:
+            response: The final response text
+            iterations: Number of iterations executed
+            success: Whether execution completed successfully
+
+        Returns:
+            ExecutionResult with all execution metadata
+        """
+        # Add final assistant message if not already added
+        if success:
+            self.memory.add_assistant_message(response)
+
+        return ExecutionResult(
+            response=response,
+            success=success,
+            iterations=iterations,
+            tool_calls=self._tool_call_records,
+            tokens_used=self._total_tokens,
+            session_id=self._session_id
+        )
 
     def run_stream(self, user_input: str) -> Generator[str, None, None]:
         """
-        流式返回响应（简化版本）。
+        Stream the response (simplified version).
 
-        目前运行完整循环并返回最终结果。
-        带工具调用的真正流式处理需要更复杂的实现。
+        For now, this runs the full loop and yields the final result.
+        True streaming with tool calls requires more complex handling.
 
         Args:
-            user_input: 用户输入文本
+            user_input: The user's input text
 
         Yields:
-            响应的文本片段
+            Text chunks from the response
         """
         result = self.run(user_input)
-        yield result
+        yield result.response
 
     def _execute_tool_call(self, tool_call: ToolCall) -> ToolResult:
         """
-        执行单个工具调用。
+        Execute a single tool call.
 
         Args:
-            tool_call: 要执行的工具调用
+            tool_call: The tool call to execute
 
         Returns:
-            执行结果的 ToolResult
+            ToolResult from the execution
         """
         result = self.execute_tool(tool_call.name, tool_call.arguments)
 
-        # 追踪可撤销操作
+        # Track undoable operations
         if result.success and result.undo_data:
             tool = self.tool_registry.get(tool_call.name)
             if tool and tool.supports_undo:
                 self._undo_stack.push(tool_call.name, result.undo_data)
 
-        # 检测 memorize 工具的名字更新（用于 CLI 回调）
+        # Detect name update from memorize tool (for CLI callback)
+        # TODO: This is CLI-specific logic that should be moved to the orchestration layer
         if tool_call.name == "memorize" and result.success and result.metadata:
             name_type = result.metadata.get("name_type")
             name_value = result.metadata.get("name_value")
@@ -226,18 +447,18 @@ class ReActAgent(BaseAgent):
 
     def undo_current_round(self, context: dict) -> list[str]:
         """
-        撤销当前轮次的所有操作。
+        Undo all operations in the current round.
 
         Args:
-            context: 执行上下文（包含 memory, config 等）
+            context: Execution context (contains memory, config, etc.)
 
         Returns:
-            成功撤销的工具名称列表
+            List of tool names that were successfully undone
         """
         undone = []
         records = self._undo_stack.get_round_records()
 
-        # 按逆序撤销
+        # Undo in reverse order
         for record in reversed(records):
             tool = self.tool_registry.get(record.tool_name)
             if tool and tool.supports_undo:
@@ -249,16 +470,36 @@ class ReActAgent(BaseAgent):
         return undone
 
     def has_undoable_operations(self) -> bool:
-        """检查当前轮次是否有可撤销操作"""
+        """Check if current round has any undoable operations."""
         return self._undo_stack.has_round_records()
+
+    def confirm_tool(self, confirmed: bool) -> None:
+        """
+        Set confirmation result for pending tool execution.
+
+        Called by external handler (CLI, UI, etc.) after user interaction.
+
+        Args:
+            confirmed: Whether the user confirmed the operation
+        """
+        self.confirmation.set_result(confirmed)
+
+    def add_tool_to_whitelist(self, tool_name: str) -> None:
+        """
+        Add a tool to the confirmation whitelist.
+
+        Args:
+            tool_name: Name of the tool to whitelist
+        """
+        self.confirmation.add_to_whitelist(tool_name)
 
     def add_tool(self, tool) -> None:
         """
-        添加新工具到 Agent。
+        Add a new tool to the agent.
 
         Args:
-            tool: 要添加的工具实例
+            tool: Tool instance to add
         """
         self.tool_registry.register(tool)
-        # 用新工具更新系统提示
+        # Update system prompt with new tool
         self._setup_system_prompt()

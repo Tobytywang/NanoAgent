@@ -1,1 +1,55 @@
-"""Agent 模块 - ReAct 实现"""
+"""
+Agent module - ReAct implementation.
+
+This module provides the execution layer (ReActAgent) and orchestration
+layer (AgentOrchestrator) for the NanoAgent framework.
+"""
+
+from .base import BaseAgent
+from .react import ReActAgent
+from .types import (
+    ExecutionResult, ThinkResult, ExecutionEvent, AgentEvent,
+    Plan, PlanPhase, RiskLevel
+)
+from .events import EventEmitter
+from .budget import Budget, BudgetChecker
+from .orchestrator import AgentOrchestrator, SessionStats
+from .context import ContextManager, NineSectionSummary
+from .confirmation import ConfirmationManager, ConfirmationConfig
+from .git_manager import GitManager, GitCommit
+from .token_utils import estimate_tokens, estimate_text_tokens
+
+__all__ = [
+    # Base
+    "BaseAgent",
+    # Execution layer
+    "ReActAgent",
+    # Orchestration layer
+    "AgentOrchestrator",
+    "SessionStats",
+    # Types
+    "ExecutionResult",
+    "ThinkResult",
+    "ExecutionEvent",
+    "AgentEvent",
+    "Plan",
+    "PlanPhase",
+    "RiskLevel",
+    # Events
+    "EventEmitter",
+    # Budget
+    "Budget",
+    "BudgetChecker",
+    # Context management
+    "ContextManager",
+    "NineSectionSummary",
+    # Confirmation
+    "ConfirmationManager",
+    "ConfirmationConfig",
+    # Git integration
+    "GitManager",
+    "GitCommit",
+    # Token estimation
+    "estimate_tokens",
+    "estimate_text_tokens",
+]

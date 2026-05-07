@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Literal
 from .base import BaseTool, ToolResult
+from ..agent.types import RiskLevel
 
 
 class FileReadTool(BaseTool):
@@ -13,6 +14,7 @@ class FileReadTool(BaseTool):
 
     name = "file_read"
     description = "Read the contents of a file. Supports text files with optional line range selection."
+    risk_level = RiskLevel.SAFE  # Read-only operation
 
     @property
     def parameters_schema(self) -> dict:
@@ -105,6 +107,7 @@ class FileWriteTool(BaseTool):
 
     name = "file_write"
     description = "Write content to a file. Can overwrite or append."
+    risk_level = RiskLevel.MODERATE  # Write operation
 
     @property
     def parameters_schema(self) -> dict:
@@ -230,6 +233,7 @@ class FileSearchTool(BaseTool):
 
     name = "file_search"
     description = "Search for files matching a pattern in a directory."
+    risk_level = RiskLevel.SAFE  # Read-only operation
 
     @property
     def parameters_schema(self) -> dict:

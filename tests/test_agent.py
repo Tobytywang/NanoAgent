@@ -3,8 +3,6 @@ Tests for Agent system.
 """
 
 import pytest
-
-pytestmark = pytest.mark.unit
 from unittest.mock import Mock, MagicMock
 
 from nano_agent.agent.base import BaseAgent
@@ -93,7 +91,7 @@ class TestReActAgent:
         result = agent.execute_tool("unknown_tool", {})
 
         assert result.success is False
-        assert "未知工具" in result.error
+        assert "Unknown tool" in result.error
 
     def test_run_without_tool_calls(self):
         """Test run when LLM returns no tool calls."""
@@ -104,9 +102,11 @@ class TestReActAgent:
         registry = ToolRegistry()
 
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
-        response = agent.run("Hi")
+        result = agent.run("Hi")
 
-        assert response == "Hello! How can I help?"
+        assert result.response == "Hello! How can I help?"
+        assert result.success is True
+        assert result.iterations == 1
         # Check memory has user and assistant messages
         messages = memory.get_all()
         assert len(messages) == 3  # system + user + assistant
@@ -129,9 +129,10 @@ class TestReActAgent:
         registry.register(MockTool())
 
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
-        response = agent.run("Process test")
+        result = agent.run("Process test")
 
-        assert "Processed: test" in response
+        assert "Processed: test" in result.response
+        assert result.success is True
 
     def test_max_iterations_limit(self):
         """Test that agent stops at max iterations."""
@@ -152,9 +153,10 @@ class TestReActAgent:
             max_iterations=3,
             verbose=False
         )
-        response = agent.run("Do something")
+        result = agent.run("Do something")
 
-        assert "迭代限制" in response
+        assert "iteration limit" in result.response.lower()
+        assert result.success is False
 
     def test_reset(self):
         """Test agent reset."""

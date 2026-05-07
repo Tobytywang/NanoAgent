@@ -4,6 +4,7 @@ Monitoring tools for runtime statistics.
 
 import json
 from .base import BaseTool, ToolResult
+from ..agent.types import RiskLevel
 
 
 class GetStatsTool(BaseTool):
@@ -11,6 +12,7 @@ class GetStatsTool(BaseTool):
 
     name = "get_stats"
     description = "Get current session statistics including token usage, latency, iterations, and tool calls. Use this to answer questions about performance or resource usage."
+    risk_level = RiskLevel.SAFE  # Read-only operation
 
     def __init__(self, tracker=None, context_length: int = 8192):
         self._tracker = tracker

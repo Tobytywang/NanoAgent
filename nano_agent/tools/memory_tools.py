@@ -4,7 +4,7 @@ Memory tools for long-term memory operations.
 
 import re
 from .base import BaseTool, ToolResult
-from ..utils.patterns import USER_NAME_PATTERNS, AGENT_NAME_PATTERNS
+from ..agent.types import RiskLevel
 
 
 class MemorizeTool(BaseTool):
@@ -21,6 +21,7 @@ Examples:
 - User's name: {"content": "用户的名字是天宇", "name_type": "user_name", "name_value": "天宇"}
 - Agent's name: {"content": "我的名字是奥特曼", "name_type": "agent_name", "name_value": "奥特曼"}
 """
+    risk_level = RiskLevel.MODERATE  # Write to memory
 
     def __init__(self, memory=None):
         self._memory = memory
@@ -128,7 +129,23 @@ Examples:
                 # - "我的名字" (my name) refers to the Agent's name
                 # - "用户的名字" (user's name) refers to the user's name
 
-                for pattern in USER_NAME_PATTERNS:
+                # User name patterns (explicit user reference)
+                user_patterns = [
+                    r"用户名[是为]\s*([^，。！,.]+)",
+                    r"用户的名字[是为]\s*([^，。！,.]+)",
+                    r"用户叫\s*([^，。！,.]+)",
+                ]
+                # Agent name patterns (self-reference or user addressing agent)
+                agent_patterns = [
+                    r"Agent名[是为]\s*([^，。！,.]+)",
+                    r"Agent的名字[是为]\s*([^，。！,.]+)",
+                    r"你的名字[是为叫]\s*([^，。！,.]+)",
+                    r"你叫\s*([^，。！,.]+)",
+                    r"我的名字[是为]\s*([^，。！,.]+)",
+                    r"我叫\s*([^，。！,.]+)",
+                ]
+
+                for pattern in user_patterns:
                     match = re.search(pattern, content)
                     if match:
                         detected_name_type = "user_name"
@@ -136,7 +153,7 @@ Examples:
                         break
 
                 if not detected_name_type:
-                    for pattern in AGENT_NAME_PATTERNS:
+                    for pattern in agent_patterns:
                         match = re.search(pattern, content)
                         if match:
                             detected_name_type = "agent_name"
@@ -192,6 +209,7 @@ class RecallTool(BaseTool):
 
     name = "recall"
     description = "Search and retrieve information from long-term memory. Use this to recall previously stored preferences, facts, or experiences."
+    risk_level = RiskLevel.SAFE  # Read-only operation
 
     def __init__(self, memory=None):
         self._memory = memory
@@ -269,6 +287,7 @@ class ListMemoriesTool(BaseTool):
 
     name = "list_memories"
     description = "List all stored long-term memories."
+    risk_level = RiskLevel.SAFE  # Read-only operation
 
     def __init__(self, memory=None):
         self._memory = memory
@@ -342,6 +361,7 @@ class ForgetTool(BaseTool):
 
     name = "forget"
     description = "Delete a specific memory from long-term storage by its ID."
+    risk_level = RiskLevel.DANGEROUS  # Delete operation
 
     def __init__(self, memory=None):
         self._memory = memory

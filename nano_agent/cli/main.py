@@ -1,5 +1,5 @@
 """
-NanoAgent CLI 入口点
+CLI entry point for NanoAgent.
 """
 
 import argparse
@@ -13,14 +13,12 @@ from ..llm import create_llm_from_config
 from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorage, SQLiteStorage, LongTermMemory
 from ..tools.base import ToolRegistry
 from ..tools.builtin import register_builtin_tools
-from ..agent.react import ReActAgent
+from ..agent import ReActAgent, AgentOrchestrator, AgentEvent
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
-from ..utils.patterns import USER_NAME_PATTERNS, AGENT_NAME_PATTERNS
 from .console import Console
 from .scanner import ProjectScanner
-from .constants import Commands, CommandPrefix
 
 
 class GracefulExitManager:
@@ -218,15 +216,15 @@ def _find_config_file(config_path: str | None = None) -> tuple[Path | None, str]
     return None, "default (no config file found)"
 
 
-def create_agent(config_path: str | None = None) -> ReActAgent:
+def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     """
-    Create and configure a ReAct agent.
+    Create and configure an agent orchestrator.
 
     Args:
         config_path: Path to configuration file
 
     Returns:
-        Configured ReActAgent instance
+        Configured AgentOrchestrator instance
     """
     # Find and load configuration with priority
     config_file, config_source = _find_config_file(config_path)
@@ -267,7 +265,9 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
         tool_registry=tool_registry,
         max_iterations=config.agent.max_iterations,
         verbose=config.agent.verbose,
-        skill_prompt=""
+        skill_prompt="",
+        context_config=config.context,
+        confirmation_config=config.confirmation,
     )
 
     # Register built-in tools with tracker and context_length
@@ -305,7 +305,13 @@ def create_agent(config_path: str | None = None) -> ReActAgent:
     # Store config source for display
     agent._config_source = config_source
 
-    return agent
+    # Create orchestrator
+    orchestrator = AgentOrchestrator(agent, config)
+
+    # Store config source on orchestrator too
+    orchestrator._config_source = config_source
+
+    return orchestrator
 
 
 def _load_project_context() -> str:
@@ -352,7 +358,7 @@ def _load_project_context() -> str:
 
 
 def run_interactive(
-    agent: ReActAgent,
+    orchestrator: AgentOrchestrator,
     config,
     report_enabled: bool = False,
     report_format: str = "json",
@@ -362,13 +368,108 @@ def run_interactive(
     Run interactive chat loop.
 
     Args:
-        agent: The agent to interact with
+        orchestrator: The agent orchestrator to interact with
         config: The configuration object
         report_enabled: Whether to export report on exit
         report_format: Report format (json, markdown, summary)
         report_output: Report output path
     """
     import os
+
+    # Get the underlying agent for compatibility
+    agent = orchestrator.agent
+
+    # Set up confirmation handler
+    def _setup_confirmation_handler():
+        """Set up event handler for tool confirmation."""
+        def handle_confirmation(event, data):
+            """Handle confirmation request from agent."""
+            tool_name = data.get("tool", "unknown")
+            risk_level = data.get("risk_level", "moderate")
+            arguments = data.get("arguments", {})
+
+            # Risk level icons
+            risk_icons = {
+                "safe": "🟢",
+                "moderate": "🟡",
+                "dangerous": "🔴"
+            }
+            icon = risk_icons.get(risk_level, "❓")
+
+            print(f"\n{icon} 确认执行工具: {tool_name}")
+            print(f"   风险级别: {risk_level}")
+            if arguments:
+                args_str = str(arguments)[:100]
+                print(f"   参数: {args_str}{'...' if len(str(arguments)) > 100 else ''}")
+
+            while True:
+                response = input("   确认执行? [y/N/a(总是)/s(保存)]: ").strip().lower()
+
+                if response == 'y':
+                    agent.confirm_tool(True)
+                    break
+                elif response == 'a':
+                    # Add to memory whitelist (session only)
+                    agent.add_tool_to_whitelist(tool_name)
+                    agent.confirm_tool(True)
+                    print(f"   已添加到本次会话白名单")
+                    break
+                elif response == 's':
+                    # Persist whitelist to config file
+                    agent.add_tool_to_whitelist(tool_name)
+                    _save_whitelist_to_config(tool_name, config)
+                    agent.confirm_tool(True)
+                    print(f"   已保存到配置文件白名单")
+                    break
+                elif response in ('n', ''):
+                    agent.confirm_tool(False)
+                    print("   已取消")
+                    break
+                else:
+                    print("   无效输入，请输入 y/N/a/s")
+
+        agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
+
+    def _setup_git_handler(agent, git_manager, config):
+        """Set up Git event handlers for automatic commits."""
+        if config.git.commit_mode == "step":
+            # Commit after each tool execution
+            def handle_tool_result(event, data):
+                if config.git.auto_commit:
+                    tool_name = data.get("tool", "unknown")
+                    git_manager.auto_commit(
+                        f"Tool: {tool_name}",
+                        step_info={"tool": tool_name}
+                    )
+            agent.events.on(AgentEvent.TOOL_RESULT, handle_tool_result)
+
+        elif config.git.commit_mode == "round":
+            # Collect changes and commit at RUN_END
+            round_tools = []
+
+            def handle_tool_result(event, data):
+                tool_name = data.get("tool", "unknown")
+                round_tools.append(tool_name)
+
+            def handle_run_end(event, data):
+                if round_tools and config.git.auto_commit:
+                    tools = ", ".join(set(round_tools))
+                    git_manager.auto_commit(f"Round: {tools}")
+                    round_tools.clear()
+
+            agent.events.on(AgentEvent.TOOL_RESULT, handle_tool_result)
+            agent.events.on(AgentEvent.RUN_END, handle_run_end)
+
+    _setup_confirmation_handler()
+
+    # Set up Git handler
+    git_manager = None
+    if config.git.enabled:
+        from ..agent.git_manager import GitManager
+        git_manager = GitManager()
+        if git_manager.is_enabled():
+            _setup_git_handler(agent, git_manager, config)
+            Console.print("Git integration enabled", style="info")
 
     # Load project context at startup and add to system prompt
     project_context = _load_project_context()
@@ -385,8 +486,8 @@ def run_interactive(
     Console.print_header("NanoAgent - AI Assistant")
 
     # Show config source
-    if hasattr(agent, '_config_source'):
-        Console.print(f"Config: {agent._config_source}", style="info")
+    if hasattr(orchestrator, '_config_source'):
+        Console.print(f"Config: {orchestrator._config_source}", style="info")
 
     # Show project context status
     if project_context:
@@ -421,26 +522,45 @@ def run_interactive(
                 continue
 
             # 显示帮助信息
-            if user_input.lower() in Commands.HELP:
+            if user_input.lower() in ["/?", "/help", "help", "?", "？", "/？"]:
                 _show_help()
                 continue
 
             # 优雅退出命令（生成摘要）
-            if user_input.lower() in Commands.EXIT:
+            if user_input.lower() in ["/exit", "/quit", "/bye"]:
                 GracefulExitManager.exit_with_summary()
                 break
 
             # 直接退出命令（不生成摘要）
-            if user_input.lower() in Commands.EXIT_DIRECT:
+            if user_input.lower() in ["exit", "quit"]:
                 Console.print("Goodbye!", style="success")
                 break
 
-            if user_input.lower() == Commands.CLEAR:
+            if user_input.lower() == "/clear":
                 agent.reset()
                 Console.print("Conversation history cleared", style="success")
                 continue
 
-            if user_input.lower() == Commands.UNDO:
+            if user_input.lower() == "/undo":
+                # Prefer Git undo if available
+                if git_manager and git_manager.is_enabled():
+                    history = git_manager.get_history(limit=5)
+                    if history:
+                        print("\n可回退的操作：")
+                        for i, commit in enumerate(history):
+                            time_str = commit.time.strftime("%m-%d %H:%M")
+                            print(f"  {i+1}. {commit.hash} [{time_str}] {commit.message}")
+
+                        choice = input("\n选择要回退的步骤 (1-5)，或按回车使用普通撤销: ").strip()
+                        if choice.isdigit() and 1 <= int(choice) <= 5:
+                            steps = int(choice)
+                            if git_manager.undo(steps):
+                                Console.print(f"已回退 {steps} 步", style="success")
+                            else:
+                                Console.print("回退失败", style="error")
+                            continue
+
+                # Fallback to original undo
                 restored = _handle_undo(agent, config)
                 # Update local display variables
                 if "user_name" in restored:
@@ -449,36 +569,66 @@ def run_interactive(
                     agent_display = restored["agent_name"]
                 continue
 
-            if user_input.lower() == Commands.TOOLS:
+            if user_input.lower() == "/history":
+                if git_manager and git_manager.is_enabled():
+                    history = git_manager.get_history(limit=10)
+                    if history:
+                        print("\n操作历史：")
+                        for commit in history:
+                            time_str = commit.time.strftime("%m-%d %H:%M")
+                            print(f"  {commit.hash} [{time_str}] {commit.message}")
+                    else:
+                        Console.print("暂无操作历史", style="info")
+                else:
+                    Console.print("Git 未启用或不在 Git 仓库中", style="warning")
+                continue
+
+            if user_input.lower() == "/tools":
                 tools = agent.tool_registry.list_tools()
                 Console.print(f"Available tools: {', '.join(tools)}", style="info")
                 continue
 
-            if user_input.lower().startswith(CommandPrefix.STATS):
+            # Plan commands
+            if user_input.lower() == "/plans":
+                from .plan_mode import list_plans
+                print(list_plans())
+                continue
+
+            if user_input.lower().startswith("/plan "):
+                from .plan_mode import run_plan_mode_interactive
+                task = user_input[6:].strip()
+                if task:
+                    result = run_plan_mode_interactive(agent.llm, config, task)
+                    print(result)
+                else:
+                    Console.print("用法: /plan <任务描述>", style="info")
+                continue
+
+            if user_input.lower().startswith("/stats"):
                 _handle_stats_command(agent, config, user_input[6:].strip())
                 continue
 
-            if user_input.lower() == Commands.INIT:
+            if user_input.lower() == "/init":
                 _init_project(agent)
                 continue
 
-            if user_input.lower() == Commands.CONFIG:
+            if user_input.lower() == "/config":
                 _show_config(config, agent)
                 continue
 
-            if user_input.lower().startswith(CommandPrefix.CONFIG):
+            if user_input.lower().startswith("/config "):
                 _handle_config_command(agent, config, user_input[8:])
                 continue
 
-            if user_input.lower().startswith(CommandPrefix.MEMORY):
+            if user_input.lower().startswith("/memory"):
                 _handle_memory_command(agent, config, user_input[7:].strip())
                 continue
 
-            if user_input.lower() == Commands.REPORT:
+            if user_input.lower() == "/report":
                 _export_report(agent, report_format, report_output)
                 continue
 
-            if user_input.lower() == Commands.SESSIONS:
+            if user_input.lower() == "/sessions":
                 if hasattr(agent.memory, 'list_sessions'):
                     sessions = agent.memory.list_sessions()
                     if not sessions:
@@ -492,7 +642,7 @@ def run_interactive(
                 continue
 
             # Skill commands
-            if user_input.lower() == Commands.SKILLS:
+            if user_input.lower() == "/skills":
                 if hasattr(agent, 'skill_loader'):
                     skills = agent.skill_loader.list_loaded_skills()
                     if not skills:
@@ -506,12 +656,12 @@ def run_interactive(
                     Console.print("Skill system not available", style="warning")
                 continue
 
-            if user_input.lower().startswith(CommandPrefix.SKILL):
+            if user_input.lower().startswith("/skill "):
                 _handle_skill_command(agent, user_input[7:])
                 continue
 
             # /setname command - set user/agent display names
-            if user_input.lower().startswith(CommandPrefix.SETNAME):
+            if user_input.lower().startswith("/setname"):
                 args = user_input[8:].strip().split()
                 if len(args) == 0:
                     # Show current names
@@ -578,10 +728,11 @@ def run_interactive(
             # 重置 Ctrl+C 计数
             GracefulExitManager.ctrl_c_count = 0
 
-            # Run agent
+            # Run agent through orchestrator
             print(f"\n[{agent_display}]:")
-            response = agent.run(user_input)
+            result = orchestrator.run(user_input)
             # Sanitize response for printing
+            response = result.response
             try:
                 response = response.encode('utf-8', errors='replace').decode('utf-8')
             except (UnicodeDecodeError, UnicodeEncodeError):
@@ -626,7 +777,7 @@ def run_interactive(
 
             # Show undo hint if there are undoable operations
             if hasattr(agent, 'has_undoable_operations') and agent.has_undoable_operations():
-                Console.print(f"💡 输入 {Commands.UNDO} 可撤销本轮操作", style="info")
+                Console.print("💡 输入 /undo 可撤销本轮操作", style="info")
 
         except KeyboardInterrupt:
             # 被 signal handler 处理，继续循环
@@ -892,6 +1043,19 @@ def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
         # NOTE: memorize content is generated by the Agent (LLM), so:
         # - "我的名字" (my name) refers to the Agent's name
         # - "用户的名字" (user's name) refers to the user's name
+        user_patterns = [
+            r"用户名[是为]\s*([^，。！,.]+)",
+            r"用户的名字[是为]\s*([^，。！,.]+)",
+            r"用户叫\s*([^，。！,.]+)",
+        ]
+        agent_patterns = [
+            r"Agent名[是为]\s*([^，。！,.]+)",
+            r"Agent的名字[是为]\s*([^，。！,.]+)",
+            r"你的名字[是为叫]\s*([^，。！,.]+)",
+            r"你叫\s*([^，。！,.]+)",
+            r"我的名字[是为]\s*([^，。！,.]+)",
+            r"我叫\s*([^，。！,.]+)",
+        ]
 
         for entry in entries:
             # First check metadata (new format)
@@ -903,14 +1067,14 @@ def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
 
             # Fallback: check content patterns (old format compatibility)
             if not user_name:
-                for pattern in USER_NAME_PATTERNS:
+                for pattern in user_patterns:
                     match = re.search(pattern, entry.content)
                     if match:
                         user_name = match.group(1).strip()
                         break
 
             if not agent_name:
-                for pattern in AGENT_NAME_PATTERNS:
+                for pattern in agent_patterns:
                     match = re.search(pattern, entry.content)
                     if match:
                         agent_name = match.group(1).strip()
@@ -1191,6 +1355,31 @@ def _save_session_summary(agent, config, summary: str) -> None:
     message_count = len([m for m in messages if m.get("role") != "system"])
 
     storage.save_summary(session_id, summary, message_count)
+
+
+def _save_whitelist_to_config(tool_name: str, config) -> None:
+    """
+    Save tool to confirmation whitelist in config file.
+
+    Args:
+        tool_name: Tool name to add to whitelist
+        config: Config object
+    """
+    from ..config.loader import ConfigLoader
+
+    # Find config file
+    config_file, _ = _find_config_file()
+
+    if not config_file:
+        # Create project config file if it doesn't exist
+        config_file = Path(".nano_agent/config.yaml")
+
+    # Add to whitelist
+    if tool_name not in config.confirmation.whitelist:
+        config.confirmation.whitelist.append(tool_name)
+
+    # Save config
+    ConfigLoader.save(config, config_file)
 
 
 def _handle_undo(agent, config=None) -> dict:
@@ -1798,7 +1987,8 @@ def _show_help() -> None:
     print("  /exit, /quit      退出（保存摘要）")
     print("  exit, quit        直接退出")
     print("  /clear            清空对话")
-    print("  /undo             撤销本轮所有操作")
+    print("  /undo             撤销操作（支持 Git 回退）")
+    print("  /history          查看操作历史（需要 Git）")
     print("  /?, help          显示帮助")
 
     print("\n## 查看信息")
@@ -1808,6 +1998,7 @@ def _show_help() -> None:
     print("  /tools            查看工具列表")
     print("  /skills           查看技能列表")
     print("  /sessions         查看会话列表")
+    print("  /plans            查看已保存的计划")
 
     print("\n## 项目管理")
     print("  /init             初始化项目")
@@ -1817,6 +2008,10 @@ def _show_help() -> None:
     print("  /memory off       禁用长期记忆")
     print("  /stats on         启用统计自动显示")
     print("  /stats off        禁用统计自动显示")
+
+    print("\n## 规划模式")
+    print("  /plan <任务>      进入规划模式，制定分阶段计划")
+    print("  /plans            列出所有已保存的计划")
 
     print("\n## 个性化设置")
     print("  /setname                    查看当前名字")
@@ -2131,7 +2326,7 @@ def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
         ltm.add(
             content=project_info,
             category="project_info",
-            metadata={"source": Commands.INIT, "project_name": info['project_name']}
+            metadata={"source": "/init", "project_name": info['project_name']}
         )
 
         # 保存项目摘要（截取关键部分）
@@ -2139,7 +2334,7 @@ def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
         ltm.add(
             content=f"项目摘要:\n{summary_preview}",
             category="project_summary",
-            metadata={"source": Commands.INIT, "project_name": info['project_name']}
+            metadata={"source": "/init", "project_name": info['project_name']}
         )
 
         Console.print("Project info saved to long-term memory.", style="success")
