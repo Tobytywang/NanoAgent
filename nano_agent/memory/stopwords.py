@@ -1,0 +1,34 @@
+"""
+停用词定义
+
+用于关键字提取时过滤无意义的常见词汇。
+"""
+
+# 英文停用词
+ENGLISH_STOP_WORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been",
+    "being", "have", "has", "had", "do", "does", "did", "will",
+    "would", "could", "should", "may", "might", "must", "shall",
+    "can", "need", "dare", "ought", "used", "to", "of", "in",
+    "for", "on", "with", "at", "by", "from", "as", "into",
+    "through", "during", "before", "after", "above", "below",
+    "between", "under", "again", "further", "then", "once",
+    "here", "there", "when", "where", "why", "how", "all", "each",
+    "few", "more", "most", "other", "some", "such", "no", "nor",
+    "not", "only", "own", "same", "so", "than", "too", "very",
+    "just", "and", "but", "if", "or", "because", "until", "while",
+    "this", "that", "these", "those", "i", "me", "my", "myself",
+    "we", "our", "ours", "ourselves", "you", "your", "yours",
+    "yourself", "yourselves", "he", "him", "his", "himself",
+    "she", "her", "hers", "herself", "it", "its", "itself",
+    "they", "them", "their", "theirs", "themselves", "what",
+    "which", "who", "whom", "this", "that", "am"
+}
+
+# 中文停用词（常见虚词）
+CHINESE_STOP_WORDS = {
+    "的", "是", "在", "了", "和", "与", "或", "也", "都", "就",
+    "着", "过", "会", "能", "要", "有", "这", "那", "我", "你",
+    "他", "她", "它", "们", "个", "上", "下", "不", "没", "很",
+    "把", "被", "给", "让", "对", "为", "以", "及", "等", "但"
+}
