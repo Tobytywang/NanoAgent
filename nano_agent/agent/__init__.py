@@ -16,6 +16,7 @@ from .budget import Budget, BudgetChecker
 from .orchestrator import AgentOrchestrator, SessionStats
 from .context import ContextManager, NineSectionSummary
 from .confirmation import ConfirmationManager, ConfirmationConfig
+from .git_manager import GitManager, GitCommit
 from .token_utils import estimate_tokens, estimate_text_tokens
 
 __all__ = [
@@ -45,6 +46,9 @@ __all__ = [
     # Confirmation
     "ConfirmationManager",
     "ConfirmationConfig",
+    # Git integration
+    "GitManager",
+    "GitCommit",
     # Token estimation
     "estimate_tokens",
     "estimate_text_tokens",

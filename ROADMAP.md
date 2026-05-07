@@ -565,7 +565,7 @@ def handle_confirmation(event, data):
 
 ---
 
-### v0.6.5 - Git 集成与状态回退
+### v0.6.5 - Git 集成与状态回退 ✅
 
 **目标**: 集成 Git 实现自动提交和状态回退能力。
 
@@ -575,48 +575,76 @@ def handle_confirmation(event, data):
 **架构对应**: 基于事件流，监听 TOOL_RESULT 事件自动提交
 
 **任务列表**:
-- [ ] 实现 `GitManager` 类 - 检测仓库、自动提交、回退
-- [ ] 监听 TOOL_RESULT 事件 - 工具执行后自动提交
-- [ ] 监听 RUN_END 事件 - 执行结束时提交（可选）
-- [ ] `/undo` 命令增强 - 回退到上一个 Git commit
-- [ ] `/history` 命令 - 查看可回退的操作历史
-- [ ] 配置开关 - `git.enabled`/`git.auto_commit`/`git.commit_mode`
+- [x] 实现 `GitManager` 类 - 检测仓库、自动提交、回退
+- [x] 监听 TOOL_RESULT 事件 - 工具执行后自动提交
+- [x] 监听 RUN_END 事件 - round 模式批量提交
+- [x] `/undo` 命令增强 - 回退到上一个 Git commit
+- [x] `/history` 命令 - 查看可回退的操作历史
+- [x] 配置开关 - `git.enabled`/`git.auto_commit`/`git.commit_mode`
+
+**新增文件**:
+```
+nano_agent/agent/git_manager.py  # GitManager, GitCommit
+tests/test_git_manager.py         # 26 测试用例
+```
+
+**修改文件**:
+```
+nano_agent/config/schema.py      # GitConfig
+nano_agent/cli/main.py           # Git 事件处理、/undo 增强、/history 命令
+nano_agent/agent/__init__.py     # 导出 GitManager
+```
 
 **技术方案**:
 ```python
 # nano_agent/agent/git_manager.py
 
 class GitManager:
-    def __init__(self, repo_path: str = "."):
-        self.repo = self._detect_repo(repo_path)
+    """Git 集成管理器"""
 
     def is_enabled(self) -> bool:
-        return self.repo is not None
+        """检查 Git 是否可用"""
+        ...
 
-    def auto_commit(self, message: str, step_info: dict = None):
-        """自动提交当前更改"""
-        if not self.is_enabled():
-            return
-        changed = [item.a_path for item in self.repo.index.diff(None)]
-        if changed:
-            self.repo.index.add(changed)
-            self.repo.index.commit(message)
+    def auto_commit(self, message: str, step_info: dict = None) -> str | None:
+        """自动提交更改，返回 commit hash"""
+        ...
 
-    def undo(self) -> bool:
-        """回退到上一个 commit"""
-        if self.is_enabled():
-            self.repo.git.reset('--hard', 'HEAD~1')
-            return True
-        return False
+    def undo(self, steps: int = 1) -> bool:
+        """回退到历史 commit"""
+        ...
 
-# nano_agent/cli/main.py
-
-# CLI 初始化时注册 Git 监听
-if config.git.enabled:
-    git_manager = GitManager()
-    agent.events.on(AgentEvent.TOOL_RESULT, lambda e, d: git_manager.auto_commit(d['tool']))
-```
+    def get_history(self, limit: int = 10) -> list[GitCommit]:
         """获取操作历史"""
+        ...
+
+# CLI Git 事件处理
+def _setup_git_handler(agent, git_manager, config):
+    if config.git.commit_mode == "step":
+        # 每步提交
+        agent.events.on(AgentEvent.TOOL_RESULT, 
+            lambda e, d: git_manager.auto_commit(f"Tool: {d['tool']}"))
+    elif config.git.commit_mode == "round":
+        # 本轮结束后批量提交
+        ...
+
+# /undo 增强
+if user_input.lower() == "/undo":
+    if git_manager and git_manager.is_enabled():
+        history = git_manager.get_history(limit=5)
+        # 显示历史，让用户选择回退步数
+        ...
+
+# /history 命令
+if user_input.lower() == "/history":
+    history = git_manager.get_history(limit=10)
+    for commit in history:
+        print(f"  {commit.hash} [{time}] {commit.message}")
+```
+
+---
+
+### v0.7.0 - 流式执行
         return [
             {"hash": c.hexsha[:7], "message": c.message, "time": c.committed_datetime}
             for c in list(self.repo.iter_commits())[:limit]
@@ -1034,7 +1062,7 @@ persona:
 | v0.6.2 | 前置规划 ✅ | PlanMode、Plan 持久化、多轮规划、CLI 命令 |
 | v0.6.3 | PlanMode 演进优化 ✅ | EventEmitter 集成、I/O 无关设计、CLI 包装层 |
 | v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
-| v0.6.5 | Git 集成与状态回退 | GitManager、自动提交、/undo 增强 |
+| v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
 | v0.7.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.7.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.8.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |

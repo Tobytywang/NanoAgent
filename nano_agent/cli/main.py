@@ -430,7 +430,46 @@ def run_interactive(
 
         agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
 
+    def _setup_git_handler(agent, git_manager, config):
+        """Set up Git event handlers for automatic commits."""
+        if config.git.commit_mode == "step":
+            # Commit after each tool execution
+            def handle_tool_result(event, data):
+                if config.git.auto_commit:
+                    tool_name = data.get("tool", "unknown")
+                    git_manager.auto_commit(
+                        f"Tool: {tool_name}",
+                        step_info={"tool": tool_name}
+                    )
+            agent.events.on(AgentEvent.TOOL_RESULT, handle_tool_result)
+
+        elif config.git.commit_mode == "round":
+            # Collect changes and commit at RUN_END
+            round_tools = []
+
+            def handle_tool_result(event, data):
+                tool_name = data.get("tool", "unknown")
+                round_tools.append(tool_name)
+
+            def handle_run_end(event, data):
+                if round_tools and config.git.auto_commit:
+                    tools = ", ".join(set(round_tools))
+                    git_manager.auto_commit(f"Round: {tools}")
+                    round_tools.clear()
+
+            agent.events.on(AgentEvent.TOOL_RESULT, handle_tool_result)
+            agent.events.on(AgentEvent.RUN_END, handle_run_end)
+
     _setup_confirmation_handler()
+
+    # Set up Git handler
+    git_manager = None
+    if config.git.enabled:
+        from ..agent.git_manager import GitManager
+        git_manager = GitManager()
+        if git_manager.is_enabled():
+            _setup_git_handler(agent, git_manager, config)
+            Console.print("Git integration enabled", style="info")
 
     # Load project context at startup and add to system prompt
     project_context = _load_project_context()
@@ -503,12 +542,45 @@ def run_interactive(
                 continue
 
             if user_input.lower() == "/undo":
+                # Prefer Git undo if available
+                if git_manager and git_manager.is_enabled():
+                    history = git_manager.get_history(limit=5)
+                    if history:
+                        print("\n可回退的操作：")
+                        for i, commit in enumerate(history):
+                            time_str = commit.time.strftime("%m-%d %H:%M")
+                            print(f"  {i+1}. {commit.hash} [{time_str}] {commit.message}")
+
+                        choice = input("\n选择要回退的步骤 (1-5)，或按回车使用普通撤销: ").strip()
+                        if choice.isdigit() and 1 <= int(choice) <= 5:
+                            steps = int(choice)
+                            if git_manager.undo(steps):
+                                Console.print(f"已回退 {steps} 步", style="success")
+                            else:
+                                Console.print("回退失败", style="error")
+                            continue
+
+                # Fallback to original undo
                 restored = _handle_undo(agent, config)
                 # Update local display variables
                 if "user_name" in restored:
                     user_display = restored["user_name"]
                 if "agent_name" in restored:
                     agent_display = restored["agent_name"]
+                continue
+
+            if user_input.lower() == "/history":
+                if git_manager and git_manager.is_enabled():
+                    history = git_manager.get_history(limit=10)
+                    if history:
+                        print("\n操作历史：")
+                        for commit in history:
+                            time_str = commit.time.strftime("%m-%d %H:%M")
+                            print(f"  {commit.hash} [{time_str}] {commit.message}")
+                    else:
+                        Console.print("暂无操作历史", style="info")
+                else:
+                    Console.print("Git 未启用或不在 Git 仓库中", style="warning")
                 continue
 
             if user_input.lower() == "/tools":
@@ -1915,7 +1987,8 @@ def _show_help() -> None:
     print("  /exit, /quit      退出（保存摘要）")
     print("  exit, quit        直接退出")
     print("  /clear            清空对话")
-    print("  /undo             撤销本轮所有操作")
+    print("  /undo             撤销操作（支持 Git 回退）")
+    print("  /history          查看操作历史（需要 Git）")
     print("  /?, help          显示帮助")
 
     print("\n## 查看信息")

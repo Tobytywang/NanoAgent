@@ -164,6 +164,16 @@ class ConfirmationConfig:
 
 
 @dataclass
+class GitConfig:
+    """Git integration configuration."""
+    enabled: bool = True
+    auto_commit: bool = True
+    commit_mode: Literal["step", "round", "manual"] = "step"
+    commit_prefix: str = "[NanoAgent]"  # Commit message prefix
+    branch_prefix: str = "nano-"        # Working branch prefix (optional)
+
+
+@dataclass
 class Config:
     """Main configuration."""
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -175,3 +185,4 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     context: ContextConfig = field(default_factory=ContextConfig)
     confirmation: ConfirmationConfig = field(default_factory=ConfirmationConfig)
+    git: GitConfig = field(default_factory=GitConfig)
