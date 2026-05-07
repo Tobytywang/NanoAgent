@@ -1,1 +1,1 @@
-"""Config module - Configuration management."""
+"""配置模块 - 配置管理"""

@@ -1,5 +1,5 @@
 """
-Configuration file loader.
+配置文件加载器
 """
 
 import yaml
@@ -10,18 +10,18 @@ from .schema import Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, Sk
 
 
 class ConfigLoader:
-    """Load configuration from YAML files."""
+    """从 YAML 文件加载配置"""
 
     @classmethod
     def load(cls, config_path: str | Path | None = None) -> Config:
         """
-        Load configuration from a YAML file.
+        从 YAML 文件加载配置。
 
         Args:
-            config_path: Path to configuration file. If None, returns default config.
+            config_path: 配置文件路径。None 时返回默认配置。
 
         Returns:
-            Config object
+            Config 对象
         """
         if config_path is None:
             return Config()
@@ -29,7 +29,7 @@ class ConfigLoader:
         path = Path(config_path)
 
         if not path.exists():
-            return Config()  # Return default config if file doesn't exist
+            return Config()  # 文件不存在时返回默认配置
 
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
@@ -38,7 +38,7 @@ class ConfigLoader:
 
     @classmethod
     def _parse_config(cls, data: dict) -> Config:
-        """Parse configuration dictionary."""
+        """解析配置字典"""
         return Config(
             llm=cls._parse_llm_config(data.get("llm", {})),
             agent=cls._parse_agent_config(data.get("agent", {})),
@@ -49,7 +49,7 @@ class ConfigLoader:
 
     @classmethod
     def _parse_llm_config(cls, data: dict) -> LLMConfig:
-        """Parse LLM configuration."""
+        """解析 LLM 配置"""
         return LLMConfig(
             provider=data.get("provider", "ollama"),
             model=data.get("model", "llama3"),
@@ -62,7 +62,7 @@ class ConfigLoader:
 
     @classmethod
     def _parse_agent_config(cls, data: dict) -> AgentConfig:
-        """Parse agent configuration."""
+        """解析 Agent 配置"""
         return AgentConfig(
             max_iterations=data.get("max_iterations", 10),
             verbose=data.get("verbose", True),
@@ -73,7 +73,7 @@ class ConfigLoader:
 
     @classmethod
     def _parse_memory_config(cls, data: dict) -> MemoryConfig:
-        """Parse memory configuration."""
+        """解析记忆配置"""
         return MemoryConfig(
             max_messages=data.get("max_messages", 50),
             type=data.get("type", "short_term"),
@@ -86,7 +86,7 @@ class ConfigLoader:
 
     @classmethod
     def _parse_tool_config(cls, data: dict) -> ToolConfig:
-        """Parse tool configuration."""
+        """解析工具配置"""
         return ToolConfig(
             enabled=data.get("enabled", ["all"]),
             disabled=data.get("disabled", [])
@@ -94,7 +94,7 @@ class ConfigLoader:
 
     @classmethod
     def _parse_skills_config(cls, data: dict) -> SkillsConfig:
-        """Parse skills configuration."""
+        """解析技能配置"""
         return SkillsConfig(
             enabled=data.get("enabled", []),
             directory=data.get("directory", ".nano_agent/skills"),
@@ -104,15 +104,15 @@ class ConfigLoader:
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
         """
-        Save configuration to a YAML file.
+        保存配置到 YAML 文件。
 
         Args:
-            config: Config object to save
-            config_path: Path to save to
+            config: 要保存的 Config 对象
+            config_path: 保存路径
         """
         path = Path(config_path)
 
-        # Ensure parent directory exists
+        # 确保父目录存在
         path.parent.mkdir(parents=True, exist_ok=True)
 
         data = {
