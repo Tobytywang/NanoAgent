@@ -11,6 +11,8 @@ from .types import ExecutionResult, ThinkResult, ExecutionEvent, AgentEvent
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .orchestrator import AgentOrchestrator, SessionStats
+from .context import ContextManager, NineSectionSummary
+from .token_utils import estimate_tokens, estimate_text_tokens
 
 __all__ = [
     # Base
@@ -30,4 +32,9 @@ __all__ = [
     # Budget
     "Budget",
     "BudgetChecker",
+    # Context management
+    "ContextManager",
+    "NineSectionSummary",
+    "estimate_tokens",
+    "estimate_text_tokens",
 ]

@@ -93,15 +93,20 @@ When adding or modifying features, always update the relevant documentation:
 - **API documentation**: Update `docs/api.md`
 - **Tutorial**: Update `docs/tutorial.md` if it affects user workflow
 
-### Configuration Changes
+### 新增功能的完整链路
 
-When adding new configuration fields, you must update **all three** places:
+实现新功能时，需确保以下环节全部连通：
 
-1. **`nano_agent/config/schema.py`** - Add field to the config dataclass (e.g., `MemoryConfig`)
-2. **`_show_config()` in `nano_agent/cli/main.py`** - Display the new field in `/config` output
-3. **`_init_config_file()` in `nano_agent/cli/main.py`** - Include the field in generated config file
+1. **配置定义** → `config/schema.py` 添加配置项
+2. **配置显示** → `_show_config()` 中显示
+3. **配置保存** → `_init_config_file()` 中保存
+4. **CLI 集成** → `create_agent()` 中使用新配置
+5. **测试验证** → 单元测试 + 端到端验证
 
-This ensures the new config option is visible in `/config` and saved when running `/config init`.
+常见遗漏：
+- 配置添加了但忘记在 `_show_config()` 显示
+- 核心模块实现了但忘记在 `create_agent()` 调用
+- 只有单元测试，缺少端到端验证
 
 ### Roadmap
 

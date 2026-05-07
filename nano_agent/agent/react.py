@@ -14,6 +14,7 @@ from .types import ExecutionResult, ThinkResult, AgentEvent
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .undo import UndoStack
+from .context import ContextManager
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
@@ -48,6 +49,7 @@ class ReActAgent(BaseAgent):
         tracker: MetricsTracker | None = None,
         events: EventEmitter | None = None,
         budget: Budget | None = None,
+        context_config=None,
     ):
         """
         Initialize the ReAct agent.
@@ -62,6 +64,7 @@ class ReActAgent(BaseAgent):
             tracker: Metrics tracker for monitoring
             events: Event emitter for external listeners
             budget: Budget constraints for execution
+            context_config: Context management configuration
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -69,6 +72,14 @@ class ReActAgent(BaseAgent):
         self.tracker = tracker or MetricsTracker()
         self.events = events or EventEmitter()
         self.budget_checker = BudgetChecker(budget or Budget(max_iterations=max_iterations))
+
+        # Context manager
+        self.context_manager = ContextManager(
+            memory=memory,
+            llm=llm,
+            config=context_config,
+            verbose=verbose
+        ) if context_config else None
 
         # Execution state
         self._undo_stack = UndoStack()
@@ -194,6 +205,10 @@ class ReActAgent(BaseAgent):
             ThinkResult containing response text and any tool calls
         """
         self.events.emit(AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1})
+
+        # Context pressure check and compression
+        if self.context_manager:
+            self.context_manager.check_and_compress()
 
         # Get context and tools
         messages = self.memory.get_all()

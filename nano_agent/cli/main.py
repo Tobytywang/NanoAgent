@@ -265,7 +265,8 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
         tool_registry=tool_registry,
         max_iterations=config.agent.max_iterations,
         verbose=config.agent.verbose,
-        skill_prompt=""
+        skill_prompt="",
+        context_config=config.context,
     )
 
     # Register built-in tools with tracker and context_length

@@ -135,6 +135,25 @@ class LoggingConfig:
 
 
 @dataclass
+class ContextConfig:
+    """Context management configuration."""
+    # Pressure thresholds (relative to model context window)
+    pressure_threshold_low: float = 0.70    # 70% triggers light cleanup
+    pressure_threshold_mid: float = 0.85    # 85% triggers summary mark
+    pressure_threshold_high: float = 0.95   # 95% triggers model compression
+
+    # Model context window size (auto-detected from LLM config if None)
+    max_context_tokens: int | None = None
+
+    # Compression configuration
+    max_compress_failures: int = 3          # Circuit breaker threshold
+    summary_max_tokens: int = 4000          # Max tokens for summary
+
+    # Light cleanup configuration
+    temp_message_age: int = 5               # Rounds before temp messages expire
+
+
+@dataclass
 class Config:
     """Main configuration."""
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -144,3 +163,4 @@ class Config:
     plugins: PluginsConfig = field(default_factory=PluginsConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    context: ContextConfig = field(default_factory=ContextConfig)

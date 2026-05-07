@@ -183,7 +183,7 @@ examples/plugins/
 
 ---
 
-### v0.6.0 - 编排层与执行层分离
+### v0.6.0 - 编排层与执行层分离 ✅
 
 **目标**: 建立稳定的架构基础，实现编排层与执行层的清晰分离。
 
@@ -195,29 +195,38 @@ examples/plugins/
 **任务列表**:
 
 **编排层实现**:
-- [ ] 定义 `ExecutionResult` - 不可变结果类型，作为层间契约
-- [ ] 定义 `ExecutionEvent` - 执行事件类型，为流式输出预留
-- [ ] 实现 `AgentOrchestrator` 类 - 统一入口，委托执行层
-- [ ] 会话管理 - 生成 session_id、保存/恢复会话状态
-- [ ] 统计收集 - 累计 token、成本、事件日志
-- [ ] 真实/模拟切换 - 支持预览模式（不实际执行工具）
+- [x] 定义 `ExecutionResult` - 不可变结果类型，作为层间契约
+- [x] 定义 `ExecutionEvent` - 执行事件类型，为流式输出预留
+- [x] 实现 `AgentOrchestrator` 类 - 统一入口，委托执行层
+- [x] 会话管理 - 生成 session_id、保存/恢复会话状态
+- [x] 统计收集 - 累计 token、成本、事件日志
+- [x] 真实/模拟切换 - 支持预览模式（不实际执行工具）
 
 **执行层实现**:
-- [ ] 定义 `ThinkResult` - 思考阶段结果类型
-- [ ] 拆分 `_think()` 方法 - 调用 LLM，返回 `ThinkResult`
-- [ ] 拆分 `_act()` 方法 - 执行单个工具调用
-- [ ] 拆分 `_observe()` 方法 - 记录工具结果到内存
-- [ ] 重构 `run()` 方法 - 组合阶段方法，返回 `ExecutionResult`
-- [ ] 预算检查 - 多维度约束（token、迭代次数、工具调用次数）
+- [x] 定义 `ThinkResult` - 思考阶段结果类型
+- [x] 拆分 `_think()` 方法 - 调用 LLM，返回 `ThinkResult`
+- [x] 拆分 `_act()` 方法 - 执行单个工具调用
+- [x] 拆分 `_observe()` 方法 - 记录工具结果到内存
+- [x] 重构 `run()` 方法 - 组合阶段方法，返回 `ExecutionResult`
+- [x] 预算检查 - 多维度约束（token、迭代次数、工具调用次数）
 
 **基础设施**:
-- [ ] 定义 `AgentEvent` 枚举 - RUN_START/THINK_START/TOOL_CALL/TOOL_RESULT/RUN_END
-- [ ] 实现 `EventEmitter` 类 - 事件注册和触发
-- [ ] 在执行阶段触发事件 - 支持外部监听
+- [x] 定义 `AgentEvent` 枚举 - RUN_START/THINK_START/TOOL_CALL/TOOL_RESULT/RUN_END
+- [x] 实现 `EventEmitter` 类 - 事件注册和触发
+- [x] 在执行阶段触发事件 - 支持外部监听
 
 **更新 CLI**:
-- [ ] 通过编排层调用 - 不再直接调用 `agent.run()`
-- [ ] 监听事件更新 UI - 替代硬编码的 `print()`
+- [x] 通过编排层调用 - 不再直接调用 `agent.run()`
+- [x] 监听事件更新 UI - 替代硬编码的 `print()`
+
+**新增文件**:
+```
+nano_agent/agent/
+├── types.py        # ExecutionResult, ThinkResult, ExecutionEvent, AgentEvent
+├── events.py       # EventEmitter
+├── budget.py       # Budget, BudgetChecker
+└── orchestrator.py # AgentOrchestrator, SessionStats
+```
 
 **技术方案**:
 ```python
@@ -356,7 +365,7 @@ class BudgetChecker:
 
 ---
 
-### v0.6.1 - 上下文管理
+### v0.6.1 - 上下文管理 ✅
 
 **目标**: 实现上下文压力检测和压缩策略，防止上下文溢出。
 
@@ -366,11 +375,20 @@ class BudgetChecker:
 **架构归属**: 执行层 - 上下文管理
 
 **任务列表**:
-- [ ] 实现 `ContextManager` 类 - 检测上下文压力
-- [ ] 三层压缩策略 - 时间触发清理 → 阈值标记删除 → 模型压缩
-- [ ] 九段式摘要结构 - 用户请求/技术概念/文件代码/错误修复/问题解决/用户消息/待处理任务/当前工作/下一步
-- [ ] 熔断机制 - 连续压缩失败后停止自动压缩
-- [ ] 在 `_think()` 前检测上下文压力
+- [x] 实现 `ContextManager` 类 - 检测上下文压力
+- [x] Token 估算工具 - `estimate_tokens()` 支持中英文混合
+- [x] 三层压缩策略 - 轻量清理 → 摘要标记 → 模型压缩
+- [x] 九段式摘要结构 - 用户请求/技术概念/文件代码/错误修复/问题解决/用户消息/待处理任务/当前工作/下一步
+- [x] 熔断机制 - 连续压缩失败后停止自动压缩
+- [x] 在 `_think()` 前检测上下文压力
+- [x] 配置支持 - `ContextConfig` 数据类
+
+**新增文件**:
+```
+nano_agent/agent/
+├── token_utils.py  # estimate_tokens, estimate_text_tokens
+└── context.py      # ContextManager, NineSectionSummary
+```
 
 **技术方案**:
 ```python
@@ -379,47 +397,25 @@ class BudgetChecker:
 class ContextManager:
     """上下文管理"""
 
-    def __init__(self, memory: BaseMemory, config: ContextConfig):
+    def __init__(self, memory: BaseMemory, llm, config: ContextConfig):
         self.memory = memory
+        self.llm = llm
         self.config = config
         self.compress_failures = 0
 
-    def check_pressure(self) -> bool:
-        """检测上下文压力，返回是否需要压缩"""
-        tokens = self._estimate_tokens()
-        return tokens > self.config.pressure_threshold
+    def check_and_compress(self, max_context_tokens: int | None = None) -> bool:
+        """检测上下文压力并执行压缩"""
+        tokens = estimate_tokens(self.memory.get_all())
+        ratio = tokens / max_context_tokens
 
-    def compress(self) -> bool:
-        """三层压缩策略"""
-        # 第一层：时间触发的轻量清理
-        if self._try_light_cleanup():
-            return True
-
-        # 第二层：阈值触发的摘要标记
-        if self._try_summary_mark():
-            return True
-
-        # 第三层：模型压缩
-        if self._try_model_compress():
-            return True
-
-        # 熔断
-        self.compress_failures += 1
-        if self.compress_failures >= self.config.max_failures:
-            return False  # 停止自动压缩
-
-    def _try_light_cleanup(self) -> bool:
-        """轻量清理：移除过期的临时消息"""
-        ...
-
-    def _try_summary_mark(self) -> bool:
-        """摘要标记：标记可删除的消息"""
-        ...
-
-    def _try_model_compress(self) -> bool:
-        """模型压缩：生成九段式摘要"""
-        summary = self._generate_nine_section_summary()
-        self.memory.replace_with_summary(summary)
+        if ratio < 0.70:
+            return False  # 不需要压缩
+        elif ratio < 0.85:
+            return self._try_light_cleanup()  # 第一层
+        elif ratio < 0.95:
+            return self._try_summary_mark()   # 第二层
+        else:
+            return self._try_model_compress() # 第三层
 ```
 
 ---
@@ -431,59 +427,63 @@ class ContextManager:
 **背景**:
 当前 Agent 接到任务后直接进入 Think-Act-Observe 循环，缺少规划阶段。用户无法预览执行计划，也无法在执行前调整。
 
-**架构对应**: 基于阶段拆分，在 `_think()` 前插入 `_plan()` 阶段
+**架构对应**: 独立的 PlanMode 类，支持多轮规划和持久化
 
 **任务列表**:
-- [ ] 定义 `Plan` 和 `Step` 数据结构
-- [ ] 实现 `_plan()` 方法 - 调用 LLM 生成结构化计划
-- [ ] 实现 `_confirm_plan()` 方法 - 展示计划并等待用户确认
-- [ ] 在 `run()` 中集成规划阶段 - `_plan()` → `_confirm_plan()` → `_think()` → ...
-- [ ] 配置开关 - `agent.require_plan` 控制是否启用
-- [ ] CLI 支持 - 监听 PLAN_GENERATED 事件展示计划
+- [ ] 定义 `Plan` 和 `PlanPhase` 数据结构
+- [ ] 实现 `PlanMode` 类 - 多轮规划逻辑
+- [ ] 实现 Plan 文件操作工具 - SavePlanTool, ListPlansTool, LoadPlanTool
+- [ ] Plan 持久化 - `.nano_agent/plans/` 目录
+- [ ] CLI 命令支持 - `/plan`, `/plans`
+- [ ] 单元测试 - 20+ 测试用例
 
-**技术方案**:
-```python
-# nano_agent/agent/types.py
-
-@dataclass
-class Step:
-    description: str              # 步骤描述
-    tools_needed: list[str]       # 需要的工具
-
-@dataclass
-class Plan:
-    task: str                     # 原始任务
-    analysis: str                 # 任务分析
-    steps: list[Step]             # 执行步骤
-    risks: list[str]              # 潜在风险
-
-# nano_agent/agent/react.py
-
-class ReActAgent:
-    def run(self, user_input: str) -> ExecutionResult:
-        self._prepare(user_input)
-
-        # 新增：前置规划
-        if self.config.require_plan:
-            plan = self._plan(user_input)
-            self.events.emit(AgentEvent.PLAN_GENERATED, {"plan": plan})
-            if not self._confirm_plan(plan):
-                return self._build_result("已取消")
-
-        while not self._should_stop():
-            think = self._think()
-            ...
-
-    def _plan(self, task: str) -> Plan:
-        """生成执行计划"""
-        prompt = f"分析以下任务，制定执行计划：\n{task}"
-        # 调用 LLM 生成结构化计划
-        ...
+**新增文件**:
+```
+nano_agent/agent/types.py      # Plan, PlanPhase 数据类
+nano_agent/cli/plan_mode.py    # PlanMode 类
+nano_agent/tools/plan_tools.py # Plan 文件操作工具
+tests/test_plan.py             # 测试用例
 ```
 
 ---
 
-### v0.6.3 - 渐进式执行与用户确认
+### v0.6.3 - PlanMode 演进优化
+
+**目标**: 优化 PlanMode 架构，为未来多模式和多 Agent 集成做准备。
+
+**背景**:
+v0.6.2 的 PlanMode 实现了基础功能，但 I/O 逻辑与核心逻辑耦合。为了支持未来的独立 Agent 模式和多模式切换，需要将核心逻辑与 I/O 分离。
+
+**架构对应**: 演进友好设计 - 核心逻辑无 I/O，可被 CLI 或独立 Agent 包装
+
+**任务列表**:
+- [ ] EventEmitter 集成 - 支持事件驱动的 UI 更新
+- [ ] 核心逻辑 I/O 无关 - generate_plan(), adjust_plan(), save_plan() 不依赖 print/input
+- [ ] CLI 包装函数 - run_plan_mode_interactive() 作为可替换的 CLI 层
+- [ ] 事件类型定义 - plan_generated, plan_adjusted, plan_saved
+- [ ] 测试更新 - 验证事件触发和 I/O 分离
+
+**改进内容**:
+```python
+# 演进友好设计
+class PlanMode:
+    def __init__(self, llm, config, events: EventEmitter = None):
+        self.events = events or EventEmitter()  # 支持外部注入
+        self.current_plan: Plan | None = None
+
+    def generate_plan(self, task: str) -> Plan:
+        """纯逻辑，无 I/O"""
+        self.events.emit("plan_generated", {"plan": self.current_plan})
+        return self.current_plan
+
+# CLI 包装层（可被未来独立 Agent 替换）
+def run_plan_mode_interactive(llm, config, task, input_fn=input, print_fn=print):
+    ...
+```
+
+---
+
+### v0.6.4 - 渐进式执行与用户确认
 
 **目标**: 工具执行前暂停，等待用户确认；支持风险分级确认策略。
 
@@ -541,7 +541,7 @@ class ReActAgent:
 
 ---
 
-### v0.6.4 - Git 集成与状态回退
+### v0.6.5 - Git 集成与状态回退
 
 **目标**: 集成 Git 实现自动提交和状态回退能力。
 
@@ -1005,11 +1005,12 @@ persona:
 | 版本 | 特性 | 说明 |
 |------|------|------|
 | v0.5.1 | 功能优化与增强 ✅ | CLI 增强、/init、/config、/memory、/setname、/undo 等 |
-| v0.6.0 | 编排层与执行层分离 | AgentOrchestrator、阶段拆分、事件流、预算检查、会话管理 |
-| v0.6.1 | 上下文管理 | ContextManager、三层压缩策略、九段式摘要 |
-| v0.6.2 | 前置规划 | Plan 数据结构、_plan() 阶段、用户确认计划 |
-| v0.6.3 | 渐进式执行与用户确认 | RiskLevel 分级、ConfirmationManager、工具确认 |
-| v0.6.4 | Git 集成与状态回退 | GitManager、自动提交、/undo 增强 |
+| v0.6.0 | 编排层与执行层分离 ✅ | AgentOrchestrator、阶段拆分、事件流、预算检查、会话管理 |
+| v0.6.1 | 上下文管理 ✅ | ContextManager、三层压缩策略、九段式摘要、Token 估算 |
+| v0.6.2 | 前置规划 | PlanMode、Plan 持久化、多轮规划、CLI 命令 |
+| v0.6.3 | PlanMode 演进优化 | EventEmitter 集成、I/O 无关设计、CLI 包装层 |
+| v0.6.4 | 渐进式执行与用户确认 | RiskLevel 分级、ConfirmationManager、工具确认 |
+| v0.6.5 | Git 集成与状态回退 | GitManager、自动提交、/undo 增强 |
 | v0.7.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.7.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.8.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
