@@ -154,6 +154,16 @@ class ContextConfig:
 
 
 @dataclass
+class ConfirmationConfig:
+    """Confirmation mechanism configuration."""
+    enabled: bool = True
+    confirm_safe: bool = False        # Require confirmation for SAFE tools
+    confirm_moderate: bool = False    # Require confirmation for MODERATE tools
+    confirm_dangerous: bool = True    # Require confirmation for DANGEROUS tools
+    whitelist: list[str] = field(default_factory=list)  # Tools that bypass confirmation
+
+
+@dataclass
 class Config:
     """Main configuration."""
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -164,3 +174,4 @@ class Config:
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     context: ContextConfig = field(default_factory=ContextConfig)
+    confirmation: ConfirmationConfig = field(default_factory=ConfirmationConfig)

@@ -483,60 +483,84 @@ def run_plan_mode_interactive(llm, config, task, input_fn=input, print_fn=print)
 
 ---
 
-### v0.6.4 - 渐进式执行与用户确认
+### v0.6.4 - 渐进式执行与用户确认 ✅
 
 **目标**: 工具执行前暂停，等待用户确认；支持风险分级确认策略。
 
 **背景**:
 当前 Agent 连续执行多个工具调用，用户无法干预。危险操作（删除、Shell）应该确认，安全操作（读取）可以自动执行。
 
-**架构对应**: 基于事件流，监听 TOOL_CALL 事件实现暂停和确认
+**架构对应**: 基于事件流，监听 CONFIRMATION_REQUIRED 事件实现暂停和确认
 
 **任务列表**:
-- [ ] 定义 `RiskLevel` 枚举 - SAFE/MODERATE/DANGEROUS
-- [ ] 工具添加 `risk_level` 属性
-- [ ] 实现 `ConfirmationManager` 类 - 管理确认策略和白名单
-- [ ] 在 `_act()` 前插入确认逻辑 - 根据风险级别决定是否确认
-- [ ] CLI 实现 `confirm_handler` - 监听 TOOL_CALL 事件弹出确认
-- [ ] 配置开关 - `agent.confirm_safe`/`confirm_moderate`/`confirm_dangerous`
+- [x] 定义 `RiskLevel` 枚举 - SAFE/MODERATE/DANGEROUS
+- [x] 工具添加 `risk_level` 属性
+- [x] 实现 `ConfirmationManager` 类 - 管理确认策略和白名单
+- [x] 在 `_act()` 前插入确认逻辑 - 根据风险级别决定是否确认
+- [x] CLI 实现 `confirm_handler` - 监听 CONFIRMATION_REQUIRED 事件弹出确认
+- [x] 配置开关 - `confirmation.enabled`/`confirm_safe`/`confirm_moderate`/`confirm_dangerous`
+- [x] 白名单管理 - 内存白名单 + 可选持久化到配置文件
+
+**新增文件**:
+```
+nano_agent/agent/confirmation.py   # ConfirmationManager, ConfirmationConfig
+tests/test_confirmation.py          # 22 测试用例
+```
+
+**修改文件**:
+```
+nano_agent/agent/types.py          # RiskLevel 枚举, AgentEvent.CONFIRMATION_REQUIRED
+nano_agent/agent/react.py          # 集成确认逻辑到 _act()
+nano_agent/tools/base.py           # risk_level 属性
+nano_agent/tools/builtin.py        # 各工具设置 risk_level
+nano_agent/cli/main.py             # 确认事件处理
+nano_agent/config/schema.py       # ConfirmationConfig
+```
 
 **技术方案**:
 ```python
 # nano_agent/agent/types.py
 
 class RiskLevel(Enum):
-    SAFE = "safe"           # 安全：读取、查询
-    MODERATE = "moderate"   # 中等：写入、创建
-    DANGEROUS = "dangerous" # 危险：删除、Shell
-
-# nano_agent/tools/base.py
-
-class BaseTool:
-    risk_level: RiskLevel = RiskLevel.MODERATE
+    """工具风险级别"""
+    SAFE = "safe"           # 只读、查询
+    MODERATE = "moderate"   # 写入、创建
+    DANGEROUS = "dangerous" # 删除、Shell
 
 # nano_agent/agent/confirmation.py
 
 class ConfirmationManager:
-    def needs_confirmation(self, tool: BaseTool, config: AgentConfig) -> bool:
-        """根据风险级别和配置决定是否需要确认"""
-        if tool.name in config.confirm_whitelist:
+    """确认管理器"""
+
+    def needs_confirmation(self, tool: BaseTool) -> bool:
+        """判断工具是否需要确认"""
+        if tool.name in self.config.whitelist:
             return False
-        return getattr(config, f"confirm_{tool.risk_level.value}", True)
+        return getattr(self.config, f"confirm_{tool.risk_level.value}", True)
 
-# nano_agent/agent/react.py
+    def request_confirmation(self) -> None:
+        """请求确认（设置等待状态）"""
+        self._pending_confirmation = True
 
-class ReActAgent:
-    def _act(self, tool_call: ToolCall) -> ToolResult:
-        tool = self.tool_registry.get(tool_call.name)
+    def set_result(self, confirmed: bool) -> None:
+        """设置确认结果"""
+        self._confirmation_result = confirmed
+        self._pending_confirmation = False
 
-        # 确认逻辑
-        if self.confirmation.needs_confirmation(tool, self.config):
-            self.events.emit(AgentEvent.TOOL_CALL, {"tool": tool_call})
-            # 等待外部确认（通过事件回调设置结果）
-            if not self._wait_for_confirmation():
-                return ToolResult(success=False, error="用户取消")
-
-        return self.execute_tool(tool_call.name, tool_call.arguments)
+# CLI 确认处理
+def handle_confirmation(event, data):
+    response = input(f"确认执行 {data['tool']}? [y/N/a/s]: ")
+    if response == 'y':
+        agent.confirm_tool(True)
+    elif response == 'a':
+        agent.add_tool_to_whitelist(data['tool'])
+        agent.confirm_tool(True)
+    elif response == 's':
+        agent.add_tool_to_whitelist(data['tool'])
+        save_whitelist_to_config(data['tool'])
+        agent.confirm_tool(True)
+    else:
+        agent.confirm_tool(False)
 ```
 
 ---
@@ -1009,7 +1033,7 @@ persona:
 | v0.6.1 | 上下文管理 ✅ | ContextManager、三层压缩策略、九段式摘要、Token 估算 |
 | v0.6.2 | 前置规划 ✅ | PlanMode、Plan 持久化、多轮规划、CLI 命令 |
 | v0.6.3 | PlanMode 演进优化 ✅ | EventEmitter 集成、I/O 无关设计、CLI 包装层 |
-| v0.6.4 | 渐进式执行与用户确认 | RiskLevel 分级、ConfirmationManager、工具确认 |
+| v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
 | v0.6.5 | Git 集成与状态回退 | GitManager、自动提交、/undo 增强 |
 | v0.7.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.7.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |

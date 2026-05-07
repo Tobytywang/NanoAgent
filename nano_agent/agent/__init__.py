@@ -9,12 +9,13 @@ from .base import BaseAgent
 from .react import ReActAgent
 from .types import (
     ExecutionResult, ThinkResult, ExecutionEvent, AgentEvent,
-    Plan, PlanPhase
+    Plan, PlanPhase, RiskLevel
 )
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .orchestrator import AgentOrchestrator, SessionStats
 from .context import ContextManager, NineSectionSummary
+from .confirmation import ConfirmationManager, ConfirmationConfig
 from .token_utils import estimate_tokens, estimate_text_tokens
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "AgentEvent",
     "Plan",
     "PlanPhase",
+    "RiskLevel",
     # Events
     "EventEmitter",
     # Budget
@@ -40,6 +42,10 @@ __all__ = [
     # Context management
     "ContextManager",
     "NineSectionSummary",
+    # Confirmation
+    "ConfirmationManager",
+    "ConfirmationConfig",
+    # Token estimation
     "estimate_tokens",
     "estimate_text_tokens",
 ]

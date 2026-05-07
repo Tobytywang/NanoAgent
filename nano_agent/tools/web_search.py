@@ -5,6 +5,7 @@ Web search tool using curl and Bing search engine.
 import subprocess
 import urllib.parse
 from .base import BaseTool, ToolResult
+from ..agent.types import RiskLevel
 
 
 class WebSearchTool(BaseTool):
@@ -12,6 +13,7 @@ class WebSearchTool(BaseTool):
 
     name = "web_search"
     description = "Search the web for current information. Use this when you need up-to-date information about news, weather, facts, or any topic that requires real-time data."
+    risk_level = RiskLevel.MODERATE  # Makes external network requests
 
     def __init__(self, timeout: int = 15):
         """

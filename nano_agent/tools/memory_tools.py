@@ -4,6 +4,7 @@ Memory tools for long-term memory operations.
 
 import re
 from .base import BaseTool, ToolResult
+from ..agent.types import RiskLevel
 
 
 class MemorizeTool(BaseTool):
@@ -20,6 +21,7 @@ Examples:
 - User's name: {"content": "用户的名字是天宇", "name_type": "user_name", "name_value": "天宇"}
 - Agent's name: {"content": "我的名字是奥特曼", "name_type": "agent_name", "name_value": "奥特曼"}
 """
+    risk_level = RiskLevel.MODERATE  # Write to memory
 
     def __init__(self, memory=None):
         self._memory = memory
@@ -207,6 +209,7 @@ class RecallTool(BaseTool):
 
     name = "recall"
     description = "Search and retrieve information from long-term memory. Use this to recall previously stored preferences, facts, or experiences."
+    risk_level = RiskLevel.SAFE  # Read-only operation
 
     def __init__(self, memory=None):
         self._memory = memory
@@ -284,6 +287,7 @@ class ListMemoriesTool(BaseTool):
 
     name = "list_memories"
     description = "List all stored long-term memories."
+    risk_level = RiskLevel.SAFE  # Read-only operation
 
     def __init__(self, memory=None):
         self._memory = memory
@@ -357,6 +361,7 @@ class ForgetTool(BaseTool):
 
     name = "forget"
     description = "Delete a specific memory from long-term storage by its ID."
+    risk_level = RiskLevel.DANGEROUS  # Delete operation
 
     def __init__(self, memory=None):
         self._memory = memory

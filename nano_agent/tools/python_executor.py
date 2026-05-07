@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 from .base import BaseTool, ToolResult
+from ..agent.types import RiskLevel
 
 
 class PythonExecutorTool(BaseTool):
@@ -13,6 +14,7 @@ class PythonExecutorTool(BaseTool):
 
     name = "python_execute"
     description = "Execute Python code and return the result. Useful for calculations, data processing, and algorithm implementation."
+    risk_level = RiskLevel.DANGEROUS  # Can execute arbitrary code
 
     @property
     def parameters_schema(self) -> dict:

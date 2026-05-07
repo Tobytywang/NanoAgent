@@ -59,6 +59,14 @@ class AgentEvent(Enum):
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     RUN_END = "run_end"
+    CONFIRMATION_REQUIRED = "confirmation_required"
+
+
+class RiskLevel(Enum):
+    """Tool risk level for confirmation mechanism."""
+    SAFE = "safe"           # Read-only, query operations
+    MODERATE = "moderate"   # Write, create operations
+    DANGEROUS = "dangerous" # Delete, shell operations
 
 
 # === Plan Types ===

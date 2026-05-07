@@ -4,7 +4,10 @@ Tool system base classes and registry.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Callable, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..agent.types import RiskLevel
 
 
 @dataclass
@@ -22,6 +25,13 @@ class BaseTool(ABC):
 
     name: str = ""
     description: str = ""
+    risk_level: "RiskLevel" = None  # Will be set to MODERATE by default
+
+    def __init__(self):
+        # Import here to avoid circular import
+        from ..agent.types import RiskLevel
+        if self.risk_level is None:
+            self.risk_level = RiskLevel.MODERATE
 
     @property
     @abstractmethod

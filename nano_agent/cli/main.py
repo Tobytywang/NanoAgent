@@ -267,6 +267,7 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
         verbose=config.agent.verbose,
         skill_prompt="",
         context_config=config.context,
+        confirmation_config=config.confirmation,
     )
 
     # Register built-in tools with tracker and context_length
@@ -377,6 +378,59 @@ def run_interactive(
 
     # Get the underlying agent for compatibility
     agent = orchestrator.agent
+
+    # Set up confirmation handler
+    def _setup_confirmation_handler():
+        """Set up event handler for tool confirmation."""
+        def handle_confirmation(event, data):
+            """Handle confirmation request from agent."""
+            tool_name = data.get("tool", "unknown")
+            risk_level = data.get("risk_level", "moderate")
+            arguments = data.get("arguments", {})
+
+            # Risk level icons
+            risk_icons = {
+                "safe": "🟢",
+                "moderate": "🟡",
+                "dangerous": "🔴"
+            }
+            icon = risk_icons.get(risk_level, "❓")
+
+            print(f"\n{icon} 确认执行工具: {tool_name}")
+            print(f"   风险级别: {risk_level}")
+            if arguments:
+                args_str = str(arguments)[:100]
+                print(f"   参数: {args_str}{'...' if len(str(arguments)) > 100 else ''}")
+
+            while True:
+                response = input("   确认执行? [y/N/a(总是)/s(保存)]: ").strip().lower()
+
+                if response == 'y':
+                    agent.confirm_tool(True)
+                    break
+                elif response == 'a':
+                    # Add to memory whitelist (session only)
+                    agent.add_tool_to_whitelist(tool_name)
+                    agent.confirm_tool(True)
+                    print(f"   已添加到本次会话白名单")
+                    break
+                elif response == 's':
+                    # Persist whitelist to config file
+                    agent.add_tool_to_whitelist(tool_name)
+                    _save_whitelist_to_config(tool_name, config)
+                    agent.confirm_tool(True)
+                    print(f"   已保存到配置文件白名单")
+                    break
+                elif response in ('n', ''):
+                    agent.confirm_tool(False)
+                    print("   已取消")
+                    break
+                else:
+                    print("   无效输入，请输入 y/N/a/s")
+
+        agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
+
+    _setup_confirmation_handler()
 
     # Load project context at startup and add to system prompt
     project_context = _load_project_context()
@@ -1229,6 +1283,31 @@ def _save_session_summary(agent, config, summary: str) -> None:
     message_count = len([m for m in messages if m.get("role") != "system"])
 
     storage.save_summary(session_id, summary, message_count)
+
+
+def _save_whitelist_to_config(tool_name: str, config) -> None:
+    """
+    Save tool to confirmation whitelist in config file.
+
+    Args:
+        tool_name: Tool name to add to whitelist
+        config: Config object
+    """
+    from ..config.loader import ConfigLoader
+
+    # Find config file
+    config_file, _ = _find_config_file()
+
+    if not config_file:
+        # Create project config file if it doesn't exist
+        config_file = Path(".nano_agent/config.yaml")
+
+    # Add to whitelist
+    if tool_name not in config.confirmation.whitelist:
+        config.confirmation.whitelist.append(tool_name)
+
+    # Save config
+    ConfigLoader.save(config, config_file)
 
 
 def _handle_undo(agent, config=None) -> dict:

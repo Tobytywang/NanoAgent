@@ -6,6 +6,7 @@ import subprocess
 import platform
 from typing import Literal
 from .base import BaseTool, ToolResult
+from ..agent.types import RiskLevel
 
 
 class ShellTool(BaseTool):
@@ -13,6 +14,7 @@ class ShellTool(BaseTool):
 
     name = "shell_execute"
     description = "Execute shell commands. Automatically adapts to the operating system (Windows/macOS/Linux)."
+    risk_level = RiskLevel.DANGEROUS  # Can execute arbitrary commands
 
     @property
     def parameters_schema(self) -> dict:

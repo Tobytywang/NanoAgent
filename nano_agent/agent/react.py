@@ -15,6 +15,7 @@ from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .undo import UndoStack
 from .context import ContextManager
+from .confirmation import ConfirmationManager, ConfirmationConfig
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
@@ -50,6 +51,7 @@ class ReActAgent(BaseAgent):
         events: EventEmitter | None = None,
         budget: Budget | None = None,
         context_config=None,
+        confirmation_config: ConfirmationConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -65,6 +67,7 @@ class ReActAgent(BaseAgent):
             events: Event emitter for external listeners
             budget: Budget constraints for execution
             context_config: Context management configuration
+            confirmation_config: Confirmation mechanism configuration
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -80,6 +83,9 @@ class ReActAgent(BaseAgent):
             config=context_config,
             verbose=verbose
         ) if context_config else None
+
+        # Confirmation manager
+        self.confirmation = ConfirmationManager(confirmation_config)
 
         # Execution state
         self._undo_stack = UndoStack()
@@ -276,6 +282,40 @@ class ReActAgent(BaseAgent):
                 output="[预览模式] 未实际执行"
             )
         else:
+            # Check if confirmation is needed
+            tool = self.tool_registry.get(tool_call.name)
+            if tool and self.confirmation.needs_confirmation(tool):
+                # Request confirmation
+                self.confirmation.request_confirmation()
+                self.events.emit(AgentEvent.CONFIRMATION_REQUIRED, {
+                    "tool": tool_call.name,
+                    "arguments": tool_call.arguments,
+                    "risk_level": tool.risk_level.value
+                })
+
+                # Wait for confirmation (blocking)
+                confirmed = self.confirmation.wait_for_result()
+
+                if not confirmed:
+                    # User denied
+                    result = ToolResult(
+                        success=False,
+                        output="",
+                        error="用户取消操作"
+                    )
+                    # Record and return early
+                    self._tool_call_records.append({
+                        "name": tool_call.name,
+                        "arguments": tool_call.arguments,
+                        "success": False,
+                        "output_preview": None,
+                    })
+                    self.events.emit(AgentEvent.TOOL_RESULT, {
+                        "tool": tool_call.name,
+                        "result": result
+                    })
+                    return result
+
             # Execute the tool
             tool_start = time.perf_counter()
             result = self._execute_tool_call(tool_call)
@@ -432,6 +472,26 @@ class ReActAgent(BaseAgent):
     def has_undoable_operations(self) -> bool:
         """Check if current round has any undoable operations."""
         return self._undo_stack.has_round_records()
+
+    def confirm_tool(self, confirmed: bool) -> None:
+        """
+        Set confirmation result for pending tool execution.
+
+        Called by external handler (CLI, UI, etc.) after user interaction.
+
+        Args:
+            confirmed: Whether the user confirmed the operation
+        """
+        self.confirmation.set_result(confirmed)
+
+    def add_tool_to_whitelist(self, tool_name: str) -> None:
+        """
+        Add a tool to the confirmation whitelist.
+
+        Args:
+            tool_name: Name of the tool to whitelist
+        """
+        self.confirmation.add_to_whitelist(tool_name)
 
     def add_tool(self, tool) -> None:
         """
