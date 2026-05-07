@@ -1,5 +1,5 @@
 """
-Undo mechanism for tracking and reverting tool operations.
+撤销机制：追踪和回滚工具操作
 """
 
 from dataclasses import dataclass, field
@@ -9,20 +9,20 @@ from typing import Any
 
 @dataclass
 class UndoRecord:
-    """Record of an undoable operation."""
+    """可撤销操作的记录"""
 
     tool_name: str
     undo_data: dict
     timestamp: str
-    round_id: str  # Identifies which conversation round this belongs to
+    round_id: str  # 标识此操作属于哪个对话轮次
 
 
 class UndoStack:
     """
-    Manages a stack of undoable operations organized by conversation rounds.
+    管理按对话轮次组织的可撤销操作栈。
 
-    Each round corresponds to one user message and its associated tool calls.
-    Undo operations revert all changes made in the current round.
+    每个轮次对应一条用户消息及其相关的工具调用。
+    撤销操作会回滚当前轮次的所有更改。
     """
 
     def __init__(self):
@@ -31,20 +31,20 @@ class UndoStack:
 
     def start_round(self, round_id: str) -> None:
         """
-        Start a new conversation round.
+        开始新的对话轮次。
 
         Args:
-            round_id: Unique identifier for this round
+            round_id: 此轮次的唯一标识符
         """
         self._current_round = round_id
 
     def push(self, tool_name: str, undo_data: dict) -> None:
         """
-        Record an undoable operation.
+        记录一个可撤销操作。
 
         Args:
-            tool_name: Name of the tool that was executed
-            undo_data: Data needed to undo this operation
+            tool_name: 已执行的工具名称
+            undo_data: 撤销此操作所需的数据
         """
         if undo_data:
             self._records.append(UndoRecord(
@@ -56,34 +56,34 @@ class UndoStack:
 
     def get_round_records(self) -> list[UndoRecord]:
         """
-        Get all records for the current round.
+        获取当前轮次的所有记录。
 
         Returns:
-            List of UndoRecord for current round, in execution order
+            当前轮次的 UndoRecord 列表，按执行顺序排列
         """
         return [r for r in self._records if r.round_id == self._current_round]
 
     def has_round_records(self) -> bool:
-        """Check if current round has any undoable operations."""
+        """检查当前轮次是否有可撤销操作"""
         return any(r.round_id == self._current_round for r in self._records)
 
     def clear_round(self) -> None:
-        """Clear all records for the current round (after successful undo or round completion)."""
+        """清除当前轮次的所有记录（成功撤销或轮次完成后）"""
         self._records = [r for r in self._records if r.round_id != self._current_round]
 
     def remove_record(self, record: UndoRecord) -> None:
-        """Remove a specific record after it has been undone."""
+        """撤销后移除特定记录"""
         if record in self._records:
             self._records.remove(record)
 
     def clear_all(self) -> None:
-        """Clear all records."""
+        """清除所有记录"""
         self._records = []
 
     def count(self) -> int:
-        """Return total number of records."""
+        """返回记录总数"""
         return len(self._records)
 
     def count_round(self) -> int:
-        """Return number of records in current round."""
+        """返回当前轮次的记录数"""
         return len(self.get_round_records())

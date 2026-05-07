@@ -1,5 +1,5 @@
 """
-Agent prompt templates.
+Agent 提示词模板
 """
 
 REACT_SYSTEM_PROMPT = """You are an intelligent assistant that can use tools to complete tasks.

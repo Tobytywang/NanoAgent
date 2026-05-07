@@ -1,5 +1,5 @@
 """
-Base Agent class.
+Agent 基类
 """
 
 from abc import ABC, abstractmethod
@@ -9,7 +9,7 @@ from ..tools.base import ToolRegistry, ToolResult
 
 
 class BaseAgent(ABC):
-    """Abstract base class for agents."""
+    """Agent 抽象基类"""
 
     def __init__(
         self,
@@ -19,13 +19,13 @@ class BaseAgent(ABC):
         max_iterations: int = 10
     ):
         """
-        Initialize the agent.
+        初始化 Agent。
 
         Args:
-            llm: LLM client instance
-            memory: Memory system instance
-            tool_registry: Tool registry instance
-            max_iterations: Maximum number of reasoning iterations
+            llm: LLM 客户端实例
+            memory: 记忆系统实例
+            tool_registry: 工具注册表实例
+            max_iterations: 最大推理迭代次数
         """
         self.llm = llm
         self.memory = memory
@@ -35,36 +35,36 @@ class BaseAgent(ABC):
     @abstractmethod
     def run(self, user_input: str) -> str:
         """
-        Process user input and return a response.
+        处理用户输入并返回响应。
 
         Args:
-            user_input: The user's input text
+            user_input: 用户输入文本
 
         Returns:
-            The agent's response
+            Agent 的响应
         """
         pass
 
     def execute_tool(self, tool_name: str, arguments: dict) -> ToolResult:
         """
-        Execute a tool by name with given arguments.
+        根据名称和参数执行工具。
 
         Args:
-            tool_name: Name of the tool to execute
-            arguments: Arguments to pass to the tool
+            tool_name: 要执行的工具名称
+            arguments: 传递给工具的参数
 
         Returns:
-            ToolResult from the tool execution
+            工具执行的 ToolResult
         """
         tool = self.tool_registry.get(tool_name)
         if tool is None:
             return ToolResult(
                 success=False,
                 output="",
-                error=f"Unknown tool: {tool_name}"
+                error=f"未知工具: {tool_name}"
             )
         return tool.execute(**arguments)
 
     def reset(self) -> None:
-        """Reset the agent's memory."""
+        """重置 Agent 的记忆"""
         self.memory.clear()
