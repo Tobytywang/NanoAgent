@@ -18,6 +18,10 @@ class LLMCallMetrics:
     total_tokens: int
     latency_ms: float
     tool_calls_count: int
+    # 新增：输入输出信息
+    input_messages: list[dict] = field(default_factory=list)
+    output_text: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -29,6 +33,9 @@ class LLMCallMetrics:
             "total_tokens": self.total_tokens,
             "latency_ms": round(self.latency_ms, 2),
             "tool_calls_count": self.tool_calls_count,
+            "input_messages": self.input_messages,
+            "output_text": self.output_text,
+            "tool_calls": self.tool_calls,
         }
 
 

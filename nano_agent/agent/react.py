@@ -307,13 +307,19 @@ class ReActAgent(BaseAgent):
         )
         llm_latency = (time.perf_counter() - llm_start) * 1000
 
-        # Record LLM call
+        # Convert tool_calls to dict for reporting
+        tool_calls_dict = [tc.to_dict() for tc in tool_calls] if tool_calls else []
+
+        # Record LLM call with input/output
         self.tracker.record_llm_call(
             model=self.llm.model,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
             latency_ms=llm_latency,
             tool_calls_count=len(tool_calls),
+            input_messages=messages,
+            output_text=response_text,
+            tool_calls=tool_calls_dict,
         )
 
         # Update token count
