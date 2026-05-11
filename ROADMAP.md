@@ -1161,6 +1161,12 @@ persona:
 | llm/ollama.py | 30% | 70% | P2 |
 | **总体** | **50%** | **75%** | - |
 
+**历史记录**:
+- 2026-05-11: 在 `tests/run_tests.py` 中设置 CI 门禁阈值 **54%** (`--cov-fail-under=54`)
+  - 背景：v0.6.x 新增模块（Architecture、Confirmation、Context、GitManager、Plan、Session、Undo）测试覆盖完成
+  - 测试用例从 147 增至 359 个
+  - 54% 为当前实际执行的最低阈值，ROADMAP 中的 75% 为最终目标
+
 ---
 
 ### T1 阶段 - 测试基础设施完善
@@ -1509,6 +1515,7 @@ def test_message_roles(role, expected):
 
 | 测试阶段 | 目标覆盖率 | 关键里程碑 | 关联功能版本 |
 |------|-----------|-----------|--------|
+| T0 | **54%** ✅ | CI 门禁阈值设置，v0.6.x 新模块测试完成 | v0.6.5 |
 | T1 | 60% | CLI、Migration、Plugin 测试完成 | v0.6.0 |
 | T2 | 70% | 可测试性重构完成 | v0.7.0, v0.8.0 |
 | T3 | 75% | CI 门禁建立，全模块测试完成 | v0.9.0 |
