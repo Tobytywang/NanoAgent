@@ -11,8 +11,8 @@ import pytest
 pytestmark = pytest.mark.unit
 
 from nano_agent.tools.base import BaseTool, ToolResult
-from nano_agent.tools.memory_tools import MemorizeTool
-from nano_agent.tools.file_ops import FileWriteTool
+from nano_agent.tools.builtin.memory_tools import MemorizeTool
+from nano_agent.tools.builtin.file_ops import FileWriteTool
 from nano_agent.agent.undo import UndoStack, UndoRecord
 from nano_agent.memory import HybridMemory, ShortTermMemory, LongTermMemory
 

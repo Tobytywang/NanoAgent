@@ -9,7 +9,7 @@ import tempfile
 import os
 
 from nano_agent.agent import Plan, PlanPhase
-from nano_agent.tools.plan_tools import (
+from nano_agent.tools.builtin.plan_tools import (
     plan_to_markdown,
     markdown_to_plan,
     _slugify,
@@ -185,7 +185,7 @@ class TestPlanTools:
     def test_save_plan_tool(self, tmp_path):
         """Test saving a plan."""
         # Override PLANS_DIR for testing
-        import nano_agent.tools.plan_tools as plan_tools
+        import nano_agent.tools.builtin.plan_tools as plan_tools
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "plans"
 
@@ -212,7 +212,7 @@ class TestPlanTools:
 
     def test_list_plans_tool_empty(self, tmp_path):
         """Test listing plans when empty."""
-        import nano_agent.tools.plan_tools as plan_tools
+        import nano_agent.tools.builtin.plan_tools as plan_tools
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "empty_plans"
 
@@ -227,7 +227,7 @@ class TestPlanTools:
 
     def test_load_plan_tool(self, tmp_path):
         """Test loading a plan."""
-        import nano_agent.tools.plan_tools as plan_tools
+        import nano_agent.tools.builtin.plan_tools as plan_tools
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "plans"
 
@@ -252,7 +252,7 @@ class TestPlanTools:
 
     def test_load_nonexistent_plan(self, tmp_path):
         """Test loading a plan that doesn't exist."""
-        import nano_agent.tools.plan_tools as plan_tools
+        import nano_agent.tools.builtin.plan_tools as plan_tools
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "plans"
 
@@ -360,7 +360,7 @@ class TestPlanMode:
         # Use a temp directory
         with tempfile.TemporaryDirectory() as tmpdir:
             # Patch both modules
-            import nano_agent.tools.plan_tools as plan_tools
+            import nano_agent.tools.builtin.plan_tools as plan_tools
             import nano_agent.cli.plan_mode as plan_mode
 
             original_tool_dir = plan_tools.PLANS_DIR

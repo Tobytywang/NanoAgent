@@ -230,7 +230,7 @@ def create_tool_registry_with_tools(*tool_names: str) -> "ToolRegistry":
     Returns:
         ToolRegistry with mock tools
     """
-    from nano_agent.tools.base import ToolRegistry
+    from nano_agent.tools import ToolRegistry
 
     registry = ToolRegistry()
     for name in tool_names:

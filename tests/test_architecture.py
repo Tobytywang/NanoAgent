@@ -18,7 +18,7 @@ from nano_agent.agent import (
     ReActAgent,
 )
 from nano_agent.memory import ShortTermMemory
-from nano_agent.tools.base import ToolRegistry, ToolResult
+from nano_agent.tools import ToolRegistry, ToolResult
 from nano_agent.llm.messages import ToolCall
 from nano_agent.llm.base import LLMUsage
 

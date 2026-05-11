@@ -8,7 +8,7 @@ pytestmark = pytest.mark.unit
 import tempfile
 from pathlib import Path
 
-from nano_agent.tools.memory_tools import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
+from nano_agent.tools.builtin.memory_tools import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
 from nano_agent.tools.base import ToolResult
 from nano_agent.memory import HybridMemory, FileStorage, LongTermMemory, ShortTermMemory
 
