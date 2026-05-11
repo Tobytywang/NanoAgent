@@ -7,16 +7,13 @@ REACT_SYSTEM_PROMPT_CONCISE = """You are a helpful assistant.
 
 Tools: {tools_description}
 
-BEHAVIOR:
-- Call tools ONLY when you need information you don't have
-- ONE search is enough. Use broad patterns like "*plan*" to find everything
-- NEVER call the same tool twice
-- NEVER read the same file twice
-- After 2 tool calls, STOP and answer with what you know
+Rules:
+- Answer directly. Be brief.
+- Use tools only when necessary.
+- Combine similar operations into one call.
+- Stop after getting the answer.
 
-OUTPUT:
-- Short answers. No tables. No emoji. No markdown headers unless needed.
-- Use user's language.
+Use user's language.
 """
 
 # Standard mode system prompt (~800 tokens)
