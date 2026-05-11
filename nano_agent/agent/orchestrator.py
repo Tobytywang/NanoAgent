@@ -54,6 +54,27 @@ class AgentOrchestrator:
         self.stats = SessionStats()
         self.events = EventEmitter()
 
+    # Property proxies for backward compatibility with CLI
+    @property
+    def memory(self):
+        """Proxy to the wrapped agent's memory."""
+        return self.agent.memory
+
+    @property
+    def llm(self):
+        """Proxy to the wrapped agent's LLM."""
+        return self.agent.llm
+
+    @property
+    def verbose(self):
+        """Proxy to the wrapped agent's verbose setting."""
+        return self.agent.verbose
+
+    @verbose.setter
+    def verbose(self, value: bool):
+        """Set the wrapped agent's verbose setting."""
+        self.agent.verbose = value
+
     def _generate_session_id(self) -> str:
         """Generate a unique session ID."""
         return str(uuid.uuid4())[:8]
