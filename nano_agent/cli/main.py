@@ -989,6 +989,13 @@ Config file priority:
     # Create agent
     agent = create_agent(args.config)
 
+    # Handle --new-session: explicitly create a new empty session
+    if args.new_session:
+        if hasattr(agent.memory, 'new_session'):
+            new_sid = agent.memory.new_session()
+            Console.print(f"Started new session: {new_sid}", style="success")
+        # else: short_term memory doesn't need explicit new_session
+
     # Handle --resume-session
     if args.resume_session:
         if hasattr(agent.memory, 'load_session'):
