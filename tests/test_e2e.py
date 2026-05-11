@@ -309,7 +309,7 @@ class TestAgentLifecycleEndToEnd:
         )
 
         # Run with tool
-        tool_call = ToolCall(name="echo", arguments={"message": "hello"})
+        tool_call = ToolCall(id="call_1", name="echo", arguments={"message": "hello"})
         mock_llm.chat.side_effect = [
             ("", [tool_call], LLMUsage()),
             ("I echoed your message.", [], LLMUsage()),

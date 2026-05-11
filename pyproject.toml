@@ -61,5 +61,6 @@ addopts = "--cov=nano_agent --cov-fail-under=54 --cov-report=term-missing"
 markers = [
     "unit: Unit tests - fast, isolated, no external dependencies",
     "integration: Integration tests - require real dependencies",
+    "e2e: End-to-end tests - complete user workflows",
     "slow: Slow running tests",
 ]
