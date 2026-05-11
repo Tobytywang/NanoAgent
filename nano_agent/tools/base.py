@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Any, TYPE_CHECKING
 
+from ..core.registry import BaseRegistry
+
 if TYPE_CHECKING:
     from ..agent.types import RiskLevel
 
@@ -74,15 +76,21 @@ class BaseTool(ABC):
         pass
 
 
-class ToolRegistry:
+class ToolRegistry(BaseRegistry["BaseTool"]):
     """Registry for managing tools."""
 
     def __init__(self):
-        self._tools: dict[str, BaseTool] = {}
+        super().__init__()
 
-    def register(self, tool: BaseTool) -> None:
-        """Register a tool."""
-        self._tools[tool.name] = tool
+    def register(self, tool: BaseTool, name: str | None = None) -> None:
+        """
+        Register a tool.
+
+        Args:
+            tool: The tool to register
+            name: Optional name override (uses tool.name by default)
+        """
+        super().register(tool, name or tool.name)
 
     def register_function(
         self,
@@ -121,22 +129,10 @@ class ToolRegistry:
 
         self.register(FunctionTool())
 
-    def get(self, name: str) -> BaseTool | None:
-        """Get a tool by name."""
-        return self._tools.get(name)
-
     def get_all_schemas(self) -> list[dict]:
         """Get all tool schemas in Ollama format."""
-        return [tool.to_ollama_tool() for tool in self._tools.values()]
+        return [tool.to_ollama_tool() for tool in self._items.values()]
 
     def list_tools(self) -> list[str]:
         """List all registered tool names."""
-        return list(self._tools.keys())
-
-    def __contains__(self, name: str) -> bool:
-        """Check if a tool is registered."""
-        return name in self._tools
-
-    def __len__(self) -> int:
-        """Return number of registered tools."""
-        return len(self._tools)
+        return self.list_all()

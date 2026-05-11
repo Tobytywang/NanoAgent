@@ -226,6 +226,8 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     Returns:
         Configured AgentOrchestrator instance
     """
+    from ..core.builder import AgentBuilder
+
     # Find and load configuration with priority
     config_file, config_source = _find_config_file(config_path)
 
@@ -245,32 +247,28 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     # Auto-update .gitignore
     update_gitignore()
 
-    # Create LLM client using factory function
+    # Use AgentBuilder for clean assembly
+    builder = AgentBuilder(config)
+
+    # Create LLM
     llm = create_llm_from_config(config.llm)
+    builder.with_llm_instance(llm)
 
-    # Create memory system
+    # Create memory and set LLM for auto-extraction
     memory = create_memory(config)
-
-    # Set LLM on hybrid memory for auto-extraction
     if config.memory.type == "hybrid" and hasattr(memory, 'set_llm'):
         memory.set_llm(llm)
+    builder.with_memory_instance(memory)
 
-    # Create tool registry and register built-in tools
+    # Create tool registry
     tool_registry = ToolRegistry()
+    builder.with_tool_registry(tool_registry)
 
-    # Create agent first (to get tracker)
-    agent = ReActAgent(
-        llm=llm,
-        memory=memory,
-        tool_registry=tool_registry,
-        max_iterations=config.agent.max_iterations,
-        verbose=config.agent.verbose,
-        skill_prompt="",
-        context_config=config.context,
-        confirmation_config=config.confirmation,
-    )
+    # Build agent to get tracker for tool registration
+    orchestrator = builder.build()
+    agent = orchestrator.agent
 
-    # Register built-in tools with tracker and context_length
+    # Register built-in tools with tracker
     register_builtin_tools(tool_registry, memory=memory, tracker=agent.tracker, context_length=config.llm.get_context_length())
 
     # Load plugins from configuration
@@ -291,10 +289,8 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     for tool in skill_registry.get_all_tools():
         tool_registry.register(tool)
 
-    # Get combined skill system prompt
-    skill_prompt = skill_registry.get_combined_system_prompt()
-
     # Update agent's skill prompt
+    skill_prompt = skill_registry.get_combined_system_prompt()
     agent.skill_prompt = skill_prompt
     agent._setup_system_prompt()
 
@@ -304,11 +300,6 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
 
     # Store config source for display
     agent._config_source = config_source
-
-    # Create orchestrator
-    orchestrator = AgentOrchestrator(agent, config)
-
-    # Store config source on orchestrator too
     orchestrator._config_source = config_source
 
     return orchestrator
@@ -462,6 +453,31 @@ def run_interactive(
 
     _setup_confirmation_handler()
 
+    # Set up name update handler (CLI-specific state management)
+    # This replaces the _pending_name_updates and _prev_name_values from ReActAgent
+    name_update_state = {
+        "pending_updates": [],  # list of (name_type, name_value)
+        "prev_values": {}       # dict of name_type -> previous value
+    }
+
+    def _setup_name_update_handler():
+        """Set up event handler for name updates from memorize tool."""
+        def handle_tool_result(event, data):
+            """Handle tool result to detect name updates."""
+            tool_name = data.get("tool", "unknown")
+            result = data.get("result")
+
+            # Detect name update from memorize tool
+            if tool_name == "memorize" and result and result.success and result.metadata:
+                name_type = result.metadata.get("name_type")
+                name_value = result.metadata.get("name_value")
+                if name_type and name_value:
+                    name_update_state["pending_updates"].append((name_type, name_value))
+
+        agent.events.on(AgentEvent.TOOL_RESULT, handle_tool_result)
+
+    _setup_name_update_handler()
+
     # Set up Git handler
     git_manager = None
     if config.git.enabled:
@@ -561,7 +577,7 @@ def run_interactive(
                             continue
 
                 # Fallback to original undo
-                restored = _handle_undo(agent, config)
+                restored = _handle_undo(agent, config, name_update_state)
                 # Update local display variables
                 if "user_name" in restored:
                     user_display = restored["user_name"]
@@ -740,11 +756,11 @@ def run_interactive(
             print(f"> {response}")
 
             # Check for pending name updates from memorize tool (may be multiple)
-            if hasattr(agent, '_pending_name_updates') and agent._pending_name_updates:
+            if name_update_state["pending_updates"]:
                 # Clear previous name values at the start of each round
-                agent._prev_name_values = {}
+                name_update_state["prev_values"] = {}
 
-                for name_type, name_value in agent._pending_name_updates:
+                for name_type, name_value in name_update_state["pending_updates"]:
                     # Sanitize name_value to remove invalid Unicode characters
                     try:
                         name_value = name_value.encode('utf-8', errors='replace').decode('utf-8')
@@ -752,11 +768,11 @@ def run_interactive(
                         name_value = "User" if name_type == "user_name" else "Agent"
 
                     # Save previous value for undo (only save the original value, not overwrite)
-                    if name_type not in agent._prev_name_values:
+                    if name_type not in name_update_state["prev_values"]:
                         if name_type == "user_name":
-                            agent._prev_name_values[name_type] = config.agent.user_name
+                            name_update_state["prev_values"][name_type] = config.agent.user_name
                         elif name_type == "agent_name":
-                            agent._prev_name_values[name_type] = config.agent.agent_name
+                            name_update_state["prev_values"][name_type] = config.agent.agent_name
 
                     if name_type == "user_name":
                         user_display = name_value
@@ -770,7 +786,7 @@ def run_interactive(
                 config_file, _ = _find_config_file()
                 if config_file:
                     ConfigLoader.save(config, config_file)
-                agent._pending_name_updates = []
+                name_update_state["pending_updates"] = []
 
             # Show monitoring stats after each run
             _show_run_stats(agent, config)
@@ -1382,12 +1398,13 @@ def _save_whitelist_to_config(tool_name: str, config) -> None:
     ConfigLoader.save(config, config_file)
 
 
-def _handle_undo(agent, config=None) -> dict:
+def _handle_undo(agent, config=None, name_update_state: dict | None = None) -> dict:
     """Handle /undo command to revert all operations in current round.
 
     Args:
         agent: Agent instance
         config: Config object (optional, for reverting name changes)
+        name_update_state: State dict for name updates (optional)
 
     Returns:
         Dict with restored values: {"user_name": ..., "agent_name": ...}
@@ -1412,8 +1429,9 @@ def _handle_undo(agent, config=None) -> dict:
         Console.print(f"已撤销: {', '.join(undone)}", style="success")
 
         # Handle name updates - restore previous values
-        if config and hasattr(agent, '_prev_name_values') and agent._prev_name_values:
-            for name_type, prev_value in agent._prev_name_values.items():
+        prev_values = name_update_state.get("prev_values", {}) if name_update_state else {}
+        if config and prev_values:
+            for name_type, prev_value in prev_values.items():
                 if name_type == "user_name":
                     config.agent.user_name = prev_value
                     restored["user_name"] = prev_value
@@ -1426,7 +1444,8 @@ def _handle_undo(agent, config=None) -> dict:
             config_file, _ = _find_config_file()
             if config_file:
                 ConfigLoader.save(config, config_file)
-            agent._prev_name_values = {}
+            if name_update_state:
+                name_update_state["prev_values"] = {}
     else:
         Console.print("撤销失败", style="error")
 

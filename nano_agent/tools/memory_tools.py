@@ -5,6 +5,7 @@ Memory tools for long-term memory operations.
 import re
 from .base import BaseTool, ToolResult
 from ..agent.types import RiskLevel
+from ..memory.protocols import LongTermMemoryCapable
 
 
 class MemorizeTool(BaseTool):
@@ -103,8 +104,8 @@ Examples:
                 error="Memory not configured"
             )
 
-        # Check if memory has long-term memory support
-        if not hasattr(self._memory, 'memorize'):
+        # Check if memory has long-term memory support using Protocol
+        if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",
@@ -245,8 +246,8 @@ class RecallTool(BaseTool):
                 error="Memory not configured"
             )
 
-        # Check if memory has long-term memory support
-        if not hasattr(self._memory, 'recall'):
+        # Check if memory has long-term memory support using Protocol
+        if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",
@@ -317,8 +318,8 @@ class ListMemoriesTool(BaseTool):
                 error="Memory not configured"
             )
 
-        # Check if memory has long-term memory support
-        if not hasattr(self._memory, 'get_all_long_term'):
+        # Check if memory has long-term memory support using Protocol
+        if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",
@@ -391,8 +392,8 @@ class ForgetTool(BaseTool):
                 error="Memory not configured"
             )
 
-        # Check if memory has long-term memory support
-        if not hasattr(self._memory, 'forget'):
+        # Check if memory has long-term memory support using Protocol
+        if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",

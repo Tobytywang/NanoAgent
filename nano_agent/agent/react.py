@@ -94,10 +94,6 @@ class ReActAgent(BaseAgent):
         self._total_tokens: int = 0
         self._session_id: str = ""
 
-        # CLI compatibility (will be removed in future versions)
-        self._pending_name_updates: list[tuple[str, str]] = []
-        self._prev_name_values: dict[str, str] = {}
-
         self._setup_system_prompt()
 
     def _setup_system_prompt(self) -> None:
@@ -434,14 +430,6 @@ class ReActAgent(BaseAgent):
             tool = self.tool_registry.get(tool_call.name)
             if tool and tool.supports_undo:
                 self._undo_stack.push(tool_call.name, result.undo_data)
-
-        # Detect name update from memorize tool (for CLI callback)
-        # TODO: This is CLI-specific logic that should be moved to the orchestration layer
-        if tool_call.name == "memorize" and result.success and result.metadata:
-            name_type = result.metadata.get("name_type")
-            name_value = result.metadata.get("name_value")
-            if name_type and name_value:
-                self._pending_name_updates.append((name_type, name_value))
 
         return result
 

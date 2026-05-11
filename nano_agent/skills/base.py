@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..core.registry import BaseRegistry
 from ..tools.base import BaseTool
 
 
@@ -52,24 +53,16 @@ class BaseSkill(ABC):
         pass
 
 
-class SkillRegistry:
+class SkillRegistry(BaseRegistry["BaseSkill"]):
     """技能包注册表"""
 
     def __init__(self):
-        self._skills: dict[str, BaseSkill] = {}
+        super().__init__()
         self._definitions: dict[str, SkillDefinition] = {}
-
-    def register(self, skill: BaseSkill) -> None:
-        """注册技能包"""
-        self._skills[skill.name] = skill
 
     def register_definition(self, definition: SkillDefinition) -> None:
         """注册技能包定义"""
         self._definitions[definition.name] = definition
-
-    def get(self, name: str) -> BaseSkill | None:
-        """获取技能包"""
-        return self._skills.get(name)
 
     def get_definition(self, name: str) -> SkillDefinition | None:
         """获取技能包定义"""
@@ -77,11 +70,11 @@ class SkillRegistry:
 
     def get_all_skills(self) -> list[BaseSkill]:
         """获取所有技能包"""
-        return list(self._skills.values())
+        return list(self._items.values())
 
     def get_active_skills(self) -> list[BaseSkill]:
         """获取所有启用的技能包"""
-        return [s for s in self._skills.values() if getattr(s, 'enabled', True)]
+        return [s for s in self._items.values() if getattr(s, 'enabled', True)]
 
     def get_all_tools(self) -> list[BaseTool]:
         """获取所有技能包的工具"""
@@ -110,17 +103,17 @@ class SkillRegistry:
 
     def list_skills(self) -> list[str]:
         """列出所有技能包名称"""
-        return list(self._skills.keys())
+        return self.list_all()
 
     def unregister(self, name: str) -> bool:
         """注销技能包"""
         removed = False
 
         # Remove skill instance
-        if name in self._skills:
-            skill = self._skills[name]
+        if name in self._items:
+            skill = self._items[name]
             skill.teardown()
-            del self._skills[name]
+            del self._items[name]
             removed = True
 
         # Remove skill definition
@@ -132,7 +125,7 @@ class SkillRegistry:
 
     def clear(self) -> None:
         """清空所有技能包"""
-        for skill in self._skills.values():
+        for skill in self._items.values():
             skill.teardown()
-        self._skills.clear()
+        self._items.clear()
         self._definitions.clear()
