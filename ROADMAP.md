@@ -808,6 +808,56 @@ class OutputStyleManager:
 
 ---
 
+### v0.7.2 - Token 消耗深度优化
+
+**目标**: 进一步减少 Token 消耗，目标两轮对话 < 8k tokens。
+
+**背景**:
+v0.7.1 实现了基础优化，concise 模式下两轮对话仍有 14k tokens。需要更激进的优化。
+
+**架构归属**: 执行层 - 智能优化
+
+**任务列表**:
+- [ ] 智能工具合并 - 合并相似工具调用，减少迭代次数
+- [ ] 工具结果智能摘要 - file_read/shell_execute 结果只保留关键信息
+- [ ] 预判机制 - 先分析问题复杂度，简单问题直接回答
+- [ ] 更激进的输出精简 - 一句话回答、无表格、无列表
+
+**技术方案**:
+```python
+# 1. 智能工具合并
+# 原始：3次 file_search 调用
+# 优化：合并为 1 次 file_search，使用 glob pattern
+
+# 2. 工具结果智能摘要
+class ToolResultSummarizer:
+    def summarize(self, output: str, tool_name: str) -> str:
+        if tool_name == "file_read":
+            # 只保留关键行（标题、关键内容）
+            return self._extract_key_lines(output)
+        elif tool_name == "shell_execute":
+            # 只保留非空输出行
+            return self._filter_meaningful(output)
+
+# 3. 预判机制
+def _should_use_tools(self, user_input: str) -> bool:
+    """判断是否需要工具调用"""
+    simple_patterns = [
+        "你好", "hello", "谢谢", "thanks",
+        "什么是", "what is", "如何", "how to"
+    ]
+    for pattern in simple_patterns:
+        if pattern in user_input.lower():
+            return False
+    return True
+```
+
+**预期效果**:
+- 两轮对话 < 8k tokens
+- 简单问题直接回答，不调用工具
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1175,6 +1225,7 @@ persona:
 | v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
 | v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
 | v0.7.1 | Token 消耗优化 ✅ | 输出风格控制、提示词简化、工具结果截断 |
+| v0.7.2 | Token 消耗深度优化 | 智能工具合并、工具结果摘要、预判机制 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |

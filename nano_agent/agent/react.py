@@ -16,6 +16,7 @@ from .budget import Budget, BudgetChecker
 from .undo import UndoStack
 from .context import ContextManager
 from .confirmation import ConfirmationManager, ConfirmationConfig
+from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
@@ -30,6 +31,44 @@ def _safe_str(text: str) -> str:
         return text.encode('utf-8', errors='replace').decode('utf-8')
     except (UnicodeDecodeError, UnicodeEncodeError):
         return text
+
+
+# Simple question patterns that don't need tools
+SIMPLE_QUESTION_PATTERNS = [
+    # Greetings
+    "你好", "hello", "hi", "嗨", "早上好", "下午好", "晚上好",
+    # Thanks
+    "谢谢", "thanks", "thank you", "感谢",
+    # Simple questions (can answer directly)
+    "你是谁", "who are you", "你的名字", "what is your name",
+    "你能做什么", "what can you do", "你有什么功能",
+    # Confirmations
+    "好的", "ok", "okay", "明白", "了解", "清楚了",
+]
+
+
+def _is_simple_question(user_input: str) -> bool:
+    """
+    Check if the question is simple enough to answer directly without tools.
+
+    Args:
+        user_input: User's input text
+
+    Returns:
+        True if the question is simple and can be answered directly
+    """
+    input_lower = user_input.lower().strip()
+
+    # Check against simple patterns
+    for pattern in SIMPLE_QUESTION_PATTERNS:
+        if pattern in input_lower:
+            return True
+
+    # Very short questions (less than 6 chars) are often simple
+    if len(input_lower) < 6:
+        return True
+
+    return False
 
 
 class ReActAgent(BaseAgent):
@@ -171,6 +210,13 @@ class ReActAgent(BaseAgent):
         """
         # Prepare execution
         self._prepare_run(user_input, session_id)
+
+        # Pre-check: simple questions can be answered directly
+        if self.output_style_config.style == "concise" and _is_simple_question(user_input):
+            # Direct answer for simple questions (skip tool calls)
+            response = self._answer_simple_question(user_input)
+            self.tracker.end_run(response)
+            return self._build_result(response, 0, success=True)
 
         iteration = 0
         while iteration < self.max_iterations:
@@ -395,6 +441,11 @@ class ReActAgent(BaseAgent):
         """
         result_content = result.output if result.success else f"Error: {result.error}"
 
+        # Summarize tool output for token efficiency
+        if self.output_style_config.style == "concise":
+            summarizer = ToolResultSummarizer()
+            result_content = summarizer.summarize(result_content, tool_call.name)
+
         # Truncate long output based on output style config
         max_tokens = self.output_style_config.tool_output_max_tokens
         # Rough estimate: 1 token ~ 4 characters for English
@@ -406,6 +457,41 @@ class ReActAgent(BaseAgent):
             tool_call_id=tool_call.id,
             content=result_content
         )
+
+    def _answer_simple_question(self, user_input: str) -> str:
+        """
+        Answer simple questions directly without tool calls.
+
+        Args:
+            user_input: User's input text
+
+        Returns:
+            Direct response string
+        """
+        input_lower = user_input.lower().strip()
+
+        # Greetings
+        if any(g in input_lower for g in ["你好", "hello", "hi", "嗨"]):
+            return f"你好！我是{self.skill_prompt.split('名字是')[-1] if '名字是' in self.skill_prompt else '助手'}，有什么可以帮助你的？"
+
+        # Thanks
+        if any(t in input_lower for t in ["谢谢", "thanks", "thank you", "感谢"]):
+            return "不客气！"
+
+        # Identity
+        if any(i in input_lower for i in ["你是谁", "who are you", "你的名字"]):
+            return f"我是一个 AI 助手，可以帮助你处理各种任务。"
+
+        # Capabilities
+        if any(c in input_lower for c in ["你能做什么", "what can you do"]):
+            return "我可以帮你：查看文件、执行命令、搜索内容、管理记忆等。"
+
+        # Confirmations
+        if any(c in input_lower for c in ["好的", "ok", "okay", "明白"]):
+            return "好的，请告诉我你需要什么帮助。"
+
+        # Default: let LLM handle it
+        return "请继续说明你的需求。"
 
     def _build_result(
         self,

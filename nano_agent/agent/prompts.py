@@ -13,6 +13,12 @@ Rules:
 3. Stop early when you have the answer.
 4. Use user's language.
 5. When modifying files: only change what is requested.
+
+## Tool Efficiency (CRITICAL)
+- Combine similar searches into ONE call (e.g., use single file_search with broader pattern)
+- Use shell compound commands: `ls -la && cat file.txt`
+- Limit iterations to 1-2 per question
+- For simple questions, answer directly without tools
 """
 
 # Standard mode system prompt (~800 tokens)
