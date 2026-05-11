@@ -173,14 +173,15 @@ class ReActAgent(BaseAgent):
             tool = self.tool_registry.get(tool_name)
 
             if style == "concise":
-                # Only name and first sentence of description
-                first_sentence = tool.description.split('.')[0]
-                desc = f"- {tool.name}: {first_sentence}"
+                # Only tool names, comma separated (minimal tokens)
+                descriptions.append(tool.name)
             elif style == "standard":
-                # Name + description + required parameters
+                # Name + first sentence + required params
+                first_sentence = tool.description.split('.')[0]
                 required = tool.parameters_schema.get("required", [])
                 params_str = ", ".join(required) if required else "none"
-                desc = f"- {tool.name}: {tool.description}\n  Required params: {params_str}"
+                desc = f"- {tool.name}: {first_sentence}\n  params: {params_str}"
+                descriptions.append(desc)
             else:
                 # Full description (original format)
                 desc = TOOL_DESCRIPTION_TEMPLATE.format(
@@ -188,7 +189,11 @@ class ReActAgent(BaseAgent):
                     description=tool.description,
                     parameters=tool.parameters_schema
                 )
-            descriptions.append(desc)
+                descriptions.append(desc)
+
+        if style == "concise":
+            # Return comma-separated list for minimal tokens
+            return ", ".join(descriptions)
         return "\n".join(descriptions)
 
     def run(

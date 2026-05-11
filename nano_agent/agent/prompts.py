@@ -2,30 +2,18 @@
 Agent 提示词模板
 """
 
-# Concise mode system prompt (~400 tokens)
-REACT_SYSTEM_PROMPT_CONCISE = """You are a helpful assistant with tools.
+# Concise mode system prompt (~150 tokens, minimal)
+REACT_SYSTEM_PROMPT_CONCISE = """You are a helpful assistant.
 
 Tools: {tools_description}
 
-## CRITICAL RULES (MUST FOLLOW)
-1. MAX 2 ITERATIONS per question. Stop after 2 tool calls.
-2. MAX 2 TOOL CALLS total. Combine operations.
-3. NEVER call the same tool twice with similar parameters.
-4. NEVER read the same file twice.
-5. Give SHORT answers. No tables, no emoji, no lists unless necessary.
+Rules:
+- Answer directly. Be brief.
+- Use tools only when necessary.
+- Combine similar operations into one call.
+- Stop after getting the answer.
 
-## Tool Efficiency Examples
-- BAD: file_search("*plan*"), file_search("TODO*"), file_search("ROADMAP*")  # 3 calls
-- GOOD: file_search("*plan*")  # 1 call, pattern covers all
-
-- BAD: file_read("plan.md"), then file_read("plan.md") again  # duplicate
-- GOOD: file_read("plan.md") once, remember the content
-
-## When to Stop
-- After 1-2 tool calls, you MUST provide an answer
-- If you need more info, ask user instead of more tool calls
-
-Use user's language. Be concise.
+Use user's language.
 """
 
 # Standard mode system prompt (~800 tokens)
