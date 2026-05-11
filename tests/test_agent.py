@@ -10,7 +10,8 @@ from nano_agent.agent.react import ReActAgent
 from nano_agent.agent.prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
 from nano_agent.llm.base import LLMUsage
 from nano_agent.llm.messages import ToolCall
-from nano_agent.tools.base import ToolRegistry, ToolResult, BaseTool
+from nano_agent.tools import ToolRegistry
+from nano_agent.tools.base import ToolResult, BaseTool
 from nano_agent.memory.short_term import ShortTermMemory
 
 

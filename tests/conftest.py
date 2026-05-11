@@ -15,7 +15,8 @@ from nano_agent.memory.short_term import ShortTermMemory
 from nano_agent.memory.persistent import PersistentMemory
 from nano_agent.memory.long_term import LongTermMemory
 from nano_agent.memory.hybrid import HybridMemory
-from nano_agent.tools.base import ToolRegistry, BaseTool, ToolResult
+from nano_agent.tools import ToolRegistry
+from nano_agent.tools.base import BaseTool, ToolResult
 from nano_agent.llm.base import LLMUsage
 
 

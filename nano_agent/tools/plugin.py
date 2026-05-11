@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .base import BaseTool, ToolRegistry
+from .base import BaseTool
+from .registry import ToolRegistry
 
 
 class PluginLoader:
