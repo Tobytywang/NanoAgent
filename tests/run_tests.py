@@ -12,12 +12,14 @@ def run_tests(args: list[str] = None):
     if args is None:
         args = []
 
-    # Default arguments
+    # Default arguments with coverage threshold
     pytest_args = [
         "pytest",
         "tests/",
         "-v",
         "--tb=short",
+        "--cov=nano_agent",
+        "--cov-fail-under=54",
         *args
     ]
 
