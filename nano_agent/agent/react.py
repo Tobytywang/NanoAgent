@@ -9,7 +9,7 @@ import time
 from typing import Generator
 
 from .base import BaseAgent
-from .prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
+from .prompts import REACT_SYSTEM_PROMPT, REACT_SYSTEM_PROMPT_CONCISE, REACT_SYSTEM_PROMPT_STANDARD, TOOL_DESCRIPTION_TEMPLATE
 from .types import ExecutionResult, ThinkResult, AgentEvent
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
@@ -19,6 +19,7 @@ from .confirmation import ConfirmationManager, ConfirmationConfig
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
+from ..config.schema import OutputStyleConfig
 
 
 def _safe_str(text: str) -> str:
@@ -52,6 +53,7 @@ class ReActAgent(BaseAgent):
         budget: Budget | None = None,
         context_config=None,
         confirmation_config: ConfirmationConfig | None = None,
+        output_style_config: OutputStyleConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -68,6 +70,7 @@ class ReActAgent(BaseAgent):
             budget: Budget constraints for execution
             context_config: Context management configuration
             confirmation_config: Confirmation mechanism configuration
+            output_style_config: Output style configuration for token efficiency
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -75,6 +78,9 @@ class ReActAgent(BaseAgent):
         self.tracker = tracker or MetricsTracker()
         self.events = events or EventEmitter()
         self.budget_checker = BudgetChecker(budget or Budget(max_iterations=max_iterations))
+
+        # Output style configuration
+        self.output_style_config = output_style_config or OutputStyleConfig()
 
         # Context manager
         self.context_manager = ContextManager(
@@ -98,8 +104,18 @@ class ReActAgent(BaseAgent):
 
     def _setup_system_prompt(self) -> None:
         """Set up the system prompt with tool descriptions."""
-        tools_desc = self._format_tools_description()
-        system_prompt = REACT_SYSTEM_PROMPT.format(tools_description=tools_desc)
+        style = self.output_style_config.style
+        tools_desc = self._format_tools_description(style)
+
+        # Select prompt template based on style
+        if style == "concise":
+            template = REACT_SYSTEM_PROMPT_CONCISE
+        elif style == "standard":
+            template = REACT_SYSTEM_PROMPT_STANDARD
+        else:
+            template = REACT_SYSTEM_PROMPT
+
+        system_prompt = template.format(tools_description=tools_desc)
 
         # Add skill prompt if available
         if self.skill_prompt:
@@ -107,16 +123,32 @@ class ReActAgent(BaseAgent):
 
         self.memory.set_system_prompt(system_prompt)
 
-    def _format_tools_description(self) -> str:
-        """Format tool descriptions for the system prompt."""
+    def _format_tools_description(self, style: str = "detailed") -> str:
+        """Format tool descriptions for the system prompt.
+
+        Args:
+            style: Output style - "concise", "standard", or "detailed"
+        """
         descriptions = []
         for tool_name in self.tool_registry.list_tools():
             tool = self.tool_registry.get(tool_name)
-            desc = TOOL_DESCRIPTION_TEMPLATE.format(
-                name=tool.name,
-                description=tool.description,
-                parameters=tool.parameters_schema
-            )
+
+            if style == "concise":
+                # Only name and first sentence of description
+                first_sentence = tool.description.split('.')[0]
+                desc = f"- {tool.name}: {first_sentence}"
+            elif style == "standard":
+                # Name + description + required parameters
+                required = tool.parameters_schema.get("required", [])
+                params_str = ", ".join(required) if required else "none"
+                desc = f"- {tool.name}: {tool.description}\n  Required params: {params_str}"
+            else:
+                # Full description (original format)
+                desc = TOOL_DESCRIPTION_TEMPLATE.format(
+                    name=tool.name,
+                    description=tool.description,
+                    parameters=tool.parameters_schema
+                )
             descriptions.append(desc)
         return "\n".join(descriptions)
 
@@ -362,6 +394,14 @@ class ReActAgent(BaseAgent):
             result: The result from the tool execution
         """
         result_content = result.output if result.success else f"Error: {result.error}"
+
+        # Truncate long output based on output style config
+        max_tokens = self.output_style_config.tool_output_max_tokens
+        # Rough estimate: 1 token ~ 4 characters for English
+        max_chars = max_tokens * 4
+        if len(result_content) > max_chars:
+            result_content = result_content[:max_chars] + "\n... [输出已截断]"
+
         self.memory.add_tool_result(
             tool_call_id=tool_call.id,
             content=result_content
