@@ -712,6 +712,101 @@ orchestrator = builder.build()
 
 ---
 
+### v0.7.1 - Token 消耗优化
+
+**目标**: 减少 Agent 运行时的 Token 消耗，降低使用成本。
+
+**背景**:
+用户反馈两轮对话消耗 27k tokens，主要原因是：
+1. 每次工具调用都会把完整上下文重新发送给 LLM
+2. LLM 输出内容冗长（表格、emoji、详细总结）
+3. 迭代次数多，每次迭代累积 token
+
+**架构归属**: 执行层 - 输出优化
+
+**任务列表**:
+- [ ] 分析 token 消耗热点 - 统计各环节 token 消耗占比
+- [ ] 优化 Agent 系统提示词 - 简化指令，减少冗余描述
+- [ ] 输出风格控制 - 配置项控制输出详细程度（简洁/标准/详细）
+- [ ] 工具结果摘要 - 大型工具输出自动压缩后再加入上下文
+- [ ] 上下文增量更新 - 探索只发送新增内容的可能性
+- [ ] 配置支持 - `output_style` 配置项
+
+**新增文件**:
+```
+nano_agent/agent/output_style.py  # OutputStyleConfig, OutputStyleManager
+```
+
+**修改文件**:
+```
+nano_agent/agent/prompts.py       # 简化系统提示词
+nano_agent/config/schema.py       # OutputStyleConfig
+nano_agent/cli/main.py            # 输出风格配置显示
+```
+
+**技术方案**:
+```python
+# nano_agent/config/schema.py
+
+class OutputStyle(Enum):
+    CONCISE = "concise"    # 简洁：一句话回答，无表格/emoji
+    STANDARD = "standard" # 标准：适度格式化
+    DETAILED = "detailed" # 详细：完整分析、表格、emoji
+
+@dataclass
+class OutputStyleConfig:
+    style: OutputStyle = OutputStyle.STANDARD
+    max_response_length: int = 500  # 最大响应长度（字符）
+    use_emoji: bool = False
+    use_table: bool = False
+
+# nano_agent/agent/prompts.py
+
+# 简化后的系统提示词（减少约 50% tokens）
+SYSTEM_PROMPT_CONCISE = """
+你是 {agent_name}，一个 AI 助手。
+用户: {user_name}
+
+规则:
+1. 回答简洁，直接给出答案
+2. 必须使用工具时才调用
+3. 每轮最多 2 次工具调用
+"""
+
+# nano_agent/agent/output_style.py
+
+class OutputStyleManager:
+    """输出风格管理"""
+
+    def __init__(self, config: OutputStyleConfig):
+        self.config = config
+
+    def get_system_prompt(self, base_prompt: str) -> str:
+        """根据输出风格调整系统提示词"""
+        if self.config.style == OutputStyle.CONCISE:
+            return self._make_concise(base_prompt)
+        return base_prompt
+
+    def _make_concise(self, prompt: str) -> str:
+        """简化提示词"""
+        # 移除冗余描述、示例、格式要求
+        ...
+
+    def format_response(self, response: str) -> str:
+        """格式化响应"""
+        if self.config.style == OutputStyle.CONCISE:
+            # 截断过长响应
+            if len(response) > self.config.max_response_length:
+                return response[:self.config.max_response_length] + "..."
+        return response
+```
+
+**预期效果**:
+- 简洁模式下 token 消耗减少 40-60%
+- 单轮对话控制在 5k tokens 以内
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1078,6 +1173,7 @@ persona:
 | v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
 | v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
 | v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
+| v0.7.1 | Token 消耗优化 | 输出风格控制、提示词简化、工具结果摘要 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |

@@ -174,6 +174,13 @@ class GitConfig:
 
 
 @dataclass
+class OutputStyleConfig:
+    """Output style configuration for token efficiency."""
+    style: Literal["concise", "standard", "detailed"] = "standard"
+    tool_output_max_tokens: int = 500  # Max tokens for tool output before truncation
+
+
+@dataclass
 class Config:
     """Main configuration."""
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -186,3 +193,4 @@ class Config:
     context: ContextConfig = field(default_factory=ContextConfig)
     confirmation: ConfirmationConfig = field(default_factory=ConfirmationConfig)
     git: GitConfig = field(default_factory=GitConfig)
+    output_style: OutputStyleConfig = field(default_factory=OutputStyleConfig)

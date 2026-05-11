@@ -6,7 +6,7 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from .schema import Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, SkillsConfig
+from .schema import Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, SkillsConfig, OutputStyleConfig
 
 
 class ConfigLoader:
@@ -44,7 +44,8 @@ class ConfigLoader:
             agent=cls._parse_agent_config(data.get("agent", {})),
             memory=cls._parse_memory_config(data.get("memory", {})),
             tools=cls._parse_tool_config(data.get("tools", {})),
-            skills=cls._parse_skills_config(data.get("skills", {}))
+            skills=cls._parse_skills_config(data.get("skills", {})),
+            output_style=cls._parse_output_style_config(data.get("output_style", {}))
         )
 
     @classmethod
@@ -102,6 +103,14 @@ class ConfigLoader:
         )
 
     @classmethod
+    def _parse_output_style_config(cls, data: dict) -> OutputStyleConfig:
+        """解析输出风格配置"""
+        return OutputStyleConfig(
+            style=data.get("style", "standard"),
+            tool_output_max_tokens=data.get("tool_output_max_tokens", 500)
+        )
+
+    @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
         """
         保存配置到 YAML 文件。
@@ -144,6 +153,10 @@ class ConfigLoader:
             "tools": {
                 "enabled": config.tools.enabled,
                 "disabled": config.tools.disabled
+            },
+            "output_style": {
+                "style": config.output_style.style,
+                "tool_output_max_tokens": config.output_style.tool_output_max_tokens
             }
         }
 
