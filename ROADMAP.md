@@ -644,23 +644,75 @@ if user_input.lower() == "/history":
 
 ---
 
-### v0.7.0 - 流式执行
-        return [
-            {"hash": c.hexsha[:7], "message": c.message, "time": c.committed_datetime}
-            for c in list(self.repo.iter_commits())[:limit]
-        ]
+### v0.7.0 - Hooks 机制与架构优化 ✅
 
-# 配置示例
-git:
-  enabled: true              # 启用 Git 集成
-  auto_commit: true          # 自动提交
-  commit_mode: "step"        # step=每步提交, round=每轮提交
-  branch_prefix: "nano-"     # 工作分支前缀（可选）
+**目标**: 提供优雅的扩展机制，解耦组件间的依赖。
+
+**背景**:
+当前 undo 操作需要返回值传递链条来更新 UI 层变量，不够优雅。Hooks 机制可以让组件间通信更加解耦。
+
+**架构归属**: 基础设施层 - 扩展系统
+
+**任务列表**:
+- [x] 定义 `AgentEvent` 扩展 - NAME_CHANGED, MEMORY_CHANGED, UNDO_COMPLETED
+- [x] 统一 EventEmitter - Orchestrator 和 Agent 共享事件系统
+- [x] 移除 Agent 层的 CLI 特定代码 - 名字更新逻辑移至 CLI 层
+- [x] CLI 事件驱动更新 - 监听 NAME_CHANGED 事件更新显示
+- [x] 14 个测试用例 - 验证 hooks 机制
+
+**架构优化 (P0-P2)**:
+- [x] P0 - ToolRegistry.unregister() 方法
+- [x] P1 - 关注点分离：CLI 逻辑移出 Agent 层
+- [x] P1 - LongTermMemoryCapable Protocol 替代 hasattr()
+- [x] P2 - BaseRegistry 泛型基类
+- [x] P2 - AgentBuilder 模式
+- [x] P2 - nano_agent/core/ 共享基础设施模块
+
+**新增文件**:
+```
+nano_agent/core/
+├── __init__.py    # 模块导出
+├── builder.py     # AgentBuilder 模式
+└── registry.py    # BaseRegistry 泛型基类
+
+nano_agent/tools/
+├── registry.py    # ToolRegistry (从 base.py 分离)
+└── builtin/       # 内置工具子包
+    ├── __init__.py
+    ├── builtin.py
+    ├── file_ops.py
+    ├── memory_tools.py
+    ├── monitoring_tools.py
+    ├── plan_tools.py
+    ├── python_executor.py
+    ├── shell.py
+    └── web_search.py
+```
+
+**技术方案**:
+```python
+# nano_agent/agent/events.py
+
+class AgentEvent(Enum):
+    # ... 原有事件 ...
+    NAME_CHANGED = "name_changed"
+    MEMORY_CHANGED = "memory_changed"
+    UNDO_COMPLETED = "undo_completed"
+
+# CLI 中监听事件
+agent.events.on(AgentEvent.NAME_CHANGED, lambda e, d: update_display(d))
+
+# AgentBuilder 模式
+builder = AgentBuilder(config)
+builder.with_llm_instance(llm)
+builder.with_memory_instance(memory)
+builder.with_tool_registry(tool_registry)
+orchestrator = builder.build()
 ```
 
 ---
 
-### v0.7.0 - 流式执行
+### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
 
@@ -769,7 +821,7 @@ for event in handle.events:
 
 ---
 
-### v0.7.1 - 异步流式执行
+### v0.8.1 - 异步流式执行
 
 **目标**: 支持真正的异步流式输出，与 LLM API 的流式响应对接。
 
@@ -819,7 +871,7 @@ async def run_interactive_async(orchestrator, user_input):
 
 ---
 
-### v0.8.0 - 模式切换
+### v0.9.0 - 模式切换
 
 **目标**: 支持在 Agent 会话中切换执行模式，提供更灵活的交互方式。
 
@@ -862,44 +914,6 @@ class ModeManager:
 
 ---
 
-### v0.9.0 - Hooks 机制
-
-**目标**: 提供优雅的扩展机制，解耦组件间的依赖。
-
-**背景**:
-当前 undo 操作需要返回值传递链条来更新 UI 层变量，不够优雅。Hooks 机制可以让组件间通信更加解耦。
-
-**架构归属**: 基础设施层 - 扩展系统
-
-**任务列表**:
-- [ ] 定义 `Hooks` 基类和注册机制
-- [ ] 在 Agent 中集成 hooks 点位
-- [ ] 实现 `on_name_changed` hook 用于名字更新
-- [ ] 实现 `on_tool_executed` hook 用于工具执行后回调
-- [ ] 实现 `on_memory_changed` hook 用于记忆变更
-
-**技术方案**:
-```python
-# Hooks 定义
-class AgentHooks:
-    def on_name_changed(self, name_type: str, old_value: str, new_value: str):
-        """名字变更时触发"""
-        pass
-
-    def on_tool_executed(self, tool_name: str, result: ToolResult):
-        """工具执行后触发"""
-        pass
-
-    def on_memory_changed(self, action: str, entry_id: str):
-        """记忆变更时触发"""
-        pass
-
-# CLI 中注册 hooks
-agent.hooks.on_name_changed = lambda t, old, new: update_display(t, new)
-```
-
----
-
 ### v0.10.0 - 配置系统优化
 
 **目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
@@ -932,7 +946,7 @@ def _show_config(config, agent):
 
 ---
 
-### v0.10.0 - 反思与规划能力
+### v0.11.0 - 反思与规划能力
 
 **目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
 
@@ -961,7 +975,7 @@ class ReflectiveAgent(ReActAgent):
 
 ---
 
-### v0.11.0 - 主动学习能力
+### v0.12.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
 
@@ -988,7 +1002,7 @@ class LearningAgent(ReActAgent):
 
 ---
 
-### v0.12.0 - 个性化与角色
+### v0.13.0 - 个性化与角色
 
 **目标**: 支持可配置的 Agent 性格和专业领域深度。
 
@@ -1014,7 +1028,7 @@ persona:
 
 ---
 
-### v0.13.0 - 多 Agent 协作
+### v0.14.0 - 多 Agent 协作
 
 **目标**: 支持多 Agent 协作和人机协作机制。
 
@@ -1039,7 +1053,7 @@ persona:
 
 ---
 
-### v0.14.0 - 安全与体验
+### v0.15.0 - 安全与体验
 
 **目标**: 完善安全机制和用户体验。
 
@@ -1063,10 +1077,10 @@ persona:
 | v0.6.3 | PlanMode 演进优化 ✅ | EventEmitter 集成、I/O 无关设计、CLI 包装层 |
 | v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
 | v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
-| v0.7.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
-| v0.7.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
-| v0.8.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
-| v0.9.0 | Hooks 机制 | 解耦组件间依赖，优雅的回调扩展 |
+| v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
+| v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
+| v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
+| v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
 | v0.10.0 | 配置系统优化 | 自动显示/保存配置项 |
 | v0.11.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
 | v0.12.0 | 主动学习 | 知识提取、语义搜索 |
