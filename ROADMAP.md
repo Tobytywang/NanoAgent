@@ -712,7 +712,7 @@ orchestrator = builder.build()
 
 ---
 
-### v0.7.1 - Token 消耗优化
+### v0.7.1 - Token 消耗优化 ✅
 
 **目标**: 减少 Agent 运行时的 Token 消耗，降低使用成本。
 
@@ -725,22 +725,23 @@ orchestrator = builder.build()
 **架构归属**: 执行层 - 输出优化
 
 **任务列表**:
-- [ ] 分析 token 消耗热点 - 统计各环节 token 消耗占比
-- [ ] 优化 Agent 系统提示词 - 简化指令，减少冗余描述
-- [ ] 输出风格控制 - 配置项控制输出详细程度（简洁/标准/详细）
-- [ ] 工具结果摘要 - 大型工具输出自动压缩后再加入上下文
-- [ ] 上下文增量更新 - 探索只发送新增内容的可能性
-- [ ] 配置支持 - `output_style` 配置项
+- [x] 优化 Agent 系统提示词 - 简化指令，减少冗余描述
+- [x] 输出风格控制 - 配置项控制输出详细程度（简洁/标准/详细）
+- [x] 工具结果截断 - 大型工具输出自动截断后再加入上下文
+- [x] 配置支持 - `output_style` 配置项
 
 **新增文件**:
 ```
-nano_agent/agent/output_style.py  # OutputStyleConfig, OutputStyleManager
+tests/test_output_style.py  # 输出风格单元测试
 ```
 
 **修改文件**:
 ```
-nano_agent/agent/prompts.py       # 简化系统提示词
+nano_agent/agent/prompts.py       # 添加 concise/standard 提示词模板
 nano_agent/config/schema.py       # OutputStyleConfig
+nano_agent/config/loader.py       # 配置解析和保存
+nano_agent/agent/react.py         # 集成输出风格控制
+nano_agent/core/builder.py        # 传递配置到 Agent
 nano_agent/cli/main.py            # 输出风格配置显示
 ```
 
@@ -1173,7 +1174,7 @@ persona:
 | v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
 | v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
 | v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
-| v0.7.1 | Token 消耗优化 | 输出风格控制、提示词简化、工具结果摘要 |
+| v0.7.1 | Token 消耗优化 ✅ | 输出风格控制、提示词简化、工具结果截断 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
