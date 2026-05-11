@@ -4,8 +4,8 @@ Web search tool using curl and Bing search engine.
 
 import subprocess
 import urllib.parse
-from .base import BaseTool, ToolResult
-from ..agent.types import RiskLevel
+from ..base import BaseTool, ToolResult
+from ...agent.types import RiskLevel
 
 
 class WebSearchTool(BaseTool):

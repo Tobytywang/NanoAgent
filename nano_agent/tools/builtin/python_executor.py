@@ -5,8 +5,8 @@ Python code executor tool.
 import subprocess
 import sys
 import tempfile
-from .base import BaseTool, ToolResult
-from ..agent.types import RiskLevel
+from ..base import BaseTool, ToolResult
+from ...agent.types import RiskLevel
 
 
 class PythonExecutorTool(BaseTool):

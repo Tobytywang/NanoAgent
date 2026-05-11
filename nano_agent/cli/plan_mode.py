@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Callable
 
 from ..agent.types import Plan, PlanPhase
 from ..agent.events import EventEmitter
-from ..tools.plan_tools import _ensure_plans_dir, _slugify, plan_to_markdown, PLANS_DIR
+from ..tools.builtin.plan_tools import _ensure_plans_dir, _slugify, plan_to_markdown, PLANS_DIR
 
 if TYPE_CHECKING:
     from ..llm.base import BaseLLM
@@ -293,7 +293,7 @@ def list_plans() -> str:
     if not plan_files:
         return "暂无计划。使用 /plan 命令创建新计划。"
 
-    from ..tools.plan_tools import markdown_to_plan
+    from ..tools.builtin.plan_tools import markdown_to_plan
 
     lines = ["已保存的计划：\n"]
     for plan_file in sorted(plan_files):

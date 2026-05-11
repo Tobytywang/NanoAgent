@@ -5,7 +5,8 @@ Agent 基类
 from abc import ABC, abstractmethod
 from ..llm.base import BaseLLM
 from ..memory.base import BaseMemory
-from ..tools.base import ToolRegistry, ToolResult
+from ..tools import ToolRegistry
+from ..tools.base import ToolResult
 
 
 class BaseAgent(ABC):

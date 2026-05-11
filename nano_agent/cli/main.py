@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ..llm import create_llm_from_config
 from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorage, SQLiteStorage, LongTermMemory
-from ..tools.base import ToolRegistry
+from ..tools import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent import ReActAgent, AgentOrchestrator, AgentEvent
 from ..config.loader import ConfigLoader

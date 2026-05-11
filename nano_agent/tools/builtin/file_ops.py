@@ -5,8 +5,8 @@ File operation tools.
 import os
 from pathlib import Path
 from typing import Literal
-from .base import BaseTool, ToolResult
-from ..agent.types import RiskLevel
+from ..base import BaseTool, ToolResult
+from ...agent.types import RiskLevel
 
 
 class FileReadTool(BaseTool):

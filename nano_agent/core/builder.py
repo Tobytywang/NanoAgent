@@ -9,7 +9,7 @@ from typing import Callable, Any
 from ..agent import ReActAgent, AgentOrchestrator
 from ..llm import BaseLLM
 from ..memory import BaseMemory
-from ..tools.base import ToolRegistry
+from ..tools import ToolRegistry
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring import MetricsTracker
 

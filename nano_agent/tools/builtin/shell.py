@@ -5,8 +5,8 @@ Shell command execution tool with cross-platform support.
 import subprocess
 import platform
 from typing import Literal
-from .base import BaseTool, ToolResult
-from ..agent.types import RiskLevel
+from ..base import BaseTool, ToolResult
+from ...agent.types import RiskLevel
 
 
 class ShellTool(BaseTool):

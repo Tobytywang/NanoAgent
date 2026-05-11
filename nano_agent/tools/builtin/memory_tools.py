@@ -3,9 +3,9 @@ Memory tools for long-term memory operations.
 """
 
 import re
-from .base import BaseTool, ToolResult
-from ..agent.types import RiskLevel
-from ..memory.protocols import LongTermMemoryCapable
+from ..base import BaseTool, ToolResult
+from ...agent.types import RiskLevel
+from ...memory.protocols import LongTermMemoryCapable
 
 
 class MemorizeTool(BaseTool):

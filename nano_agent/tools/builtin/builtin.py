@@ -2,7 +2,7 @@
 Built-in tools registration.
 """
 
-from .base import ToolRegistry
+from .. import ToolRegistry
 from .python_executor import PythonExecutorTool
 from .file_ops import FileReadTool, FileWriteTool, FileSearchTool
 from .shell import ShellTool
