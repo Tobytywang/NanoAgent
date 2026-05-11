@@ -644,6 +644,87 @@ if user_input.lower() == "/history":
 
 ---
 
+### v0.6.6 - CLI 模块重构与代码质量改进
+
+**目标**: 重构 CLI 模块，提升代码可测试性和可维护性。
+
+**背景**:
+当前 `cli/main.py` 有 2346 行，占 CLI 模块 75%，职责过重：包含会话管理、命令解析、交互循环、信号处理、统计显示、配置管理、Git 集成等。难以测试（覆盖率仅 9%），修改风险高，无法复用。
+
+**架构归属**: CLI 层 - 模块拆分
+
+**任务列表**:
+
+**CLI 模块拆分**:
+- [ ] 拆分命令处理器 - `commands/session.py`, `commands/config.py`, `commands/memory.py`, `commands/stats.py`
+- [ ] 拆分事件处理器 - `handlers/confirmation.py`, `handlers/git.py`
+- [ ] 提取输出格式化 - `display.py`
+- [ ] 简化 `main.py` - 只保留参数解析和调度逻辑
+
+**全局状态重构**:
+- [ ] `GracefulExitManager` 改为实例化管理 - 消除类属性全局状态
+- [ ] 测试间状态隔离 - 无需手动重置
+
+**新增文件**:
+```
+cli/
+├── main.py              # 入口，参数解析和调度（精简至 ~300 行）
+├── commands/
+│   ├── __init__.py
+│   ├── session.py       # 会话管理命令
+│   ├── config.py        # 配置命令
+│   ├── memory.py        # 记忆命令
+│   ├── stats.py         # 统计命令
+│   ├── skill.py         # 技能命令
+│   └── plan.py          # 规划命令
+├── handlers/
+│   ├── __init__.py
+│   ├── confirmation.py  # 确认事件处理
+│   └── git.py           # Git 事件处理
+└── display.py           # 输出格式化工具
+```
+
+**技术方案**:
+```python
+# cli/main.py - 精简后的入口
+def main():
+    args = parse_args()
+    orchestrator = create_agent(args.config)
+
+    # 命令路由
+    if args.list_sessions:
+        return commands.session.list_sessions(args.config)
+    if args.show_session:
+        return commands.session.show_session(args.show_session)
+
+    # 交互模式
+    run_interactive(orchestrator, config)
+
+# cli/commands/session.py
+def list_sessions(config_path: str | None) -> None:
+    """列出所有可用会话"""
+    storage = _get_storage(config_path)
+    sessions = storage.list_sessions()
+    display.print_sessions(sessions)
+
+# cli/handlers/confirmation.py
+def setup_confirmation_handler(agent, config):
+    """设置确认事件处理器"""
+    def handle_confirmation(event, data):
+        display.print_confirmation_request(data)
+        response = input("确认执行? [y/N/a/s]: ")
+        # ...
+    agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
+
+# cli/display.py
+class Display:
+    def print_sessions(self, sessions: list): ...
+    def print_confirmation_request(self, data: dict): ...
+    def print_stats(self, summary: dict): ...
+```
+
+---
+
 ### v0.7.0 - 流式执行
         return [
             {"hash": c.hexsha[:7], "message": c.message, "time": c.committed_datetime}
@@ -656,6 +737,87 @@ git:
   auto_commit: true          # 自动提交
   commit_mode: "step"        # step=每步提交, round=每轮提交
   branch_prefix: "nano-"     # 工作分支前缀（可选）
+```
+
+---
+
+### v0.6.6 - CLI 模块重构与代码质量改进
+
+**目标**: 重构 CLI 模块，提升代码可测试性和可维护性。
+
+**背景**:
+当前 `cli/main.py` 有 2346 行，占 CLI 模块 75%，职责过重：包含会话管理、命令解析、交互循环、信号处理、统计显示、配置管理、Git 集成等。难以测试（覆盖率仅 9%），修改风险高，无法复用。
+
+**架构归属**: CLI 层 - 模块拆分
+
+**任务列表**:
+
+**CLI 模块拆分**:
+- [ ] 拆分命令处理器 - `commands/session.py`, `commands/config.py`, `commands/memory.py`, `commands/stats.py`
+- [ ] 拆分事件处理器 - `handlers/confirmation.py`, `handlers/git.py`
+- [ ] 提取输出格式化 - `display.py`
+- [ ] 简化 `main.py` - 只保留参数解析和调度逻辑
+
+**全局状态重构**:
+- [ ] `GracefulExitManager` 改为实例化管理 - 消除类属性全局状态
+- [ ] 测试间状态隔离 - 无需手动重置
+
+**新增文件**:
+```
+cli/
+├── main.py              # 入口，参数解析和调度（精简至 ~300 行）
+├── commands/
+│   ├── __init__.py
+│   ├── session.py       # 会话管理命令
+│   ├── config.py        # 配置命令
+│   ├── memory.py        # 记忆命令
+│   ├── stats.py         # 统计命令
+│   ├── skill.py         # 技能命令
+│   └── plan.py          # 规划命令
+├── handlers/
+│   ├── __init__.py
+│   ├── confirmation.py  # 确认事件处理
+│   └── git.py           # Git 事件处理
+└── display.py           # 输出格式化工具
+```
+
+**技术方案**:
+```python
+# cli/main.py - 精简后的入口
+def main():
+    args = parse_args()
+    orchestrator = create_agent(args.config)
+
+    # 命令路由
+    if args.list_sessions:
+        return commands.session.list_sessions(args.config)
+    if args.show_session:
+        return commands.session.show_session(args.show_session)
+
+    # 交互模式
+    run_interactive(orchestrator, config)
+
+# cli/commands/session.py
+def list_sessions(config_path: str | None) -> None:
+    """列出所有可用会话"""
+    storage = _get_storage(config_path)
+    sessions = storage.list_sessions()
+    display.print_sessions(sessions)
+
+# cli/handlers/confirmation.py
+def setup_confirmation_handler(agent, config):
+    """设置确认事件处理器"""
+    def handle_confirmation(event, data):
+        display.print_confirmation_request(data)
+        response = input("确认执行? [y/N/a/s]: ")
+        # ...
+    agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
+
+# cli/display.py
+class Display:
+    def print_sessions(self, sessions: list): ...
+    def print_confirmation_request(self, data: dict): ...
+    def print_stats(self, summary: dict): ...
 ```
 
 ---
@@ -862,6 +1024,112 @@ class ModeManager:
 
 ---
 
+### v0.8.1 - 依赖注入与代码质量改进
+
+**目标**: 引入依赖注入机制，提升代码可测试性和类型安全性。
+
+**背景**:
+当前组件间紧耦合，难以测试。`create_llm_from_config()` 等工厂函数硬编码依赖，测试时无法注入 mock。同时，部分代码使用 `Any` 类型，类型安全性不足；异常处理过于宽泛，隐藏错误。
+
+**架构归属**: 基础设施层 - 依赖管理
+
+**任务列表**:
+
+**依赖注入机制**:
+- [ ] 定义 `AgentFactory` 工厂类 - 统一创建 LLM、Memory、Agent 实例
+- [ ] 支持依赖注入 - 测试时可注入 mock 实现
+- [ ] 提取接口抽象层 - `HttpClient`, `FileSystem`, `SubprocessRunner`
+
+**异常处理规范化**:
+- [ ] 定义项目级异常类型 - `LLMError`, `MemoryError`, `ToolError`, `ConfigError`
+- [ ] 替换宽泛异常为具体异常 - 消除 `except Exception: pass`
+- [ ] 统一错误日志记录 - 使用 `logger.error()` 记录异常堆栈
+
+**类型注解完善**:
+- [ ] 替换 `Any` 为具体类型 - `BaseLLM | None` 等
+- [ ] 启用 mypy 静态检查 - CI 中集成类型检查
+- [ ] 添加泛型支持 - `BaseMemory[M]` 等
+
+**新增文件**:
+```
+nano_agent/
+├── factory/
+│   ├── __init__.py
+│   ├── agent_factory.py    # AgentFactory 工厂类
+│   └── interfaces.py       # 接口抽象层定义
+├── exceptions.py           # 项目级异常类型
+```
+
+**技术方案**:
+```python
+# nano_agent/factory/interfaces.py
+from typing import Protocol
+
+class HttpClient(Protocol):
+    """HTTP 客户端接口"""
+    def post(self, url: str, json: dict, timeout: int) -> Response: ...
+    def get(self, url: str, timeout: int) -> Response: ...
+
+class FileSystem(Protocol):
+    """文件系统接口"""
+    def read(self, path: str) -> str: ...
+    def write(self, path: str, content: str) -> None: ...
+
+# nano_agent/factory/agent_factory.py
+class AgentFactory:
+    """Agent 工厂类 - 支持依赖注入"""
+
+    def __init__(
+        self,
+        http_client: HttpClient | None = None,
+        file_system: FileSystem | None = None
+    ):
+        self._http = http_client
+        self._fs = file_system
+
+    def create_llm(self, config: LLMConfig) -> BaseLLM:
+        if config.provider == "ollama":
+            return OllamaLLM(
+                model=config.model,
+                http_client=self._http  # 注入依赖
+            )
+        # ...
+
+    def create_memory(self, config: MemoryConfig) -> BaseMemory:
+        # ...
+
+    def create_agent(self, config: Config) -> AgentOrchestrator:
+        llm = self.create_llm(config.llm)
+        memory = self.create_memory(config.memory)
+        # ...
+
+# nano_agent/exceptions.py
+class NanoAgentError(Exception):
+    """NanoAgent 基础异常"""
+    pass
+
+class LLMError(NanoAgentError):
+    """LLM 调用错误"""
+    pass
+
+class MemoryError(NanoAgentError):
+    """记忆系统错误"""
+    pass
+
+class ToolError(NanoAgentError):
+    """工具执行错误"""
+    pass
+
+# 使用示例
+try:
+    response, _, _ = self.llm.chat(messages, tools)
+except LLMError as e:
+    logger.error(f"LLM 调用失败: {e}", exc_info=True)
+    raise
+```
+
+---
+
 ### v0.9.0 - Hooks 机制
 
 **目标**: 提供优雅的扩展机制，解耦组件间的依赖。
@@ -1063,16 +1331,18 @@ persona:
 | v0.6.3 | PlanMode 演进优化 ✅ | EventEmitter 集成、I/O 无关设计、CLI 包装层 |
 | v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
 | v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
+| v0.6.6 | CLI 模块重构与代码质量 | CLI 模块拆分、全局状态重构、可测试性提升 |
 | v0.7.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.7.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.8.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
+| v0.8.1 | 依赖注入与代码质量 | AgentFactory、接口抽象层、异常规范化、类型注解 |
 | v0.9.0 | Hooks 机制 | 解耦组件间依赖，优雅的回调扩展 |
 | v0.10.0 | 配置系统优化 | 自动显示/保存配置项 |
-| v0.11.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
-| v0.12.0 | 主动学习 | 知识提取、语义搜索 |
-| v0.13.0 | 个性化角色 | 可配置性格、专业领域 |
-| v0.14.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
-| v0.15.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
+| v0.10.1 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
+| v0.11.0 | 主动学习 | 知识提取、语义搜索 |
+| v0.12.0 | 个性化角色 | 可配置性格、专业领域 |
+| v0.13.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
+| v0.14.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
 
 ---
 
