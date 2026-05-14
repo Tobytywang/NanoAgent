@@ -858,6 +858,117 @@ def _should_use_tools(self, user_input: str) -> bool:
 
 ---
 
+### v0.7.3 - Token 消耗进阶优化
+
+**目标**: 基于 report.json 分析，实现更精准的 Token 优化。
+
+**背景**:
+通过 report.json 分析发现以下问题：
+1. 重复工具调用：同一文件被多次读取（file_search → file_read → file_search recursive）
+2. 历史消息累积：prompt_tokens 线性增长（2589 → 2701 → 2968 → 3122 → 3333）
+3. 长项目文件：NANOPROJECT.md 嵌入系统提示词，每次调用都发送
+4. 默认参数不当：file_search 的 recursive=false 导致重试
+
+**架构归属**: 执行层 - 智能缓存与压缩
+
+**任务列表**:
+
+**1. 检测重复工具调用 (~30% 节省)**:
+- [ ] 实现 `ToolResultCache` 类 - 缓存只读工具结果
+- [ ] 缓存 TTL: 5 分钟（可配置）
+- [ ] 仅缓存只读工具（file_read, file_search, shell_execute 查询）
+- [ ] 显示 "[cached]" 指示器
+- [ ] 不缓存写操作（file_write, memorize）
+
+**2. 压缩历史消息 (~20% 节省)**:
+- [ ] 实现 `MessageCompressor` 类 - 摘要旧消息
+- [ ] 阈值: 2000 prompt_tokens（可配置）
+- [ ] 保留最近 3 轮对话原文
+- [ ] 摘要格式: "Previous iterations: [brief summary]"
+- [ ] 在 LLM 调用前触发压缩
+
+**3. 简化项目文件 (~10% 节省)**:
+- [ ] 添加 `project_file_mode: full|condensed|reference` 配置
+- [ ] 默认: condensed（平衡上下文与完整性）
+- [ ] 自动生成精简版本
+- [ ] 仅首轮发送完整文件，后续引用文件名
+
+**4. file_search 默认 recursive=true**:
+- [ ] 修改工具 schema 默认值
+- [ ] 更新帮助文本
+- [ ] 添加测试验证
+
+**技术方案**:
+```python
+# nano_agent/agent/cache.py
+
+class ToolResultCache:
+    """工具结果缓存"""
+
+    def __init__(self, ttl_seconds: int = 300):
+        self._cache: dict[str, tuple[ToolResult, float]] = {}
+        self._ttl = ttl_seconds
+
+    def get_cached_result(self, tool_name: str, args: dict) -> ToolResult | None:
+        """检查缓存是否命中"""
+        cache_key = self._make_key(tool_name, args)
+        if cache_key in self._cache:
+            result, timestamp = self._cache[cache_key]
+            if time.time() - timestamp < self._ttl:
+                return result
+        return None
+
+    def set_cached_result(self, tool_name: str, args: dict, result: ToolResult):
+        """缓存结果"""
+        cache_key = self._make_key(tool_name, args)
+        self._cache[cache_key] = (result, time.time())
+
+# nano_agent/agent/compressor.py
+
+class MessageCompressor:
+    """历史消息压缩"""
+
+    def __init__(self, keep_recent: int = 3, threshold_tokens: int = 2000):
+        self.keep_recent = keep_recent
+        self.threshold = threshold_tokens
+
+    def compress_old_messages(self, messages: list) -> list:
+        """压缩旧消息"""
+        if estimate_tokens(messages) < self.threshold:
+            return messages
+
+        # 保留最近 N 轮
+        recent = messages[-self.keep_recent * 2:]  # user + assistant
+        old = messages[:-self.keep_recent * 2]
+
+        # 摘要旧消息
+        summary = self._summarize(old)
+        return [{"role": "system", "content": f"[历史摘要] {summary}"}] + recent
+```
+
+**新增文件**:
+```
+nano_agent/agent/cache.py      # ToolResultCache
+nano_agent/agent/compressor.py # MessageCompressor
+tests/test_cache.py            # 缓存测试
+tests/test_compressor.py       # 压缩测试
+```
+
+**修改文件**:
+```
+nano_agent/tools/builtin.py    # file_search recursive=true
+nano_agent/config/schema.py    # project_file_mode 配置
+nano_agent/agent/react.py      # 集成缓存和压缩
+```
+
+**预期效果**:
+- 重复调用场景节省 ~30% tokens
+- 长对话场景节省 ~20% tokens
+- 项目文件场景节省 ~10% tokens
+- 两轮对话目标 < 8k tokens
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1226,6 +1337,7 @@ persona:
 | v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
 | v0.7.1 | Token 消耗优化 ✅ | 输出风格控制、提示词简化、工具结果截断 |
 | v0.7.2 | Token 消耗深度优化 | 智能工具合并、工具结果摘要、预判机制 |
+| v0.7.3 | Token 消耗进阶优化 | 工具结果缓存、历史消息压缩、项目文件精简 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
