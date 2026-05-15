@@ -18,6 +18,10 @@ class GetStatsTool(BaseTool):
         self._tracker = tracker
         self._context_length = context_length
 
+    def set_tracker(self, tracker) -> None:
+        """Set tracker for late binding."""
+        self._tracker = tracker
+
     @property
     def parameters_schema(self):
         return {

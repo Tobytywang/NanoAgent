@@ -90,6 +90,38 @@ class ReportGenerator:
                     "",
                 ])
 
+                # Prompt Messages 详情
+                if llm.get('prompt_messages'):
+                    lines.append("#### 发送给 LLM 的 Messages")
+                    lines.append("")
+                    for i, msg in enumerate(llm['prompt_messages'], 1):
+                        role = msg.get('role', 'unknown')
+                        content = msg.get('content', '')
+                        lines.append(f"**[{i}] {role}**:")
+                        lines.append("```")
+                        lines.append(content)
+                        lines.append("```")
+                        lines.append("")
+
+                # Response 详情
+                if llm.get('response_text'):
+                    lines.append("#### LLM 返回的 Response")
+                    lines.append("")
+                    lines.append("```")
+                    lines.append(llm['response_text'])
+                    lines.append("```")
+                    lines.append("")
+
+                # Tool Calls 详情
+                if llm.get('tool_calls_detail'):
+                    lines.append("#### 工具调用详情")
+                    lines.append("")
+                    for tc in llm['tool_calls_detail']:
+                        tc_name = tc.get('name', 'unknown')
+                        tc_args = tc.get('arguments', {})
+                        lines.append(f"- `{tc_name}`: `{tc_args}`")
+                    lines.append("")
+
             # 工具执行
             if iteration.get('tool_executions'):
                 lines.append("**工具执行**:")

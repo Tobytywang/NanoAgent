@@ -6,7 +6,8 @@ from .. import ToolRegistry
 from .python_executor import PythonExecutorTool
 from .file_ops import FileReadTool, FileWriteTool, FileSearchTool
 from .shell import ShellTool
-from .memory_tools import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
+from .memory import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
+from .plan import SavePlanTool, ListPlansTool, LoadPlanTool
 from .monitoring_tools import GetStatsTool
 from .web_search import WebSearchTool
 
@@ -39,9 +40,24 @@ def register_builtin_tools(registry: ToolRegistry, memory=None, tracker=None, co
     registry.register(list_memories_tool)
     registry.register(forget_tool)
 
+    # Register plan tools
+    registry.register(SavePlanTool())
+    registry.register(ListPlansTool())
+    registry.register(LoadPlanTool())
+
     # Register monitoring tools
     get_stats_tool = GetStatsTool(tracker, context_length=context_length)
     registry.register(get_stats_tool)
+
+    # Validate all expected tools are registered
+    registered = set(registry.list_tools())
+    expected = set(BUILTIN_TOOLS)
+    if registered != expected:
+        missing = expected - registered
+        extra = registered - expected
+        raise RuntimeError(
+            f"Tool registration mismatch: missing={missing}, extra={extra}"
+        )
 
 
 # List of all built-in tool names
@@ -56,5 +72,8 @@ BUILTIN_TOOLS = [
     "recall",
     "list_memories",
     "forget",
+    "save_plan",
+    "list_plans",
+    "load_plan",
     "get_stats"
 ]

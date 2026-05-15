@@ -58,23 +58,7 @@ nano_agent/
 
 Config loaded from YAML (priority: project > global > defaults). See `docs/examples/config.yaml`.
 
-Key sections: `llm`, `agent`, `memory`, `skills`, `plugins`, `logging`, `output_style`. Use `/config` in interactive mode to view current settings.
-
-### Output Style (Token Efficiency)
-
-Control token consumption with `output_style` configuration:
-
-```yaml
-output_style:
-  style: concise          # concise / standard / detailed
-  tool_output_max_tokens: 500
-```
-
-| Style | System Prompt | Expected Savings | Use Case |
-|-------|---------------|------------------|----------|
-| concise | ~300 tokens | ~70% | Quick queries, simple tasks |
-| standard | ~800 tokens | ~50% | General use (default) |
-| detailed | ~1500 tokens | None | Complex analysis, debugging |
+Key sections: `llm`, `agent`, `memory`, `skills`, `plugins`, `logging`. Use `/config` in interactive mode to view current settings.
 
 ## Built-in Tools
 

@@ -9,18 +9,16 @@ import time
 from typing import Generator
 
 from .base import BaseAgent
-from .prompts import REACT_SYSTEM_PROMPT, REACT_SYSTEM_PROMPT_CONCISE, REACT_SYSTEM_PROMPT_STANDARD, TOOL_DESCRIPTION_TEMPLATE
+from .prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
 from .types import ExecutionResult, ThinkResult, AgentEvent
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .undo import UndoStack
 from .context import ContextManager
 from .confirmation import ConfirmationManager, ConfirmationConfig
-from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
-from ..config.schema import OutputStyleConfig
 
 
 def _safe_str(text: str) -> str:
@@ -31,44 +29,6 @@ def _safe_str(text: str) -> str:
         return text.encode('utf-8', errors='replace').decode('utf-8')
     except (UnicodeDecodeError, UnicodeEncodeError):
         return text
-
-
-# Simple question patterns that don't need tools
-SIMPLE_QUESTION_PATTERNS = [
-    # Greetings
-    "你好", "hello", "hi", "嗨", "早上好", "下午好", "晚上好",
-    # Thanks
-    "谢谢", "thanks", "thank you", "感谢",
-    # Simple questions (can answer directly)
-    "你是谁", "who are you", "你的名字", "what is your name",
-    "你能做什么", "what can you do", "你有什么功能",
-    # Confirmations
-    "好的", "ok", "okay", "明白", "了解", "清楚了",
-]
-
-
-def _is_simple_question(user_input: str) -> bool:
-    """
-    Check if the question is simple enough to answer directly without tools.
-
-    Args:
-        user_input: User's input text
-
-    Returns:
-        True if the question is simple and can be answered directly
-    """
-    input_lower = user_input.lower().strip()
-
-    # Check against simple patterns
-    for pattern in SIMPLE_QUESTION_PATTERNS:
-        if pattern in input_lower:
-            return True
-
-    # Very short questions (less than 6 chars) are often simple
-    if len(input_lower) < 6:
-        return True
-
-    return False
 
 
 class ReActAgent(BaseAgent):
@@ -92,7 +52,6 @@ class ReActAgent(BaseAgent):
         budget: Budget | None = None,
         context_config=None,
         confirmation_config: ConfirmationConfig | None = None,
-        output_style_config: OutputStyleConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -109,7 +68,6 @@ class ReActAgent(BaseAgent):
             budget: Budget constraints for execution
             context_config: Context management configuration
             confirmation_config: Confirmation mechanism configuration
-            output_style_config: Output style configuration for token efficiency
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -117,9 +75,6 @@ class ReActAgent(BaseAgent):
         self.tracker = tracker or MetricsTracker()
         self.events = events or EventEmitter()
         self.budget_checker = BudgetChecker(budget or Budget(max_iterations=max_iterations))
-
-        # Output style configuration
-        self.output_style_config = output_style_config or OutputStyleConfig()
 
         # Context manager
         self.context_manager = ContextManager(
@@ -143,18 +98,8 @@ class ReActAgent(BaseAgent):
 
     def _setup_system_prompt(self) -> None:
         """Set up the system prompt with tool descriptions."""
-        style = self.output_style_config.style
-        tools_desc = self._format_tools_description(style)
-
-        # Select prompt template based on style
-        if style == "concise":
-            template = REACT_SYSTEM_PROMPT_CONCISE
-        elif style == "standard":
-            template = REACT_SYSTEM_PROMPT_STANDARD
-        else:
-            template = REACT_SYSTEM_PROMPT
-
-        system_prompt = template.format(tools_description=tools_desc)
+        tools_desc = self._format_tools_description()
+        system_prompt = REACT_SYSTEM_PROMPT.format(tools_description=tools_desc)
 
         # Add skill prompt if available
         if self.skill_prompt:
@@ -162,38 +107,17 @@ class ReActAgent(BaseAgent):
 
         self.memory.set_system_prompt(system_prompt)
 
-    def _format_tools_description(self, style: str = "detailed") -> str:
-        """Format tool descriptions for the system prompt.
-
-        Args:
-            style: Output style - "concise", "standard", or "detailed"
-        """
+    def _format_tools_description(self) -> str:
+        """Format tool descriptions for the system prompt."""
         descriptions = []
         for tool_name in self.tool_registry.list_tools():
             tool = self.tool_registry.get(tool_name)
-
-            if style == "concise":
-                # Only tool names, comma separated (minimal tokens)
-                descriptions.append(tool.name)
-            elif style == "standard":
-                # Name + first sentence + required params
-                first_sentence = tool.description.split('.')[0]
-                required = tool.parameters_schema.get("required", [])
-                params_str = ", ".join(required) if required else "none"
-                desc = f"- {tool.name}: {first_sentence}\n  params: {params_str}"
-                descriptions.append(desc)
-            else:
-                # Full description (original format)
-                desc = TOOL_DESCRIPTION_TEMPLATE.format(
-                    name=tool.name,
-                    description=tool.description,
-                    parameters=tool.parameters_schema
-                )
-                descriptions.append(desc)
-
-        if style == "concise":
-            # Return comma-separated list for minimal tokens
-            return ", ".join(descriptions)
+            desc = TOOL_DESCRIPTION_TEMPLATE.format(
+                name=tool.name,
+                description=tool.description,
+                parameters=tool.parameters_schema
+            )
+            descriptions.append(desc)
         return "\n".join(descriptions)
 
     def run(
@@ -215,13 +139,6 @@ class ReActAgent(BaseAgent):
         """
         # Prepare execution
         self._prepare_run(user_input, session_id)
-
-        # Pre-check: simple questions can be answered directly
-        if self.output_style_config.style == "concise" and _is_simple_question(user_input):
-            # Direct answer for simple questions (skip tool calls)
-            response = self._answer_simple_question(user_input)
-            self.tracker.end_run(response)
-            return self._build_result(response, 0, success=True)
 
         iteration = 0
         while iteration < self.max_iterations:
@@ -307,19 +224,25 @@ class ReActAgent(BaseAgent):
         )
         llm_latency = (time.perf_counter() - llm_start) * 1000
 
-        # Convert tool_calls to dict for reporting
-        tool_calls_dict = [tc.to_dict() for tc in tool_calls] if tool_calls else []
+        # Convert messages to dict for recording
+        messages_dict = [
+            m.to_dict() if hasattr(m, 'to_dict') else m
+            for m in messages
+        ]
 
-        # Record LLM call with input/output
+        # Convert tool calls to dict for recording
+        tool_calls_dict = [tc.to_dict() for tc in tool_calls]
+
+        # Record LLM call with full interaction details
         self.tracker.record_llm_call(
             model=self.llm.model,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
             latency_ms=llm_latency,
             tool_calls_count=len(tool_calls),
-            input_messages=messages,
-            output_text=response_text,
-            tool_calls=tool_calls_dict,
+            prompt_messages=messages_dict,
+            response_text=response_text,
+            tool_calls_detail=tool_calls_dict,
         )
 
         # Update token count
@@ -451,58 +374,10 @@ class ReActAgent(BaseAgent):
             result: The result from the tool execution
         """
         result_content = result.output if result.success else f"Error: {result.error}"
-
-        # Summarize tool output for token efficiency
-        if self.output_style_config.style == "concise":
-            summarizer = ToolResultSummarizer()
-            result_content = summarizer.summarize(result_content, tool_call.name)
-
-        # Truncate long output based on output style config
-        max_tokens = self.output_style_config.tool_output_max_tokens
-        # Rough estimate: 1 token ~ 4 characters for English
-        max_chars = max_tokens * 4
-        if len(result_content) > max_chars:
-            result_content = result_content[:max_chars] + "\n... [输出已截断]"
-
         self.memory.add_tool_result(
             tool_call_id=tool_call.id,
             content=result_content
         )
-
-    def _answer_simple_question(self, user_input: str) -> str:
-        """
-        Answer simple questions directly without tool calls.
-
-        Args:
-            user_input: User's input text
-
-        Returns:
-            Direct response string
-        """
-        input_lower = user_input.lower().strip()
-
-        # Greetings
-        if any(g in input_lower for g in ["你好", "hello", "hi", "嗨"]):
-            return f"你好！我是{self.skill_prompt.split('名字是')[-1] if '名字是' in self.skill_prompt else '助手'}，有什么可以帮助你的？"
-
-        # Thanks
-        if any(t in input_lower for t in ["谢谢", "thanks", "thank you", "感谢"]):
-            return "不客气！"
-
-        # Identity
-        if any(i in input_lower for i in ["你是谁", "who are you", "你的名字"]):
-            return f"我是一个 AI 助手，可以帮助你处理各种任务。"
-
-        # Capabilities
-        if any(c in input_lower for c in ["你能做什么", "what can you do"]):
-            return "我可以帮你：查看文件、执行命令、搜索内容、管理记忆等。"
-
-        # Confirmations
-        if any(c in input_lower for c in ["好的", "ok", "okay", "明白"]):
-            return "好的，请告诉我你需要什么帮助。"
-
-        # Default: let LLM handle it
-        return "请继续说明你的需求。"
 
     def _build_result(
         self,

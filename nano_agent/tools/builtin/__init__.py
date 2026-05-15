@@ -2,7 +2,8 @@
 Built-in tools package.
 """
 
-from .memory_tools import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
+from .memory import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
+from .plan import SavePlanTool, ListPlansTool, LoadPlanTool
 from .python_executor import PythonExecutorTool
 from .file_ops import FileReadTool, FileWriteTool, FileSearchTool
 from .shell import ShellTool
@@ -15,6 +16,9 @@ __all__ = [
     "RecallTool",
     "ListMemoriesTool",
     "ForgetTool",
+    "SavePlanTool",
+    "ListPlansTool",
+    "LoadPlanTool",
     "PythonExecutorTool",
     "FileReadTool",
     "FileWriteTool",

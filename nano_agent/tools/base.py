@@ -27,7 +27,7 @@ class BaseTool(ABC):
     description: str = ""
     risk_level: "RiskLevel" = None  # Will be set to MODERATE by default
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         # Import here to avoid circular import
         from ..agent.types import RiskLevel
         if self.risk_level is None:

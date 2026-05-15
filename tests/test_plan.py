@@ -9,13 +9,10 @@ import tempfile
 import os
 
 from nano_agent.agent import Plan, PlanPhase
-from nano_agent.tools.builtin.plan_tools import (
+from nano_agent.tools.builtin.plan_helpers import (
     plan_to_markdown,
     markdown_to_plan,
     _slugify,
-    SavePlanTool,
-    ListPlansTool,
-    LoadPlanTool,
     PLANS_DIR,
 )
 
@@ -184,10 +181,11 @@ class TestPlanTools:
 
     def test_save_plan_tool(self, tmp_path):
         """Test saving a plan."""
-        # Override PLANS_DIR for testing
-        import nano_agent.tools.builtin.plan_tools as plan_tools
-        original_dir = plan_tools.PLANS_DIR
-        plan_tools.PLANS_DIR = tmp_path / "plans"
+        from nano_agent.tools.builtin.plan import SavePlanTool
+        import nano_agent.tools.builtin.plan_helpers as plan_helpers
+
+        original_dir = plan_helpers.PLANS_DIR
+        plan_helpers.PLANS_DIR = tmp_path / "plans"
 
         try:
             tool = SavePlanTool()
@@ -205,16 +203,18 @@ class TestPlanTools:
             assert "test-plan.md" in result.output
 
             # Verify file was created
-            plan_file = plan_tools.PLANS_DIR / "test-plan.md"
+            plan_file = plan_helpers.PLANS_DIR / "test-plan.md"
             assert plan_file.exists()
         finally:
-            plan_tools.PLANS_DIR = original_dir
+            plan_helpers.PLANS_DIR = original_dir
 
     def test_list_plans_tool_empty(self, tmp_path):
         """Test listing plans when empty."""
-        import nano_agent.tools.builtin.plan_tools as plan_tools
-        original_dir = plan_tools.PLANS_DIR
-        plan_tools.PLANS_DIR = tmp_path / "empty_plans"
+        from nano_agent.tools.builtin.plan import ListPlansTool
+        import nano_agent.tools.builtin.plan_helpers as plan_helpers
+
+        original_dir = plan_helpers.PLANS_DIR
+        plan_helpers.PLANS_DIR = tmp_path / "empty_plans"
 
         try:
             tool = ListPlansTool()
@@ -223,13 +223,15 @@ class TestPlanTools:
             assert result.success is True
             assert "暂无计划" in result.output
         finally:
-            plan_tools.PLANS_DIR = original_dir
+            plan_helpers.PLANS_DIR = original_dir
 
     def test_load_plan_tool(self, tmp_path):
         """Test loading a plan."""
-        import nano_agent.tools.builtin.plan_tools as plan_tools
-        original_dir = plan_tools.PLANS_DIR
-        plan_tools.PLANS_DIR = tmp_path / "plans"
+        from nano_agent.tools.builtin.plan import SavePlanTool, LoadPlanTool
+        import nano_agent.tools.builtin.plan_helpers as plan_helpers
+
+        original_dir = plan_helpers.PLANS_DIR
+        plan_helpers.PLANS_DIR = tmp_path / "plans"
 
         try:
             # First save a plan
@@ -248,13 +250,15 @@ class TestPlanTools:
             assert result.success is True
             assert "Load Test" in result.output
         finally:
-            plan_tools.PLANS_DIR = original_dir
+            plan_helpers.PLANS_DIR = original_dir
 
     def test_load_nonexistent_plan(self, tmp_path):
         """Test loading a plan that doesn't exist."""
-        import nano_agent.tools.builtin.plan_tools as plan_tools
-        original_dir = plan_tools.PLANS_DIR
-        plan_tools.PLANS_DIR = tmp_path / "plans"
+        from nano_agent.tools.builtin.plan import LoadPlanTool
+        import nano_agent.tools.builtin.plan_helpers as plan_helpers
+
+        original_dir = plan_helpers.PLANS_DIR
+        plan_helpers.PLANS_DIR = tmp_path / "plans"
 
         try:
             tool = LoadPlanTool()
@@ -263,7 +267,7 @@ class TestPlanTools:
             assert result.success is False
             assert "未找到计划" in result.error
         finally:
-            plan_tools.PLANS_DIR = original_dir
+            plan_helpers.PLANS_DIR = original_dir
 
 
 class TestPlanMode:
@@ -360,13 +364,13 @@ class TestPlanMode:
         # Use a temp directory
         with tempfile.TemporaryDirectory() as tmpdir:
             # Patch both modules
-            import nano_agent.tools.builtin.plan_tools as plan_tools
+            import nano_agent.tools.builtin.plan_helpers as plan_helpers
             import nano_agent.cli.plan_mode as plan_mode
 
-            original_tool_dir = plan_tools.PLANS_DIR
+            original_helper_dir = plan_helpers.PLANS_DIR
             original_mode_dir = plan_mode.PLANS_DIR
 
-            plan_tools.PLANS_DIR = Path(tmpdir)
+            plan_helpers.PLANS_DIR = Path(tmpdir)
             plan_mode.PLANS_DIR = Path(tmpdir)
 
             try:
@@ -391,7 +395,7 @@ class TestPlanMode:
                 assert "save-test.md" in path
                 assert Path(path).exists()
             finally:
-                plan_tools.PLANS_DIR = original_tool_dir
+                plan_helpers.PLANS_DIR = original_helper_dir
                 plan_mode.PLANS_DIR = original_mode_dir
 
     def test_events_emitted(self):
