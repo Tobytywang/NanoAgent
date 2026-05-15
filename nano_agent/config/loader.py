@@ -107,7 +107,12 @@ class ConfigLoader:
         """解析输出风格配置"""
         return OutputStyleConfig(
             style=data.get("style", "standard"),
-            tool_output_max_tokens=data.get("tool_output_max_tokens", 500)
+            tool_output_max_tokens=data.get("tool_output_max_tokens", 500),
+            smart_summarization=data.get("smart_summarization", True),
+            extract_imports=data.get("extract_imports", True),
+            extract_signatures=data.get("extract_signatures", True),
+            extract_errors=data.get("extract_errors", True),
+            file_search_count_only=data.get("file_search_count_only", False),
         )
 
     @classmethod
@@ -156,7 +161,18 @@ class ConfigLoader:
             },
             "output_style": {
                 "style": config.output_style.style,
-                "tool_output_max_tokens": config.output_style.tool_output_max_tokens
+                "tool_output_max_tokens": config.output_style.tool_output_max_tokens,
+                "smart_summarization": config.output_style.smart_summarization,
+                "extract_imports": config.output_style.extract_imports,
+                "extract_signatures": config.output_style.extract_signatures,
+                "extract_errors": config.output_style.extract_errors,
+                "file_search_count_only": config.output_style.file_search_count_only,
+            },
+            "tool_merge": {
+                "enabled": config.tool_merge.enabled,
+                "concise_only": config.tool_merge.concise_only,
+                "max_batch_size": config.tool_merge.max_batch_size,
+                "merge_tools": config.tool_merge.merge_tools,
             }
         }
 
