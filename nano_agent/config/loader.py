@@ -6,7 +6,10 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from .schema import Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, SkillsConfig, OutputStyleConfig
+from .schema import (
+    Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, SkillsConfig,
+    OutputStyleConfig, ToolMergeConfig, CacheConfig, CompressorConfig, ProjectFileConfig
+)
 
 
 class ConfigLoader:
@@ -45,7 +48,11 @@ class ConfigLoader:
             memory=cls._parse_memory_config(data.get("memory", {})),
             tools=cls._parse_tool_config(data.get("tools", {})),
             skills=cls._parse_skills_config(data.get("skills", {})),
-            output_style=cls._parse_output_style_config(data.get("output_style", {}))
+            output_style=cls._parse_output_style_config(data.get("output_style", {})),
+            tool_merge=cls._parse_tool_merge_config(data.get("tool_merge", {})),
+            cache=cls._parse_cache_config(data.get("cache", {})),
+            compressor=cls._parse_compressor_config(data.get("compressor", {})),
+            project_file=cls._parse_project_file_config(data.get("project_file", {}))
         )
 
     @classmethod
@@ -107,7 +114,50 @@ class ConfigLoader:
         """解析输出风格配置"""
         return OutputStyleConfig(
             style=data.get("style", "standard"),
-            tool_output_max_tokens=data.get("tool_output_max_tokens", 500)
+            tool_output_max_tokens=data.get("tool_output_max_tokens", 500),
+            smart_summarization=data.get("smart_summarization", True),
+            extract_imports=data.get("extract_imports", True),
+            extract_signatures=data.get("extract_signatures", True),
+            extract_errors=data.get("extract_errors", True),
+            file_search_count_only=data.get("file_search_count_only", False)
+        )
+
+    @classmethod
+    def _parse_tool_merge_config(cls, data: dict) -> ToolMergeConfig:
+        """解析工具合并配置"""
+        return ToolMergeConfig(
+            enabled=data.get("enabled", True),
+            concise_only=data.get("concise_only", True),
+            max_batch_size=data.get("max_batch_size", 3),
+            merge_tools=data.get("merge_tools", ["file_search", "shell_execute"])
+        )
+
+    @classmethod
+    def _parse_cache_config(cls, data: dict) -> CacheConfig:
+        """解析缓存配置"""
+        return CacheConfig(
+            enabled=data.get("enabled", True),
+            ttl_seconds=data.get("ttl_seconds", 300),
+            cacheable_tools=data.get("cacheable_tools", ["file_read", "file_search", "shell_execute"]),
+            excluded_tools=data.get("excluded_tools", ["file_write", "memorize", "forget"]),
+            max_cache_size=data.get("max_cache_size", 100)
+        )
+
+    @classmethod
+    def _parse_compressor_config(cls, data: dict) -> CompressorConfig:
+        """解析压缩配置"""
+        return CompressorConfig(
+            enabled=data.get("enabled", True),
+            threshold_tokens=data.get("threshold_tokens", 2000),
+            keep_recent=data.get("keep_recent", 3),
+            summary_max_tokens=data.get("summary_max_tokens", 500)
+        )
+
+    @classmethod
+    def _parse_project_file_config(cls, data: dict) -> ProjectFileConfig:
+        """解析项目文件配置"""
+        return ProjectFileConfig(
+            mode=data.get("mode", "condensed")
         )
 
     @classmethod
@@ -156,7 +206,34 @@ class ConfigLoader:
             },
             "output_style": {
                 "style": config.output_style.style,
-                "tool_output_max_tokens": config.output_style.tool_output_max_tokens
+                "tool_output_max_tokens": config.output_style.tool_output_max_tokens,
+                "smart_summarization": config.output_style.smart_summarization,
+                "extract_imports": config.output_style.extract_imports,
+                "extract_signatures": config.output_style.extract_signatures,
+                "extract_errors": config.output_style.extract_errors,
+                "file_search_count_only": config.output_style.file_search_count_only
+            },
+            "tool_merge": {
+                "enabled": config.tool_merge.enabled,
+                "concise_only": config.tool_merge.concise_only,
+                "max_batch_size": config.tool_merge.max_batch_size,
+                "merge_tools": config.tool_merge.merge_tools
+            },
+            "cache": {
+                "enabled": config.cache.enabled,
+                "ttl_seconds": config.cache.ttl_seconds,
+                "cacheable_tools": config.cache.cacheable_tools,
+                "excluded_tools": config.cache.excluded_tools,
+                "max_cache_size": config.cache.max_cache_size
+            },
+            "compressor": {
+                "enabled": config.compressor.enabled,
+                "threshold_tokens": config.compressor.threshold_tokens,
+                "keep_recent": config.compressor.keep_recent,
+                "summary_max_tokens": config.compressor.summary_max_tokens
+            },
+            "project_file": {
+                "mode": config.project_file.mode
             }
         }
 
