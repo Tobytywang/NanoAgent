@@ -50,3 +50,47 @@ logging:
   level: INFO                         # DEBUG, INFO, WARNING, ERROR
   console: true
   file: .nano_agent/debug.log
+
+# Output style settings (v0.7.2+)
+output_style:
+  style: concise                      # concise / standard / detailed
+  tool_output_max_tokens: 300         # 更激进截断工具输出
+  smart_summarization: true
+  extract_imports: true
+  extract_signatures: true
+  extract_errors: true
+  file_search_count_only: false
+
+# Tool merge settings (v0.7.2+)
+tool_merge:
+  enabled: true
+  concise_only: false                 # 所有模式都启用合并
+  max_batch_size: 3
+  merge_tools:
+    - file_search
+    - shell_execute
+
+# Cache settings (v0.7.3+)
+cache:
+  enabled: true
+  ttl_seconds: 300
+  cacheable_tools:
+    - file_read
+    - file_search
+    - shell_execute
+  excluded_tools:
+    - file_write
+    - memorize
+    - forget
+  max_cache_size: 100
+
+# Compressor settings (v0.7.3+)
+compressor:
+  enabled: true
+  threshold_tokens: 1500              # 更早触发压缩
+  keep_recent: 3
+  summary_max_tokens: 300             # 更短的摘要
+
+# Project file settings (v0.7.3+)
+project_file:
+  mode: reference                     # 仅引用文件名，不嵌入内容
