@@ -3,28 +3,72 @@ Report generator for exporting monitoring data.
 """
 
 import json
+import re
 from datetime import datetime
 from typing import Any
 
 from .metrics import RunMetrics
 
 
+def _remove_emoji(text: str) -> str:
+    """
+    Remove emoji and other high-codepoint Unicode characters.
+
+    These characters (U+1F000 and above) may display as garbled text
+    in some terminals or editors (e.g., vim shows them as @ symbols).
+
+    Args:
+        text: Input text to sanitize
+
+    Returns:
+        Text with emoji removed
+    """
+    # Remove characters in Supplementary Multilingual Planes (U+1F000+)
+    # This includes emoji, symbols, and other extended characters
+    return re.sub(r'[\U0001F000-\U000FFFFF]', '', text)
+
+
+def _sanitize_strings(obj: Any) -> Any:
+    """
+    Recursively sanitize all strings in a structure.
+
+    Args:
+        obj: Object to sanitize (dict, list, str, or other)
+
+    Returns:
+        Sanitized object with all strings cleaned of emoji
+    """
+    if isinstance(obj, dict):
+        return {k: _sanitize_strings(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_strings(v) for v in obj]
+    elif isinstance(obj, str):
+        return _remove_emoji(obj)
+    else:
+        return obj
+
+
 class ReportGenerator:
     """Generate reports from monitoring data."""
 
     @staticmethod
-    def to_json(metrics: RunMetrics, indent: int = 2) -> str:
+    def to_json(metrics: RunMetrics, indent: int = 2, remove_emoji: bool = True) -> str:
         """
         Export metrics as JSON string.
 
         Args:
             metrics: RunMetrics object
             indent: JSON indentation
+            remove_emoji: Whether to remove emoji characters (default: True)
+                          Emoji may display as garbled text in some terminals/editors
 
         Returns:
             JSON string
         """
-        return json.dumps(metrics.to_dict(), indent=indent, default=str, ensure_ascii=False)
+        data = metrics.to_dict()
+        if remove_emoji:
+            data = _sanitize_strings(data)
+        return json.dumps(data, indent=indent, default=str, ensure_ascii=False)
 
     @staticmethod
     def to_markdown(metrics: RunMetrics) -> str:
@@ -177,16 +221,17 @@ class ReportGenerator:
         )
 
     @staticmethod
-    def save_json(metrics: RunMetrics, path: str) -> None:
+    def save_json(metrics: RunMetrics, path: str, remove_emoji: bool = True) -> None:
         """
         Save metrics to JSON file.
 
         Args:
             metrics: RunMetrics object
             path: File path
+            remove_emoji: Whether to remove emoji characters (default: True)
         """
         with open(path, 'w', encoding='utf-8') as f:
-            f.write(ReportGenerator.to_json(metrics))
+            f.write(ReportGenerator.to_json(metrics, remove_emoji=remove_emoji))
 
     @staticmethod
     def save_markdown(metrics: RunMetrics, path: str) -> None:
@@ -204,7 +249,8 @@ class ReportGenerator:
 def export_report(
     metrics: RunMetrics,
     format: str = "json",
-    path: str | None = None
+    path: str | None = None,
+    remove_emoji: bool = True
 ) -> str | None:
     """
     Export report in specified format.
@@ -213,6 +259,7 @@ def export_report(
         metrics: RunMetrics object
         format: Output format ("json", "markdown", "summary")
         path: Optional file path to save
+        remove_emoji: Whether to remove emoji characters from JSON output (default: True)
 
     Returns:
         Report string if path is None, else None
@@ -220,9 +267,9 @@ def export_report(
     generator = ReportGenerator()
 
     if format == "json":
-        content = generator.to_json(metrics)
+        content = generator.to_json(metrics, remove_emoji=remove_emoji)
         if path:
-            generator.save_json(metrics, path)
+            generator.save_json(metrics, path, remove_emoji=remove_emoji)
         return content
 
     elif format == "markdown":
