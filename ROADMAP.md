@@ -712,7 +712,264 @@ orchestrator = builder.build()
 
 ---
 
-### v0.8.0 - 流式执行
+### v0.8.0 - Token 优化基础 ✅
+
+**目标**: 减少 Agent 运行时的 Token 消耗，降低使用成本。
+
+**背景**:
+用户反馈两轮对话消耗 27k tokens，主要原因是：
+1. 每次工具调用都会把完整上下文重新发送给 LLM
+2. LLM 输出内容冗长（表格、emoji、详细总结）
+3. 迭代次数多，每次迭代累积 token
+
+**架构归属**: 执行层 - 输出优化
+
+**任务列表**:
+- [x] 优化 Agent 系统提示词 - 简化指令，减少冗余描述
+- [x] 输出风格控制 - 配置项控制输出详细程度（简洁/标准/详细）
+- [x] 工具结果截断 - 大型工具输出自动截断后再加入上下文
+- [x] 配置支持 - `output_style` 配置项
+
+**新增文件**:
+```
+tests/test_output_style.py  # 输出风格单元测试
+```
+
+**修改文件**:
+```
+nano_agent/agent/prompts.py       # 添加 concise/standard 提示词模板
+nano_agent/config/schema.py       # OutputStyleConfig
+nano_agent/config/loader.py       # 配置解析和保存
+nano_agent/agent/react.py         # 集成输出风格控制
+nano_agent/core/builder.py        # 传递配置到 Agent
+nano_agent/cli/main.py            # 输出风格配置显示
+```
+
+**技术方案**:
+```python
+# nano_agent/config/schema.py
+
+class OutputStyle(Enum):
+    CONCISE = "concise"    # 简洁：一句话回答，无表格/emoji
+    STANDARD = "standard" # 标准：适度格式化
+    DETAILED = "detailed" # 详细：完整分析、表格、emoji
+
+@dataclass
+class OutputStyleConfig:
+    style: OutputStyle = OutputStyle.STANDARD
+    max_response_length: int = 500  # 最大响应长度（字符）
+    use_emoji: bool = False
+    use_table: bool = False
+
+# nano_agent/agent/prompts.py
+
+# 简化后的系统提示词（减少约 50% tokens）
+SYSTEM_PROMPT_CONCISE = """
+你是 {agent_name}，一个 AI 助手。
+用户: {user_name}
+
+规则:
+1. 回答简洁，直接给出答案
+2. 必须使用工具时才调用
+3. 每轮最多 2 次工具调用
+"""
+
+# nano_agent/agent/output_style.py
+
+class OutputStyleManager:
+    """输出风格管理"""
+
+    def __init__(self, config: OutputStyleConfig):
+        self.config = config
+
+    def get_system_prompt(self, base_prompt: str) -> str:
+        """根据输出风格调整系统提示词"""
+        if self.config.style == OutputStyle.CONCISE:
+            return self._make_concise(base_prompt)
+        return base_prompt
+
+    def _make_concise(self, prompt: str) -> str:
+        """简化提示词"""
+        # 移除冗余描述、示例、格式要求
+        ...
+
+    def format_response(self, response: str) -> str:
+        """格式化响应"""
+        if self.config.style == OutputStyle.CONCISE:
+            # 截断过长响应
+            if len(response) > self.config.max_response_length:
+                return response[:self.config.max_response_length] + "..."
+        return response
+```
+
+**预期效果**:
+- 简洁模式下 token 消耗减少 40-60%
+- 单轮对话控制在 5k tokens 以内
+
+---
+
+### v0.8.1 - Token 深度优化
+
+**目标**: 进一步减少 Token 消耗，目标两轮对话 < 8k tokens。
+
+**背景**:
+v0.8.0 实现了基础优化，concise 模式下两轮对话仍有 14k tokens。需要更激进的优化。
+
+**架构归属**: 执行层 - 智能优化
+
+**任务列表**:
+- [ ] 智能工具合并 - 合并相似工具调用，减少迭代次数
+- [x] 工具结果智能摘要 - file_read/shell_execute 结果只保留关键信息
+- [x] 预判机制 - 先分析问题复杂度，简单问题直接回答
+- [x] 更激进的输出精简 - 一句话回答、无表格、无列表
+
+**技术方案**:
+```python
+# 1. 智能工具合并
+# 原始：3次 file_search 调用
+# 优化：合并为 1 次 file_search，使用 glob pattern
+
+# 2. 工具结果智能摘要
+class ToolResultSummarizer:
+    def summarize(self, output: str, tool_name: str) -> str:
+        if tool_name == "file_read":
+            # 只保留关键行（标题、关键内容）
+            return self._extract_key_lines(output)
+        elif tool_name == "shell_execute":
+            # 只保留非空输出行
+            return self._filter_meaningful(output)
+
+# 3. 预判机制
+def _should_use_tools(self, user_input: str) -> bool:
+    """判断是否需要工具调用"""
+    simple_patterns = [
+        "你好", "hello", "谢谢", "thanks",
+        "什么是", "what is", "如何", "how to"
+    ]
+    for pattern in simple_patterns:
+        if pattern in user_input.lower():
+            return False
+    return True
+```
+
+**预期效果**:
+- 两轮对话 < 8k tokens
+- 简单问题直接回答，不调用工具
+
+---
+
+### v0.8.2 - Token 进阶优化
+
+**目标**: 基于 report.json 分析，实现更精准的 Token 优化。
+
+**背景**:
+通过 report.json 分析发现以下问题：
+1. 重复工具调用：同一文件被多次读取（file_search → file_read → file_search recursive）
+2. 历史消息累积：prompt_tokens 线性增长（2589 → 2701 → 2968 → 3122 → 3333）
+3. 长项目文件：NANOPROJECT.md 嵌入系统提示词，每次调用都发送
+4. 默认参数不当：file_search 的 recursive=false 导致重试
+
+**架构归属**: 执行层 - 智能缓存与压缩
+
+**任务列表**:
+
+**1. 检测重复工具调用 (~30% 节省)**:
+- [ ] 实现 `ToolResultCache` 类 - 缓存只读工具结果
+- [ ] 缓存 TTL: 5 分钟（可配置）
+- [ ] 仅缓存只读工具（file_read, file_search, shell_execute 查询）
+- [ ] 显示 "[cached]" 指示器
+- [ ] 不缓存写操作（file_write, memorize）
+
+**2. 压缩历史消息 (~20% 节省)**:
+- [ ] 实现 `MessageCompressor` 类 - 摘要旧消息
+- [ ] 阈值: 2000 prompt_tokens（可配置）
+- [ ] 保留最近 3 轮对话原文
+- [ ] 摘要格式: "Previous iterations: [brief summary]"
+- [ ] 在 LLM 调用前触发压缩
+
+**3. 简化项目文件 (~10% 节省)**:
+- [ ] 添加 `project_file_mode: full|condensed|reference` 配置
+- [ ] 默认: condensed（平衡上下文与完整性）
+- [ ] 自动生成精简版本
+- [ ] 仅首轮发送完整文件，后续引用文件名
+
+**4. file_search 默认 recursive=true**:
+- [x] 修改工具 schema 默认值
+- [x] 更新帮助文本
+- [x] 添加测试验证
+
+**技术方案**:
+```python
+# nano_agent/agent/cache.py
+
+class ToolResultCache:
+    """工具结果缓存"""
+
+    def __init__(self, ttl_seconds: int = 300):
+        self._cache: dict[str, tuple[ToolResult, float]] = {}
+        self._ttl = ttl_seconds
+
+    def get_cached_result(self, tool_name: str, args: dict) -> ToolResult | None:
+        """检查缓存是否命中"""
+        cache_key = self._make_key(tool_name, args)
+        if cache_key in self._cache:
+            result, timestamp = self._cache[cache_key]
+            if time.time() - timestamp < self._ttl:
+                return result
+        return None
+
+    def set_cached_result(self, tool_name: str, args: dict, result: ToolResult):
+        """缓存结果"""
+        cache_key = self._make_key(tool_name, args)
+        self._cache[cache_key] = (result, time.time())
+
+# nano_agent/agent/compressor.py
+
+class MessageCompressor:
+    """历史消息压缩"""
+
+    def __init__(self, keep_recent: int = 3, threshold_tokens: int = 2000):
+        self.keep_recent = keep_recent
+        self.threshold = threshold_tokens
+
+    def compress_old_messages(self, messages: list) -> list:
+        """压缩旧消息"""
+        if estimate_tokens(messages) < self.threshold:
+            return messages
+
+        # 保留最近 N 轮
+        recent = messages[-self.keep_recent * 2:]  # user + assistant
+        old = messages[:-self.keep_recent * 2]
+
+        # 摘要旧消息
+        summary = self._summarize(old)
+        return [{"role": "system", "content": f"[历史摘要] {summary}"}] + recent
+```
+
+**新增文件**:
+```
+nano_agent/agent/cache.py      # ToolResultCache
+nano_agent/agent/compressor.py # MessageCompressor
+tests/test_cache.py            # 缓存测试
+tests/test_compressor.py       # 压缩测试
+```
+
+**修改文件**:
+```
+nano_agent/tools/builtin.py    # file_search recursive=true
+nano_agent/config/schema.py    # project_file_mode 配置
+nano_agent/agent/react.py      # 集成缓存和压缩
+```
+
+**预期效果**:
+- 重复调用场景节省 ~30% tokens
+- 长对话场景节省 ~20% tokens
+- 项目文件场景节省 ~10% tokens
+- 两轮对话目标 < 8k tokens
+
+---
+
+### v0.9.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
 
@@ -821,12 +1078,12 @@ for event in handle.events:
 
 ---
 
-### v0.8.1 - 异步流式执行
+### v0.9.1 - 异步流式执行
 
 **目标**: 支持真正的异步流式输出，与 LLM API 的流式响应对接。
 
 **背景**:
-v0.7.0 的生成器是同步的，无法与 LLM 的流式 API（SSE）对接。异步生成器可以逐 token 输出，提供更好的用户体验。
+v0.9.0 的生成器是同步的，无法与 LLM 的流式 API（SSE）对接。异步生成器可以逐 token 输出，提供更好的用户体验。
 
 **架构归属**: 执行层 - 异步流式
 
@@ -871,7 +1128,7 @@ async def run_interactive_async(orchestrator, user_input):
 
 ---
 
-### v0.9.0 - 模式切换
+### v0.10.0 - 模式切换
 
 **目标**: 支持在 Agent 会话中切换执行模式，提供更灵活的交互方式。
 
@@ -914,7 +1171,7 @@ class ModeManager:
 
 ---
 
-### v0.10.0 - 配置系统优化
+### v0.11.0 - 配置系统优化
 
 **目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
 
@@ -946,7 +1203,7 @@ def _show_config(config, agent):
 
 ---
 
-### v0.11.0 - 反思与规划能力
+### v0.12.0 - 反思与规划能力
 
 **目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
 
@@ -975,7 +1232,7 @@ class ReflectiveAgent(ReActAgent):
 
 ---
 
-### v0.12.0 - 主动学习能力
+### v0.13.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
 
@@ -1002,7 +1259,7 @@ class LearningAgent(ReActAgent):
 
 ---
 
-### v0.13.0 - 个性化与角色
+### v0.14.0 - 个性化与角色
 
 **目标**: 支持可配置的 Agent 性格和专业领域深度。
 
@@ -1028,7 +1285,7 @@ persona:
 
 ---
 
-### v0.14.0 - 多 Agent 协作
+### v0.15.0 - 多 Agent 协作
 
 **目标**: 支持多 Agent 协作和人机协作机制。
 
@@ -1053,7 +1310,7 @@ persona:
 
 ---
 
-### v0.15.0 - 安全与体验
+### v0.16.0 - 安全与体验
 
 **目标**: 完善安全机制和用户体验。
 
@@ -1078,15 +1335,18 @@ persona:
 | v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
 | v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
 | v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
-| v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
-| v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
-| v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
-| v0.10.0 | 配置系统优化 | 自动显示/保存配置项 |
-| v0.11.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
-| v0.12.0 | 主动学习 | 知识提取、语义搜索 |
-| v0.13.0 | 个性化角色 | 可配置性格、专业领域 |
-| v0.14.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
-| v0.15.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
+| v0.8.0 | Token 优化基础 ✅ | 输出风格控制、提示词简化、工具结果截断 |
+| v0.8.1 | Token 深度优化 | 智能工具合并、工具结果摘要、预判机制 |
+| v0.8.2 | Token 进阶优化 | 工具结果缓存、历史消息压缩、项目文件精简 |
+| v0.9.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
+| v0.9.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
+| v0.10.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
+| v0.11.0 | 配置系统优化 | 自动显示/保存配置项 |
+| v0.12.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
+| v0.13.0 | 主动学习 | 知识提取、语义搜索 |
+| v0.14.0 | 个性化角色 | 可配置性格、专业领域 |
+| v0.15.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
+| v0.16.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
 
 ---
 
@@ -1161,6 +1421,12 @@ persona:
 | llm/ollama.py | 30% | 70% | P2 |
 | **总体** | **50%** | **75%** | - |
 
+**历史记录**:
+- 2026-05-11: 在 `tests/run_tests.py` 中设置 CI 门禁阈值 **54%** (`--cov-fail-under=54`)
+  - 背景：v0.6.x 新增模块（Architecture、Confirmation、Context、GitManager、Plan、Session、Undo）测试覆盖完成
+  - 测试用例从 147 增至 359 个
+  - 54% 为当前实际执行的最低阈值，ROADMAP 中的 75% 为最终目标
+
 ---
 
 ### T1 阶段 - 测试基础设施完善
@@ -1223,7 +1489,7 @@ persona:
 
 **目标**: 重构代码以提升可测试性，降低测试编写难度。
 
-**关联功能版本**: v0.7.0 模式切换、v0.8.0 Hooks 机制
+**关联功能版本**: v0.9.0 模式切换、v0.10.0 Hooks 机制
 
 **可测试性问题与改进**:
 
@@ -1321,7 +1587,7 @@ persona:
 
 **目标**: 建立自动化测试流程，确保代码质量。
 
-**关联功能版本**: v0.9.0 配置系统优化
+**关联功能版本**: v0.11.0 配置系统优化
 
 **任务列表**:
 
@@ -1509,7 +1775,8 @@ def test_message_roles(role, expected):
 
 | 测试阶段 | 目标覆盖率 | 关键里程碑 | 关联功能版本 |
 |------|-----------|-----------|--------|
-| T1 | 60% | CLI、Migration、Plugin 测试完成 | v0.6.0 |
-| T2 | 70% | 可测试性重构完成 | v0.7.0, v0.8.0 |
-| T3 | 75% | CI 门禁建立，全模块测试完成 | v0.9.0 |
-| T4+ | 80% | 持续维护，新增功能同步测试 | v0.10.0+ |
+| T0 | **54%** ✅ | CI 门禁阈值设置，v0.6.x 新模块测试完成 | v0.6.5 |
+| T1 | 60% | CLI、Migration、Plugin 测试完成 | v0.7.0 |
+| T2 | 70% | 可测试性重构完成 | v0.9.0, v0.10.0 |
+| T3 | 75% | CI 门禁建立，全模块测试完成 | v0.11.0 |
+| T4+ | 80% | 持续维护，新增功能同步测试 | v0.12.0+ |
