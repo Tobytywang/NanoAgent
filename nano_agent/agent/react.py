@@ -382,11 +382,16 @@ class ReActAgent(BaseAgent):
         Returns:
             Merged tool calls (possibly fewer than input)
         """
+        print(f"[Merge] Called with {len(tool_calls) if tool_calls else 0} tool calls")
+        print(f"[Merge] enabled={self.tool_merge_config.enabled}, concise_only={self.tool_merge_config.concise_only}, style={self.output_style_config.style}")
+
         if not tool_calls or not self.tool_merge_config.enabled:
+            print("[Merge] Skipping: no calls or disabled")
             return tool_calls
 
         # Only merge in concise mode if configured
         if self.tool_merge_config.concise_only and self.output_style_config.style != "concise":
+            print("[Merge] Skipping: concise_only check failed")
             return tool_calls
 
         merger = ToolCallMerger(self.tool_merge_config)
