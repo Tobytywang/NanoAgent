@@ -862,7 +862,7 @@ class ToolResultSummarizer:
 
 ---
 
-### v0.7.3 - Token 消耗进阶优化
+### v0.7.3 - Token 消耗进阶优化 ✅
 
 **目标**: 基于 report.json 分析，实现更精准的 Token 优化。
 
@@ -878,29 +878,29 @@ class ToolResultSummarizer:
 **任务列表**:
 
 **1. 检测重复工具调用 (~30% 节省)**:
-- [ ] 实现 `ToolResultCache` 类 - 缓存只读工具结果
-- [ ] 缓存 TTL: 5 分钟（可配置）
-- [ ] 仅缓存只读工具（file_read, file_search, shell_execute 查询）
-- [ ] 显示 "[cached]" 指示器
-- [ ] 不缓存写操作（file_write, memorize）
+- [x] 实现 `ToolResultCache` 类 - 缓存只读工具结果
+- [x] 缓存 TTL: 5 分钟（可配置）
+- [x] 仅缓存只读工具（file_read, file_search, shell_execute 查询）
+- [x] 显示 "[cached]" 指示器
+- [x] 不缓存写操作（file_write, memorize）
 
 **2. 压缩历史消息 (~20% 节省)**:
-- [ ] 实现 `MessageCompressor` 类 - 摘要旧消息
-- [ ] 阈值: 2000 prompt_tokens（可配置）
-- [ ] 保留最近 3 轮对话原文
-- [ ] 摘要格式: "Previous iterations: [brief summary]"
-- [ ] 在 LLM 调用前触发压缩
+- [x] 实现 `MessageCompressor` 类 - 摘要旧消息
+- [x] 阈值: 2000 prompt_tokens（可配置）
+- [x] 保留最近 3 轮对话原文
+- [x] 摘要格式: "Previous iterations: [brief summary]"
+- [x] 在 LLM 调用前触发压缩
 
 **3. 简化项目文件 (~10% 节省)**:
-- [ ] 添加 `project_file_mode: full|condensed|reference` 配置
-- [ ] 默认: condensed（平衡上下文与完整性）
-- [ ] 自动生成精简版本
-- [ ] 仅首轮发送完整文件，后续引用文件名
+- [x] 添加 `project_file_mode: full|condensed|reference` 配置
+- [x] 默认: condensed（平衡上下文与完整性）
+- [x] 自动生成精简版本
+- [x] 仅首轮发送完整文件，后续引用文件名
 
 **4. file_search 默认 recursive=true**:
-- [ ] 修改工具 schema 默认值
-- [ ] 更新帮助文本
-- [ ] 添加测试验证
+- [x] 修改工具 schema 默认值（已实现）
+- [x] 更新帮助文本
+- [x] 添加测试验证
 
 **技术方案**:
 ```python
@@ -1341,7 +1341,7 @@ persona:
 | v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
 | v0.7.1 | Token 消耗优化 ✅ | 输出风格控制、提示词简化、工具结果截断 |
 | v0.7.2 | Token 消耗深度优化 ✅ | 智能工具合并、工具结果智能摘要 |
-| v0.7.3 | Token 消耗进阶优化 | 工具结果缓存、历史消息压缩、项目文件精简 |
+| v0.7.3 | Token 消耗进阶优化 ✅ | 工具结果缓存、历史消息压缩、项目文件精简 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |

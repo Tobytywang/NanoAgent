@@ -305,9 +305,12 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     return orchestrator
 
 
-def _load_project_context() -> str:
+def _load_project_context(config=None) -> str:
     """
     Load project context from NANOPROJECT.md and .nano_agent/.
+
+    Args:
+        config: Configuration object (optional, for project_file_mode)
 
     Returns:
         Context string to add to system prompt
@@ -315,14 +318,29 @@ def _load_project_context() -> str:
     context_parts = []
     project_root = Path.cwd()
 
+    # Get project file mode from config
+    project_file_mode = "condensed"  # default
+    if config and hasattr(config, 'project_file'):
+        project_file_mode = config.project_file.mode
+
     # 1. Load NANOPROJECT.md (required if exists)
     nanoproject_path = project_root / "NANOPROJECT.md"
     if nanoproject_path.exists():
         try:
             content = nanoproject_path.read_text(encoding="utf-8")
-            # Truncate if too long
-            if len(content) > 3000:
-                content = content[:3000] + "\n\n... (truncated)"
+
+            # Apply mode-specific processing
+            if project_file_mode == "full":
+                # Send complete file (with truncation for safety)
+                if len(content) > 5000:
+                    content = content[:5000] + "\n\n... (truncated)"
+            elif project_file_mode == "condensed":
+                # Send condensed version (extract key sections)
+                content = _condense_project_file(content)
+            elif project_file_mode == "reference":
+                # Only send file name reference
+                content = f"See NANOPROJECT.md for project context (file exists, {len(content)} chars)"
+
             context_parts.append(f"## Project Context\n\n{content}")
         except Exception:
             pass
@@ -346,6 +364,55 @@ def _load_project_context() -> str:
     if context_parts:
         return "\n\n---\n\n".join(context_parts)
     return ""
+
+
+def _condense_project_file(content: str) -> str:
+    """
+    Condense NANOPROJECT.md content to key sections.
+
+    Args:
+        content: Full file content
+
+    Returns:
+        Condensed content with key sections only
+    """
+    import re
+
+    # Extract key sections (## headers and their first paragraph)
+    sections = []
+    lines = content.split('\n')
+
+    current_section = None
+    section_content = []
+
+    for line in lines:
+        if line.startswith('## '):
+            # Save previous section
+            if current_section and section_content:
+                # Keep first 3 lines of section content
+                condensed = '\n'.join(section_content[:3])
+                if len(condensed) > 200:
+                    condensed = condensed[:200] + "..."
+                sections.append(f"{current_section}\n{condensed}")
+
+            current_section = line
+            section_content = []
+        elif current_section:
+            section_content.append(line)
+
+    # Don't forget last section
+    if current_section and section_content:
+        condensed = '\n'.join(section_content[:3])
+        if len(condensed) > 200:
+            condensed = condensed[:200] + "..."
+        sections.append(f"{current_section}\n{condensed}")
+
+    # Limit total length
+    result = '\n\n'.join(sections[:5])  # Max 5 sections
+    if len(result) > 1500:
+        result = result[:1500] + "\n\n... (condensed)"
+
+    return result
 
 
 def run_interactive(
@@ -488,7 +555,7 @@ def run_interactive(
             Console.print("Git integration enabled", style="info")
 
     # Load project context at startup and add to system prompt
-    project_context = _load_project_context()
+    project_context = _load_project_context(config)
 
     # 设置优雅退出管理器
     GracefulExitManager.agent = agent

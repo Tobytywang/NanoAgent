@@ -200,6 +200,41 @@ class ToolMergeConfig:
 
 
 @dataclass
+class CacheConfig:
+    """Tool result caching configuration."""
+
+    enabled: bool = True
+    ttl_seconds: int = 300  # 5 minutes
+    cacheable_tools: list[str] = field(
+        default_factory=lambda: ["file_read", "file_search", "shell_execute"]
+    )
+    excluded_tools: list[str] = field(
+        default_factory=lambda: ["file_write", "memorize", "forget"]
+    )
+    max_cache_size: int = 100  # Maximum number of cached results
+
+
+@dataclass
+class CompressorConfig:
+    """Message compression configuration."""
+
+    enabled: bool = True
+    threshold_tokens: int = 2000  # Compress when prompt_tokens > threshold
+    keep_recent: int = 3  # Keep recent N rounds of conversation
+    summary_max_tokens: int = 500  # Max tokens for summary
+
+
+@dataclass
+class ProjectFileConfig:
+    """Project file handling configuration."""
+
+    mode: Literal["full", "condensed", "reference"] = "condensed"
+    # full: Send complete file every time
+    # condensed: Send condensed version (first run only)
+    # reference: Only send file name after first reference
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -215,3 +250,6 @@ class Config:
     git: GitConfig = field(default_factory=GitConfig)
     output_style: OutputStyleConfig = field(default_factory=OutputStyleConfig)
     tool_merge: ToolMergeConfig = field(default_factory=ToolMergeConfig)
+    cache: CacheConfig = field(default_factory=CacheConfig)
+    compressor: CompressorConfig = field(default_factory=CompressorConfig)
+    project_file: ProjectFileConfig = field(default_factory=ProjectFileConfig)

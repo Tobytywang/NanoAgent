@@ -198,6 +198,8 @@ class AgentBuilder:
             confirmation_config=self.config.confirmation if hasattr(self.config, 'confirmation') else None,
             output_style_config=self.config.output_style if hasattr(self.config, 'output_style') else None,
             tool_merge_config=self.config.tool_merge if hasattr(self.config, 'tool_merge') else None,
+            cache_config=self.config.cache if hasattr(self.config, 'cache') else None,
+            compressor_config=self.config.compressor if hasattr(self.config, 'compressor') else None,
         )
 
         # Create orchestrator

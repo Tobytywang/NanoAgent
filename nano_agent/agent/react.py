@@ -18,6 +18,8 @@ from .context import ContextManager
 from .confirmation import ConfirmationManager, ConfirmationConfig
 from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from .tool_merger import ToolCallMerger, ToolMergeConfig
+from .cache import ToolResultCache, CacheConfig
+from .compressor import MessageCompressor, CompressorConfig
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
@@ -95,6 +97,8 @@ class ReActAgent(BaseAgent):
         confirmation_config: ConfirmationConfig | None = None,
         output_style_config: OutputStyleConfig | None = None,
         tool_merge_config: ToolMergeConfig | None = None,
+        cache_config: CacheConfig | None = None,
+        compressor_config: CompressorConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -113,6 +117,8 @@ class ReActAgent(BaseAgent):
             confirmation_config: Confirmation mechanism configuration
             output_style_config: Output style configuration for token efficiency
             tool_merge_config: Tool merging configuration for token efficiency
+            cache_config: Tool result caching configuration
+            compressor_config: Message compression configuration
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -126,6 +132,12 @@ class ReActAgent(BaseAgent):
 
         # Tool merge configuration
         self.tool_merge_config = tool_merge_config or ToolMergeConfig()
+
+        # Tool result cache
+        self.cache = ToolResultCache(cache_config)
+
+        # Message compressor
+        self.compressor = MessageCompressor(compressor_config)
 
         # Context manager
         self.context_manager = ContextManager(
@@ -300,12 +312,20 @@ class ReActAgent(BaseAgent):
         """
         self.events.emit(AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1})
 
-        # Context pressure check and compression
+        # Context pressure check and compression (existing context manager)
         if self.context_manager:
             self.context_manager.check_and_compress()
 
         # Get context and tools
         messages = self.memory.get_all()
+
+        # Apply message compression if needed
+        if self.compressor.should_compress(messages):
+            original_count = len(messages)
+            messages = self.compressor.compress(messages)
+            if self.verbose and len(messages) < original_count:
+                print(f"[Compressor] Reduced {original_count} messages to {len(messages)}")
+
         tools_schema = self.tool_registry.get_all_schemas()
 
         # Call LLM
@@ -402,54 +422,64 @@ class ReActAgent(BaseAgent):
                 output="[预览模式] 未实际执行"
             )
         else:
-            # Check if confirmation is needed
-            tool = self.tool_registry.get(tool_call.name)
-            if tool and self.confirmation.needs_confirmation(tool):
-                # Request confirmation
-                self.confirmation.request_confirmation()
-                self.events.emit(AgentEvent.CONFIRMATION_REQUIRED, {
-                    "tool": tool_call.name,
-                    "arguments": tool_call.arguments,
-                    "risk_level": tool.risk_level.value
-                })
-
-                # Wait for confirmation (blocking)
-                confirmed = self.confirmation.wait_for_result()
-
-                if not confirmed:
-                    # User denied
-                    result = ToolResult(
-                        success=False,
-                        output="",
-                        error="用户取消操作"
-                    )
-                    # Record and return early
-                    self._tool_call_records.append({
-                        "name": tool_call.name,
-                        "arguments": tool_call.arguments,
-                        "success": False,
-                        "output_preview": None,
-                    })
-                    self.events.emit(AgentEvent.TOOL_RESULT, {
+            # Check cache first
+            cached_result = self.cache.get_cached_result(tool_call.name, tool_call.arguments)
+            if cached_result is not None:
+                result = cached_result
+                if self.verbose:
+                    print(f"[Cache] Hit for {tool_call.name}")
+            else:
+                # Check if confirmation is needed
+                tool = self.tool_registry.get(tool_call.name)
+                if tool and self.confirmation.needs_confirmation(tool):
+                    # Request confirmation
+                    self.confirmation.request_confirmation()
+                    self.events.emit(AgentEvent.CONFIRMATION_REQUIRED, {
                         "tool": tool_call.name,
-                        "result": result
+                        "arguments": tool_call.arguments,
+                        "risk_level": tool.risk_level.value
                     })
-                    return result
 
-            # Execute the tool
-            tool_start = time.perf_counter()
-            result = self._execute_tool_call(tool_call)
-            tool_latency = (time.perf_counter() - tool_start) * 1000
+                    # Wait for confirmation (blocking)
+                    confirmed = self.confirmation.wait_for_result()
 
-            # Record tool execution
-            self.tracker.record_tool_execution(
-                tool_name=tool_call.name,
-                arguments=tool_call.arguments,
-                success=result.success,
-                latency_ms=tool_latency,
-                output_length=len(result.output) if result.output else 0,
-                error=result.error,
-            )
+                    if not confirmed:
+                        # User denied
+                        result = ToolResult(
+                            success=False,
+                            output="",
+                            error="用户取消操作"
+                        )
+                        # Record and return early
+                        self._tool_call_records.append({
+                            "name": tool_call.name,
+                            "arguments": tool_call.arguments,
+                            "success": False,
+                            "output_preview": None,
+                        })
+                        self.events.emit(AgentEvent.TOOL_RESULT, {
+                            "tool": tool_call.name,
+                            "result": result
+                        })
+                        return result
+
+                # Execute the tool
+                tool_start = time.perf_counter()
+                result = self._execute_tool_call(tool_call)
+                tool_latency = (time.perf_counter() - tool_start) * 1000
+
+                # Cache the result if cacheable
+                self.cache.set_cached_result(tool_call.name, tool_call.arguments, result)
+
+                # Record tool execution
+                self.tracker.record_tool_execution(
+                    tool_name=tool_call.name,
+                    arguments=tool_call.arguments,
+                    success=result.success,
+                    latency_ms=tool_latency,
+                    output_length=len(result.output) if result.output else 0,
+                    error=result.error,
+                )
 
         # Record tool call
         self._tool_call_records.append({
