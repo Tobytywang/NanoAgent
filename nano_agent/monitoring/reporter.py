@@ -28,22 +28,43 @@ def _remove_emoji(text: str) -> str:
     return re.sub(r'[\U0001F000-\U000FFFFF]', '', text)
 
 
-def _sanitize_strings(obj: Any) -> Any:
+def _truncate_long_strings(text: str, max_length: int = 500) -> str:
+    """
+    Truncate long strings for better readability in terminals/editors.
+
+    Very long strings (like system prompts) cause vim to display @ symbols
+    for folded content. Truncating them improves readability.
+
+    Args:
+        text: Input text to truncate
+        max_length: Maximum length before truncation (default: 500)
+
+    Returns:
+        Truncated text with ellipsis if too long, otherwise original text
+    """
+    if len(text) > max_length:
+        return text[:max_length] + "... [truncated, total: " + str(len(text)) + " chars]"
+    return text
+
+
+def _sanitize_strings(obj: Any, max_string_length: int = 500) -> Any:
     """
     Recursively sanitize all strings in a structure.
 
     Args:
         obj: Object to sanitize (dict, list, str, or other)
+        max_string_length: Maximum string length before truncation (default: 500)
 
     Returns:
-        Sanitized object with all strings cleaned of emoji
+        Sanitized object with all strings cleaned of emoji and truncated
     """
     if isinstance(obj, dict):
-        return {k: _sanitize_strings(v) for k, v in obj.items()}
+        return {k: _sanitize_strings(v, max_string_length) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return [_sanitize_strings(v) for v in obj]
+        return [_sanitize_strings(v, max_string_length) for v in obj]
     elif isinstance(obj, str):
-        return _remove_emoji(obj)
+        result = _remove_emoji(obj)
+        return _truncate_long_strings(result, max_string_length)
     else:
         return obj
 
