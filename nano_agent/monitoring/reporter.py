@@ -28,52 +28,160 @@ def _remove_emoji(text: str) -> str:
     return re.sub(r'[\U0001F000-\U000FFFFF]', '', text)
 
 
-def _truncate_long_strings(text: str, max_length: int = 500) -> str:
+def _split_long_string(text: str, max_length: int = 200) -> list[str]:
     """
-    Truncate long strings for better readability in terminals/editors.
-
-    Very long strings (like system prompts) cause vim to display @ symbols
-    for folded content. Truncating them improves readability.
+    Split a long string into multiple parts for better readability.
 
     Args:
-        text: Input text to truncate
-        max_length: Maximum length before truncation (default: 500)
+        text: String to split
+        max_length: Maximum length per part (default: 200)
 
     Returns:
-        Truncated text with ellipsis if too long, otherwise original text
+        List of string parts
     """
-    if len(text) > max_length:
-        return text[:max_length] + "... [truncated, total: " + str(len(text)) + " chars]"
-    return text
+    if len(text) <= max_length:
+        return [text]
+
+    parts = []
+    i = 0
+    while i < len(text):
+        # Find a good break point
+        end = min(i + max_length, len(text))
+
+        # Try to break at a newline if possible
+        if end < len(text):
+            # Look for newline within last 50 chars of chunk
+            newline_pos = text.rfind('\n', i, end)
+            if newline_pos > i:
+                end = newline_pos + 1
+            else:
+                # Try to break at a space
+                space_pos = text.rfind(' ', i, end)
+                if space_pos > i:
+                    end = space_pos + 1
+
+        parts.append(text[i:end])
+        i = end
+
+    return parts
 
 
-def _sanitize_strings(obj: Any, max_string_length: int = 500) -> Any:
+def _sanitize_strings(obj: Any) -> Any:
     """
     Recursively sanitize all strings in a structure.
 
     Args:
         obj: Object to sanitize (dict, list, str, or other)
-        max_string_length: Maximum string length before truncation (default: 500)
 
     Returns:
-        Sanitized object with all strings cleaned of emoji and truncated
+        Sanitized object with all strings cleaned of emoji
     """
     if isinstance(obj, dict):
-        return {k: _sanitize_strings(v, max_string_length) for k, v in obj.items()}
+        return {k: _sanitize_strings(v) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return [_sanitize_strings(v, max_string_length) for v in obj]
+        return [_sanitize_strings(v) for v in obj]
     elif isinstance(obj, str):
-        result = _remove_emoji(obj)
-        return _truncate_long_strings(result, max_string_length)
+        return _remove_emoji(obj)
     else:
         return obj
+
+
+def _format_data_for_readable_json(data: dict, max_string_length: int = 200) -> dict:
+    """
+    Format data structure for more readable JSON output.
+
+    Long string values in prompt_messages are split into arrays of
+    shorter strings, making the JSON easier to view in terminals/editors.
+
+    Args:
+        data: Original data dictionary
+        max_string_length: Maximum string length before splitting
+
+    Returns:
+        Formatted data dictionary
+    """
+    result = {}
+
+    for key, value in data.items():
+        if key == 'iterations' and isinstance(value, list):
+            # Process iterations to split long prompt_messages content
+            result[key] = [
+                _format_iteration(iteration, max_string_length)
+                for iteration in value
+            ]
+        else:
+            result[key] = value
+
+    return result
+
+
+def _format_iteration(iteration: dict, max_string_length: int) -> dict:
+    """
+    Format a single iteration for readable JSON.
+
+    Args:
+        iteration: Iteration data
+        max_string_length: Maximum string length before splitting
+
+    Returns:
+        Formatted iteration dictionary
+    """
+    result = dict(iteration)
+
+    if 'llm_call' in result and result['llm_call']:
+        llm_call = result['llm_call']
+
+        # Format prompt_messages
+        if 'prompt_messages' in llm_call and llm_call['prompt_messages']:
+            llm_call['prompt_messages'] = [
+                _format_prompt_message(msg, max_string_length)
+                for msg in llm_call['prompt_messages']
+            ]
+
+        # Format output_text if it's very long
+        if 'output_text' in llm_call and isinstance(llm_call['output_text'], str):
+            if len(llm_call['output_text']) > max_string_length:
+                llm_call['output_text_parts'] = _split_long_string(
+                    llm_call['output_text'], max_string_length
+                )
+
+    return result
+
+
+def _format_prompt_message(msg: dict, max_string_length: int) -> dict:
+    """
+    Format a prompt message for readable JSON.
+
+    Long 'content' values are split into 'content_parts' array.
+
+    Args:
+        msg: Message dictionary
+        max_string_length: Maximum string length before splitting
+
+    Returns:
+        Formatted message dictionary
+    """
+    result = dict(msg)
+
+    if 'content' in result and isinstance(result['content'], str):
+        content = result['content']
+        if len(content) > max_string_length:
+            # Split into parts and store as array
+            result['content_parts'] = _split_long_string(content, max_string_length)
+            # Keep original content reference but mark as split
+            result['content_length'] = len(content)
+            # Remove the long content to avoid @ display issue
+            del result['content']
+
+    return result
 
 
 class ReportGenerator:
     """Generate reports from monitoring data."""
 
     @staticmethod
-    def to_json(metrics: RunMetrics, indent: int = 2, remove_emoji: bool = True) -> str:
+    def to_json(metrics: RunMetrics, indent: int = 2, remove_emoji: bool = True,
+                max_string_length: int = 200) -> str:
         """
         Export metrics as JSON string.
 
@@ -82,13 +190,20 @@ class ReportGenerator:
             indent: JSON indentation
             remove_emoji: Whether to remove emoji characters (default: True)
                           Emoji may display as garbled text in some terminals/editors
+            max_string_length: Maximum string length before splitting into parts (default: 200)
+                               Set to 0 to disable splitting
 
         Returns:
             JSON string
         """
         data = metrics.to_dict()
+
         if remove_emoji:
             data = _sanitize_strings(data)
+
+        if max_string_length > 0:
+            data = _format_data_for_readable_json(data, max_string_length)
+
         return json.dumps(data, indent=indent, default=str, ensure_ascii=False)
 
     @staticmethod
@@ -242,7 +357,8 @@ class ReportGenerator:
         )
 
     @staticmethod
-    def save_json(metrics: RunMetrics, path: str, remove_emoji: bool = True) -> None:
+    def save_json(metrics: RunMetrics, path: str, remove_emoji: bool = True,
+                  max_string_length: int = 200) -> None:
         """
         Save metrics to JSON file.
 
@@ -250,9 +366,11 @@ class ReportGenerator:
             metrics: RunMetrics object
             path: File path
             remove_emoji: Whether to remove emoji characters (default: True)
+            max_string_length: Maximum string length before splitting (default: 200)
         """
         with open(path, 'w', encoding='utf-8') as f:
-            f.write(ReportGenerator.to_json(metrics, remove_emoji=remove_emoji))
+            f.write(ReportGenerator.to_json(metrics, remove_emoji=remove_emoji,
+                                            max_string_length=max_string_length))
 
     @staticmethod
     def save_markdown(metrics: RunMetrics, path: str) -> None:
@@ -271,7 +389,8 @@ def export_report(
     metrics: RunMetrics,
     format: str = "json",
     path: str | None = None,
-    remove_emoji: bool = True
+    remove_emoji: bool = True,
+    max_string_length: int = 200
 ) -> str | None:
     """
     Export report in specified format.
@@ -281,6 +400,7 @@ def export_report(
         format: Output format ("json", "markdown", "summary")
         path: Optional file path to save
         remove_emoji: Whether to remove emoji characters from JSON output (default: True)
+        max_string_length: Maximum string length before splitting (default: 200)
 
     Returns:
         Report string if path is None, else None
@@ -288,9 +408,11 @@ def export_report(
     generator = ReportGenerator()
 
     if format == "json":
-        content = generator.to_json(metrics, remove_emoji=remove_emoji)
+        content = generator.to_json(metrics, remove_emoji=remove_emoji,
+                                    max_string_length=max_string_length)
         if path:
-            generator.save_json(metrics, path, remove_emoji=remove_emoji)
+            generator.save_json(metrics, path, remove_emoji=remove_emoji,
+                               max_string_length=max_string_length)
         return content
 
     elif format == "markdown":
