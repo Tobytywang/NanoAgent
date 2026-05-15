@@ -1771,6 +1771,11 @@ def _show_config(config, agent) -> None:
         tools_display += f"... (+{len(tools) - 10} more)"
     print(format_line("Tools:", tools_display))
 
+    # Output Style 配置
+    print("\n## Output Style")
+    print(format_line("Style:", config.output_style.style))
+    print(format_line("Max Tool Output:", f"{config.output_style.tool_output_max_tokens} tokens"))
+
     print("\n" + "=" * 50 + "\n")
 
 

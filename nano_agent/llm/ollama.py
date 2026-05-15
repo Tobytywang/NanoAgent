@@ -42,12 +42,21 @@ class OllamaLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None
     ) -> dict:
-        """Build the request payload."""
+        """Build the request payload for Ollama API."""
         # Handle both Message objects and dict objects
+        # Convert tool_calls to Ollama format (arguments as dict, not JSON string)
         formatted_messages = []
         for m in messages:
             if isinstance(m, dict):
-                formatted_messages.append(m)
+                # Convert tool_calls if present
+                if "tool_calls" in m:
+                    msg_copy = m.copy()
+                    msg_copy["tool_calls"] = [
+                        self._convert_tool_call_for_ollama(tc) for tc in msg_copy["tool_calls"]
+                    ]
+                    formatted_messages.append(msg_copy)
+                else:
+                    formatted_messages.append(m)
             else:
                 formatted_messages.append(m.to_dict())
 
@@ -60,6 +69,28 @@ class OllamaLLM(BaseLLM):
         if tools:
             payload["tools"] = tools
         return payload
+
+    def _convert_tool_call_for_ollama(self, tool_call: dict) -> dict:
+        """Convert tool call from OpenAI format to Ollama format."""
+        func = tool_call.get("function", {})
+        args = func.get("arguments", {})
+
+        # If arguments is a JSON string, parse it
+        if isinstance(args, str):
+            import json
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+
+        return {
+            "id": tool_call.get("id", ""),
+            "type": "function",
+            "function": {
+                "name": func.get("name", ""),
+                "arguments": args  # Ollama expects dict, not JSON string
+            }
+        }
 
     def chat(
         self,
@@ -85,6 +116,9 @@ class OllamaLLM(BaseLLM):
             timeout=self.timeout,
             headers={"Content-Type": "application/json"}
         )
+        if not response.ok:
+            logger = get_logger()
+            logger.error(f"Ollama API error: {response.status_code} - {response.text}")
         response.raise_for_status()
         data = response.json()
 

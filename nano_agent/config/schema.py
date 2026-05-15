@@ -174,8 +174,35 @@ class GitConfig:
 
 
 @dataclass
+class OutputStyleConfig:
+    """Output style configuration for token efficiency."""
+
+    style: Literal["concise", "standard", "detailed"] = "standard"
+    tool_output_max_tokens: int = 500  # Max tokens for tool output before truncation
+    # Intelligent summarization settings
+    smart_summarization: bool = True  # Use intelligent extraction
+    extract_imports: bool = True  # Extract imports from file content
+    extract_signatures: bool = True  # Extract class/function signatures
+    extract_errors: bool = True  # Extract error messages from shell
+    file_search_count_only: bool = False  # Show only count for file searches
+
+
+@dataclass
+class ToolMergeConfig:
+    """Tool merging configuration for token efficiency."""
+
+    enabled: bool = True
+    concise_only: bool = True  # Only merge in concise mode
+    max_batch_size: int = 3  # Maximum operations to merge
+    merge_tools: list[str] = field(
+        default_factory=lambda: ["file_search", "shell_execute"]
+    )
+
+
+@dataclass
 class Config:
     """Main configuration."""
+
     llm: LLMConfig = field(default_factory=LLMConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
@@ -186,3 +213,5 @@ class Config:
     context: ContextConfig = field(default_factory=ContextConfig)
     confirmation: ConfirmationConfig = field(default_factory=ConfirmationConfig)
     git: GitConfig = field(default_factory=GitConfig)
+    output_style: OutputStyleConfig = field(default_factory=OutputStyleConfig)
+    tool_merge: ToolMergeConfig = field(default_factory=ToolMergeConfig)

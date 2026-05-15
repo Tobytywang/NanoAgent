@@ -120,9 +120,9 @@ class MetricsTracker:
         completion_tokens: int,
         latency_ms: float,
         tool_calls_count: int,
-        prompt_messages: list[dict] | None = None,
-        response_text: str = "",
-        tool_calls_detail: list[dict] | None = None,
+        input_messages: list[dict] | None = None,
+        output_text: str = "",
+        tool_calls: list[dict] | None = None,
     ) -> None:
         """
         Record an LLM call.
@@ -133,9 +133,9 @@ class MetricsTracker:
             completion_tokens: Number of completion tokens
             latency_ms: Latency in milliseconds
             tool_calls_count: Number of tool calls in response
-            prompt_messages: Complete messages sent to LLM (for prompt analysis)
-            response_text: Complete response text from LLM
-            tool_calls_detail: Detailed tool call information
+            input_messages: The input messages sent to LLM
+            output_text: The output text from LLM
+            tool_calls: The tool calls from LLM response
         """
         if not self.enabled or not self._current_iteration:
             return
@@ -148,9 +148,9 @@ class MetricsTracker:
             total_tokens=prompt_tokens + completion_tokens,
             latency_ms=latency_ms,
             tool_calls_count=tool_calls_count,
-            prompt_messages=prompt_messages or [],
-            response_text=response_text,
-            tool_calls_detail=tool_calls_detail or [],
+            input_messages=input_messages or [],
+            output_text=output_text,
+            tool_calls=tool_calls or [],
         )
 
         # Increment LLM call count

@@ -712,7 +712,7 @@ orchestrator = builder.build()
 
 ---
 
-### v0.8.0 - Token 优化基础 ✅
+### v0.7.1 - Token 消耗优化 ✅
 
 **目标**: 减少 Agent 运行时的 Token 消耗，降低使用成本。
 
@@ -808,20 +808,35 @@ class OutputStyleManager:
 
 ---
 
-### v0.8.1 - Token 深度优化
+### v0.7.2 - Token 消耗深度优化 ✅
 
 **目标**: 进一步减少 Token 消耗，目标两轮对话 < 8k tokens。
 
 **背景**:
-v0.8.0 实现了基础优化，concise 模式下两轮对话仍有 14k tokens。需要更激进的优化。
+v0.7.1 实现了基础优化，concise 模式下两轮对话仍有 14k tokens。需要更激进的优化。
 
 **架构归属**: 执行层 - 智能优化
 
 **任务列表**:
-- [ ] 智能工具合并 - 合并相似工具调用，减少迭代次数
+- [x] 智能工具合并 - 合并相似工具调用，减少迭代次数
 - [x] 工具结果智能摘要 - file_read/shell_execute 结果只保留关键信息
-- [x] 预判机制 - 先分析问题复杂度，简单问题直接回答
-- [x] 更激进的输出精简 - 一句话回答、无表格、无列表
+- [ ] 预判机制 - 先分析问题复杂度，简单问题直接回答（暂缓）
+- [ ] 更激进的输出精简 - 一句话回答、无表格、无列表（暂缓）
+
+**新增文件**:
+```
+nano_agent/agent/tool_merger.py  # ToolCallMerger, ToolMergeConfig
+tests/test_tool_merger.py        # 工具合并测试
+```
+
+**修改文件**:
+```
+nano_agent/config/schema.py      # ToolMergeConfig, 扩展 OutputStyleConfig
+nano_agent/agent/react.py        # 集成工具合并、智能摘要配置
+nano_agent/agent/result_summarizer.py  # 增强智能摘要逻辑
+nano_agent/core/builder.py       # 传递 tool_merge_config
+tests/test_output_style.py       # 智能摘要测试
+```
 
 **技术方案**:
 ```python
@@ -833,32 +848,21 @@ v0.8.0 实现了基础优化，concise 模式下两轮对话仍有 14k tokens。
 class ToolResultSummarizer:
     def summarize(self, output: str, tool_name: str) -> str:
         if tool_name == "file_read":
-            # 只保留关键行（标题、关键内容）
+            # 提取 imports + signatures + 首尾行
             return self._extract_key_lines(output)
         elif tool_name == "shell_execute":
-            # 只保留非空输出行
+            # 提取 errors + 有意义的输出
             return self._filter_meaningful(output)
-
-# 3. 预判机制
-def _should_use_tools(self, user_input: str) -> bool:
-    """判断是否需要工具调用"""
-    simple_patterns = [
-        "你好", "hello", "谢谢", "thanks",
-        "什么是", "what is", "如何", "how to"
-    ]
-    for pattern in simple_patterns:
-        if pattern in user_input.lower():
-            return False
-    return True
 ```
 
 **预期效果**:
-- 两轮对话 < 8k tokens
-- 简单问题直接回答，不调用工具
+- 智能工具合并: ~25-30% 节省
+- 工具结果智能摘要: ~20-25% 节省
+- 两轮对话目标 < 8k tokens
 
 ---
 
-### v0.8.2 - Token 进阶优化
+### v0.7.3 - Token 消耗进阶优化
 
 **目标**: 基于 report.json 分析，实现更精准的 Token 优化。
 
@@ -894,9 +898,9 @@ def _should_use_tools(self, user_input: str) -> bool:
 - [ ] 仅首轮发送完整文件，后续引用文件名
 
 **4. file_search 默认 recursive=true**:
-- [x] 修改工具 schema 默认值
-- [x] 更新帮助文本
-- [x] 添加测试验证
+- [ ] 修改工具 schema 默认值
+- [ ] 更新帮助文本
+- [ ] 添加测试验证
 
 **技术方案**:
 ```python
@@ -969,7 +973,7 @@ nano_agent/agent/react.py      # 集成缓存和压缩
 
 ---
 
-### v0.9.0 - 流式执行
+### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
 
@@ -1078,12 +1082,12 @@ for event in handle.events:
 
 ---
 
-### v0.9.1 - 异步流式执行
+### v0.8.1 - 异步流式执行
 
 **目标**: 支持真正的异步流式输出，与 LLM API 的流式响应对接。
 
 **背景**:
-v0.9.0 的生成器是同步的，无法与 LLM 的流式 API（SSE）对接。异步生成器可以逐 token 输出，提供更好的用户体验。
+v0.7.0 的生成器是同步的，无法与 LLM 的流式 API（SSE）对接。异步生成器可以逐 token 输出，提供更好的用户体验。
 
 **架构归属**: 执行层 - 异步流式
 
@@ -1128,7 +1132,7 @@ async def run_interactive_async(orchestrator, user_input):
 
 ---
 
-### v0.10.0 - 模式切换
+### v0.9.0 - 模式切换
 
 **目标**: 支持在 Agent 会话中切换执行模式，提供更灵活的交互方式。
 
@@ -1171,7 +1175,7 @@ class ModeManager:
 
 ---
 
-### v0.11.0 - 配置系统优化
+### v0.10.0 - 配置系统优化
 
 **目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
 
@@ -1203,7 +1207,7 @@ def _show_config(config, agent):
 
 ---
 
-### v0.12.0 - 反思与规划能力
+### v0.11.0 - 反思与规划能力
 
 **目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
 
@@ -1232,7 +1236,7 @@ class ReflectiveAgent(ReActAgent):
 
 ---
 
-### v0.13.0 - 主动学习能力
+### v0.12.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
 
@@ -1259,7 +1263,7 @@ class LearningAgent(ReActAgent):
 
 ---
 
-### v0.14.0 - 个性化与角色
+### v0.13.0 - 个性化与角色
 
 **目标**: 支持可配置的 Agent 性格和专业领域深度。
 
@@ -1285,7 +1289,7 @@ persona:
 
 ---
 
-### v0.15.0 - 多 Agent 协作
+### v0.14.0 - 多 Agent 协作
 
 **目标**: 支持多 Agent 协作和人机协作机制。
 
@@ -1310,7 +1314,7 @@ persona:
 
 ---
 
-### v0.16.0 - 安全与体验
+### v0.15.0 - 安全与体验
 
 **目标**: 完善安全机制和用户体验。
 
@@ -1335,18 +1339,18 @@ persona:
 | v0.6.4 | 渐进式执行与用户确认 ✅ | RiskLevel 分级、ConfirmationManager、白名单管理 |
 | v0.6.5 | Git 集成与状态回退 ✅ | GitManager、自动提交、/undo 增强、/history 命令 |
 | v0.7.0 | Hooks 机制与架构优化 ✅ | EventEmitter 统一、AgentBuilder、BaseRegistry、tools/builtin/ |
-| v0.8.0 | Token 优化基础 ✅ | 输出风格控制、提示词简化、工具结果截断 |
-| v0.8.1 | Token 深度优化 | 智能工具合并、工具结果摘要、预判机制 |
-| v0.8.2 | Token 进阶优化 | 工具结果缓存、历史消息压缩、项目文件精简 |
-| v0.9.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
-| v0.9.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
-| v0.10.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
-| v0.11.0 | 配置系统优化 | 自动显示/保存配置项 |
-| v0.12.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
-| v0.13.0 | 主动学习 | 知识提取、语义搜索 |
-| v0.14.0 | 个性化角色 | 可配置性格、专业领域 |
-| v0.15.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
-| v0.16.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
+| v0.7.1 | Token 消耗优化 ✅ | 输出风格控制、提示词简化、工具结果截断 |
+| v0.7.2 | Token 消耗深度优化 ✅ | 智能工具合并、工具结果智能摘要 |
+| v0.7.3 | Token 消耗进阶优化 | 工具结果缓存、历史消息压缩、项目文件精简 |
+| v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
+| v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
+| v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
+| v0.10.0 | 配置系统优化 | 自动显示/保存配置项 |
+| v0.11.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
+| v0.12.0 | 主动学习 | 知识提取、语义搜索 |
+| v0.13.0 | 个性化角色 | 可配置性格、专业领域 |
+| v0.14.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
+| v0.15.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
 
 ---
 
@@ -1489,7 +1493,7 @@ persona:
 
 **目标**: 重构代码以提升可测试性，降低测试编写难度。
 
-**关联功能版本**: v0.9.0 模式切换、v0.10.0 Hooks 机制
+**关联功能版本**: v0.7.0 模式切换、v0.8.0 Hooks 机制
 
 **可测试性问题与改进**:
 
@@ -1587,7 +1591,7 @@ persona:
 
 **目标**: 建立自动化测试流程，确保代码质量。
 
-**关联功能版本**: v0.11.0 配置系统优化
+**关联功能版本**: v0.9.0 配置系统优化
 
 **任务列表**:
 
@@ -1776,7 +1780,7 @@ def test_message_roles(role, expected):
 | 测试阶段 | 目标覆盖率 | 关键里程碑 | 关联功能版本 |
 |------|-----------|-----------|--------|
 | T0 | **54%** ✅ | CI 门禁阈值设置，v0.6.x 新模块测试完成 | v0.6.5 |
-| T1 | 60% | CLI、Migration、Plugin 测试完成 | v0.7.0 |
-| T2 | 70% | 可测试性重构完成 | v0.9.0, v0.10.0 |
-| T3 | 75% | CI 门禁建立，全模块测试完成 | v0.11.0 |
-| T4+ | 80% | 持续维护，新增功能同步测试 | v0.12.0+ |
+| T1 | 60% | CLI、Migration、Plugin 测试完成 | v0.6.0 |
+| T2 | 70% | 可测试性重构完成 | v0.7.0, v0.8.0 |
+| T3 | 75% | CI 门禁建立，全模块测试完成 | v0.9.0 |
+| T4+ | 80% | 持续维护，新增功能同步测试 | v0.10.0+ |

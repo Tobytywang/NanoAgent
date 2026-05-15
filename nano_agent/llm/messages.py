@@ -93,6 +93,17 @@ class ToolCall:
             }
         }
 
+    def to_ollama_dict(self) -> dict:
+        """Convert to dictionary for Ollama API (arguments as dict, not JSON string)."""
+        return {
+            "id": self.id,
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "arguments": self.arguments  # Ollama expects dict, not JSON string
+            }
+        }
+
 
 @dataclass
 class AssistantMessage(Message):

@@ -18,10 +18,10 @@ class LLMCallMetrics:
     total_tokens: int
     latency_ms: float
     tool_calls_count: int
-    # 完整交互信息（用于 prompt 优化分析）
-    prompt_messages: list[dict] = field(default_factory=list)  # 发送给 LLM 的完整 messages
-    response_text: str = ""  # LLM 返回的完整文本
-    tool_calls_detail: list[dict] = field(default_factory=list)  # 工具调用详情
+    # 新增：输入输出信息
+    input_messages: list[dict] = field(default_factory=list)
+    output_text: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -33,9 +33,9 @@ class LLMCallMetrics:
             "total_tokens": self.total_tokens,
             "latency_ms": round(self.latency_ms, 2),
             "tool_calls_count": self.tool_calls_count,
-            "prompt_messages": self.prompt_messages,
-            "response_text": self.response_text,
-            "tool_calls_detail": self.tool_calls_detail,
+            "input_messages": self.input_messages,
+            "output_text": self.output_text,
+            "tool_calls": self.tool_calls,
         }
 
 
