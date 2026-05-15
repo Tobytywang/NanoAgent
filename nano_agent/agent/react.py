@@ -393,8 +393,8 @@ class ReActAgent(BaseAgent):
         original_count = len(tool_calls)
         merged = merger.analyze_and_merge(tool_calls)
 
-        if self.verbose and len(merged) < original_count:
-            print(f"[Merge] Reduced {original_count} calls to {len(merged)}")
+        # Always print merge result for debugging
+        print(f"[Merge] Input: {original_count} calls, Output: {len(merged)} calls")
 
         return merged
 
