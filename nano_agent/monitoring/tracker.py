@@ -241,6 +241,49 @@ class MetricsTracker:
             "failed_tool_calls": self._session_failed_tool_calls,
         }
 
+    def get_last_iteration_tokens(self) -> dict[str, int]:
+        """
+        Get token counts from the last iteration.
+
+        Returns:
+            Dictionary with prompt_tokens, completion_tokens, total_tokens
+            Returns empty dict if no iterations available.
+        """
+        if not self.run_metrics or not self.run_metrics.iterations:
+            return {}
+
+        last_iteration = self.run_metrics.iterations[-1]
+        if not last_iteration.llm_call:
+            return {}
+
+        return {
+            "prompt_tokens": last_iteration.llm_call.prompt_tokens,
+            "completion_tokens": last_iteration.llm_call.completion_tokens,
+            "total_tokens": last_iteration.llm_call.total_tokens,
+        }
+
+    def get_iteration_token_list(self) -> list[dict[str, int]]:
+        """
+        Get token counts for each iteration.
+
+        Returns:
+            List of dictionaries with iteration_number, prompt_tokens,
+            completion_tokens, total_tokens
+        """
+        if not self.run_metrics:
+            return []
+
+        result = []
+        for iteration in self.run_metrics.iterations:
+            if iteration.llm_call:
+                result.append({
+                    "iteration_number": iteration.iteration_number,
+                    "prompt_tokens": iteration.llm_call.prompt_tokens,
+                    "completion_tokens": iteration.llm_call.completion_tokens,
+                    "total_tokens": iteration.llm_call.total_tokens,
+                })
+        return result
+
     def get_full_report(self) -> dict[str, Any]:
         """
         Get the full report.

@@ -14,6 +14,7 @@ from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorag
 from ..tools import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent import ReActAgent, AgentOrchestrator, AgentEvent
+from ..agent.token_utils import estimate_text_tokens
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
@@ -1997,237 +1998,179 @@ def _handle_stats_command(agent, config, command: str) -> None:
     if not parts or parts[0].lower() in ["status", ""]:
         # 显示当前会话统计（完整）
         _show_stats_status(agent, config)
-    elif parts[0].lower() == "tokens":
-        # 显示 Token 分类明细
-        _show_token_breakdown(agent)
+    elif parts[0].lower() == "context":
+        # 显示当前上下文组成
+        _show_context_composition(agent, config)
     elif parts[0].lower() == "breakdown":
-        # 显示各轮 Token 消耗详情
+        # 显示各轮 Token 消耗趋势
         _show_iteration_breakdown(agent)
-    elif parts[0].lower() == "tools":
-        # 显示工具消耗排名
-        _show_tool_ranking(agent)
     elif parts[0].lower() == "on":
         _enable_run_stats()
     elif parts[0].lower() == "off":
         _disable_run_stats()
     else:
         Console.print(f"Unknown subcommand: {parts[0]}", style="error")
-        Console.print("Available: status, tokens, breakdown, tools, on, off", style="info")
+        Console.print("Available: status, context, breakdown, on, off", style="info")
 
 
 def _show_stats_status(agent, config) -> None:
     """显示当前会话统计状态"""
     print("\n" + "=" * 50)
-    print("Session Statistics")
+    print("📊 会话统计")
     print("=" * 50)
 
     def format_line(label: str, value: str, width: int = 20) -> str:
         return f"  {label:<{width}} {value}"
 
-    # 显示自动统计开关状态
-    auto_status = "on" if GracefulExitManager.show_run_stats else "off"
-    print("\n## Auto Display")
-    print(format_line("Show after each run:", auto_status))
-
     # 显示会话统计
     if hasattr(agent, 'tracker'):
         session_summary = agent.tracker.get_session_summary()
         if session_summary:
-            print("\n## Session Summary")
-            duration_ms = session_summary.get('session_duration_ms', 0)
-            duration_s = duration_ms / 1000
-            print(format_line("Duration:", f"{duration_s:.2f} s"))
-            print(format_line("Total Tokens:", str(session_summary.get('total_tokens', 0))))
-            print(format_line("Total LLM Calls:", str(session_summary.get('total_llm_calls', 0))))
-            print(format_line("Total Iterations:", str(session_summary.get('total_iterations', 0))))
-            print(format_line("Tool Calls:", str(session_summary.get('total_tool_calls', 0))))
-            print(format_line("  - Successful:", str(session_summary.get('successful_tool_calls', 0))))
-            print(format_line("  - Failed:", str(session_summary.get('failed_tool_calls', 0))))
+            # 消耗概览
+            print("\n## 消耗概览")
+            total_tokens = session_summary.get('total_tokens', 0)
+            total_iterations = session_summary.get('total_iterations', 0)
+            total_llm_calls = session_summary.get('total_llm_calls', 0)
 
-            # 上下文使用率
-            if config and hasattr(config, 'llm'):
-                context_length = config.llm.get_context_length()
-                total_tokens = session_summary.get('total_tokens', 0)
-                if context_length > 0:
-                    usage_percent = (total_tokens / context_length) * 100
-                    print(format_line("Context Usage:", f"{usage_percent:.1f}% ({total_tokens}/{context_length})"))
+            print(format_line("总轮次:", str(total_iterations)))
+            print(format_line("总 LLM 调用:", str(total_llm_calls)))
+            print(format_line("总 Token:", str(total_tokens)))
 
-            # 显示 Token 分类摘要
-            if hasattr(agent.tracker, 'token_analyzer'):
-                summary = agent.tracker.token_analyzer.get_summary()
-                if summary and summary.get('categories'):
-                    print("\n## Token Breakdown")
-                    for cat in summary['categories']:
-                        print(format_line(f"{cat['name']}:", f"{cat['tokens']} ({cat['percentage']}%)"))
+            # 平均每轮
+            avg_per_iteration = total_tokens / total_iterations if total_iterations > 0 else 0
+            print(format_line("平均每轮:", f"{avg_per_iteration:.0f} tokens"))
+
+            # 上下文状态（使用最后一轮的 prompt_tokens）
+            print("\n## 上下文状态")
+            last_tokens = agent.tracker.get_last_iteration_tokens()
+            if last_tokens:
+                current_context = last_tokens.get('prompt_tokens', 0)
+                print(format_line("当前上下文:", f"{current_context} tokens (最后一轮输入)"))
+
+                if config and hasattr(config, 'llm'):
+                    context_length = config.llm.get_context_length()
+                    if context_length > 0:
+                        usage_percent = (current_context / context_length) * 100
+                        print(format_line("上下文限制:", f"{context_length} tokens"))
+                        print(format_line("使用率:", f"{usage_percent:.1f}%"))
+            else:
+                print("  当前上下文: 无数据")
+
+            # 工具调用
+            print("\n## 工具调用")
+            print(format_line("总调用:", str(session_summary.get('total_tool_calls', 0))))
+            print(format_line("成功:", str(session_summary.get('successful_tool_calls', 0))))
+            print(format_line("失败:", str(session_summary.get('failed_tool_calls', 0))))
         else:
-            print("\n## Session Summary")
-            print("  No data yet. Run a query first.")
+            print("\n## 会话统计")
+            print("  无数据。请先运行查询。")
 
-    print("\n## Commands")
-    print("  /stats          - Show full statistics")
-    print("  /stats tokens   - Show token category breakdown")
-    print("  /stats breakdown - Show per-iteration token usage")
-    print("  /stats tools    - Show tool token ranking")
-    print("  /stats on       - Enable auto display after each run")
-    print("  /stats off      - Disable auto display after each run")
+    # 命令说明
+    print("\n## 命令")
+    print("  /stats          - 显示完整统计")
+    print("  /stats context  - 显示当前上下文组成")
+    print("  /stats breakdown - 显示各轮消耗趋势")
+    print("  /stats on       - 启用每次对话后自动显示")
+    print("  /stats off      - 禁用自动显示")
 
     print("\n" + "=" * 50 + "\n")
 
 
-def _show_token_breakdown(agent) -> None:
-    """显示 Token 分类明细"""
-    if not hasattr(agent, 'tracker') or not hasattr(agent.tracker, 'token_analyzer'):
-        Console.print("Token analyzer not available", style="warning")
+def _show_context_composition(agent, config) -> None:
+    """显示当前上下文组成（完整消息列表）"""
+    if not hasattr(agent, 'memory'):
+        Console.print("Memory not available", style="warning")
         return
 
-    analyzer = agent.tracker.token_analyzer
-    breakdowns = analyzer.get_breakdown()
-
-    if not breakdowns:
-        Console.print("No token data yet. Run a query first.", style="info")
+    messages = agent.memory.get_all()
+    if not messages:
+        Console.print("No messages in memory", style="info")
         return
 
-    print("\n📊 Token 消耗明细:")
-    print("-" * 50)
+    print("\n📊 当前上下文组成 (准备发送给 LLM 的内容):")
+    print("─" * 70)
 
-    # 计算总消耗
-    total = sum(b.tokens for b in breakdowns if b.category.value != "compressed")
+    # 表头
+    print(f"  {'#':<4} {'角色':<10} {'字符数':<10} {'Token数':<10} 内容预览")
+    print("─" * 70)
 
-    # 标签映射
-    label_map = {
-        "system": "系统提示词",
-        "tools": "工具输出",
-        "history": "历史消息",
-        "response": "LLM响应",
-        "compressed": "压缩节省",
-    }
+    total_chars = 0
+    total_tokens = 0
 
-    def get_display_width(s: str) -> int:
-        """计算字符串的显示宽度（中文占2，英文占1）"""
-        return sum(2 if ord(c) > 127 else 1 for c in s)
+    for i, msg in enumerate(messages, 1):
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        chars = len(content) if isinstance(content, str) else 0
+        tokens = estimate_text_tokens(content) if content else 0
 
-    def pad_to_width(s: str, width: int) -> str:
-        """将字符串填充到指定显示宽度"""
-        current_width = get_display_width(s)
-        return s + " " * (width - current_width)
+        total_chars += chars
+        total_tokens += tokens
 
-    for b in breakdowns:
-        # 进度条（5% = 1 格）
-        bar_len = min(int(b.percentage / 5), 20)
-        bar = "█" * bar_len + "░" * (20 - bar_len)
+        # 内容预览（前30字符）
+        preview = content[:30] + "..." if len(content) > 30 else content
+        preview = preview.replace("\n", " ")
 
-        label = label_map.get(b.category.value, b.category.value)
+        print(f"  {i:<4} {role:<10} {chars:<10} {tokens:<10} {preview}")
 
-        # 格式化输出（使用显示宽度对齐）
-        print(f"  {pad_to_width(label, 12)} {b.tokens:>6} ({b.percentage:>5.1f}%) |{bar}|")
+    print("─" * 70)
+    print(f"  总计 {len(messages)} 条消息  {total_chars} chars  {total_tokens} tokens")
 
-    print("-" * 50)
-    print(f"  {'总计':<12} {total:>6} tokens")
+    # 上下文使用率
+    if config and hasattr(config, 'llm'):
+        context_length = config.llm.get_context_length()
+        if context_length > 0:
+            usage_percent = (total_tokens / context_length) * 100
+            print(f"\n  上下文使用率: {usage_percent:.1f}% ({total_tokens} / {context_length})")
 
-    # 显示压缩节省
-    compressed = next(
-        (b.tokens for b in breakdowns if b.category.value == "compressed"),
-        0
-    )
-    if compressed > 0:
-        savings_percent = (compressed / (total + compressed)) * 100
-        print(f"\n  💡 压缩节省: {compressed} tokens ({savings_percent:.1f}% 原始消耗)")
     print()
 
 
 def _show_iteration_breakdown(agent) -> None:
-    """显示各轮 Token 消耗详情"""
-    if not hasattr(agent, 'tracker') or not hasattr(agent.tracker, 'token_analyzer'):
-        Console.print("Token analyzer not available", style="warning")
+    """显示各轮 Token 消耗趋势"""
+    if not hasattr(agent, 'tracker'):
+        Console.print("Tracker not available", style="warning")
         return
 
-    analyzer = agent.tracker.token_analyzer
-    iterations = analyzer.get_iteration_breakdowns()
+    iterations = agent.tracker.get_iteration_token_list()
 
     if not iterations:
         Console.print("No iteration data yet. Run a query first.", style="info")
         return
 
-    def get_display_width(s: str) -> int:
-        """计算字符串的显示宽度（中文占2，英文占1）"""
-        return sum(2 if ord(c) > 127 else 1 for c in s)
+    print("\n📊 各轮 Token 消耗趋势:")
+    print("─" * 60)
 
-    def pad_to_width(s: str, width: int) -> str:
-        """将字符串填充到指定显示宽度"""
-        current_width = get_display_width(s)
-        return s + " " * (width - current_width)
-
-    print("\n📊 各轮 Token 消耗:")
-    print("-" * 60)
+    # 找出最大值用于趋势条
+    max_total = max(i['total_tokens'] for i in iterations) if iterations else 1
 
     # 表头
-    print(f"  {pad_to_width('轮次', 6)} {pad_to_width('系统', 8)} {pad_to_width('工具', 8)} "
-          f"{pad_to_width('历史', 8)} {pad_to_width('响应', 8)} {pad_to_width('总计', 8)}")
-    print("-" * 60)
+    print(f"  {'轮次':<6} {'输入':<8} {'输出':<8} {'总计':<8} 趋势")
+    print("─" * 60)
 
     # 各轮数据
-    for i, iter_data in enumerate(iterations, 1):
-        print(f"  {i:<6} {iter_data['system']:<8} {iter_data['tools']:<8} "
-              f"{iter_data['history']:<8} {iter_data['response']:<8} {iter_data['total']:<8}")
+    for iter_data in iterations:
+        i = iter_data['iteration_number']
+        prompt = iter_data['prompt_tokens']
+        completion = iter_data['completion_tokens']
+        total = iter_data['total_tokens']
 
-    print("-" * 60)
+        # 趋势条（每个 █ 代表 max_total 的 5%）
+        bar_len = int(total / max_total * 20) if max_total > 0 else 0
+        bar = "█" * bar_len + "░" * (20 - bar_len)
 
-    # 汇总
-    total_system = sum(i['system'] for i in iterations)
-    total_tools = sum(i['tools'] for i in iterations)
-    total_history = sum(i['history'] for i in iterations)
-    total_response = sum(i['response'] for i in iterations)
-    total_all = sum(i['total'] for i in iterations)
+        print(f"  {i:<6} {prompt:<8} {completion:<8} {total:<8} {bar}")
 
-    print(f"  {pad_to_width('汇总', 6)} {total_system:<8} {total_tools:<8} "
-          f"{total_history:<8} {total_response:<8} {total_all:<8}")
-    print()
+    print("─" * 60)
 
+    # 统计摘要
+    total_all = sum(i['total_tokens'] for i in iterations)
+    avg = total_all / len(iterations) if iterations else 0
+    max_iter = max(iterations, key=lambda x: x['total_tokens'])
+    min_iter = min(iterations, key=lambda x: x['total_tokens'])
 
-def _show_tool_ranking(agent) -> None:
-    """显示工具 Token 消耗排名"""
-    if not hasattr(agent, 'tracker') or not hasattr(agent.tracker, 'token_analyzer'):
-        Console.print("Token analyzer not available", style="warning")
-        return
-
-    analyzer = agent.tracker.token_analyzer
-    ranking = analyzer.get_tool_ranking(limit=10)
-
-    if not ranking:
-        Console.print("No tool data yet. Run a query first.", style="info")
-        return
-
-    def get_display_width(s: str) -> int:
-        """计算字符串的显示宽度（中文占2，英文占1）"""
-        return sum(2 if ord(c) > 127 else 1 for c in s)
-
-    def pad_to_width(s: str, width: int) -> str:
-        """将字符串填充到指定显示宽度"""
-        current_width = get_display_width(s)
-        return s + " " * (width - current_width)
-
-    print("\n🔧 工具 Token 消耗排名:")
-    print("-" * 60)
-
-    # 表头
-    print(f"  {pad_to_width('排名', 6)} {pad_to_width('工具名', 20)} {pad_to_width('输入', 10)} "
-          f"{pad_to_width('输出', 10)} {pad_to_width('总计', 10)} {pad_to_width('调用', 6)}")
-    print("-" * 60)
-
-    # 各工具数据
-    for i, tool in enumerate(ranking, 1):
-        total = tool.input_tokens + tool.output_tokens
-        print(f"  {i:<6} {tool.tool_name:<20} {tool.input_tokens:<10} "
-              f"{tool.output_tokens:<10} {total:<10} {tool.call_count:<6}")
-
-    print("-" * 60)
-
-    # 汇总
-    total_input = sum(t.input_tokens for t in ranking)
-    total_output = sum(t.output_tokens for t in ranking)
-    total_calls = sum(t.call_count for t in ranking)
-    print(f"  {pad_to_width('汇总', 6)} {'':<20} {total_input:<10} {total_output:<10} "
-          f"{total_input + total_output:<10} {total_calls:<6}")
+    print(f"  平均每轮: {avg:.0f} tokens")
+    print(f"  最大: {max_iter['total_tokens']} (轮次 {max_iter['iteration_number']})")
+    print(f"  最小: {min_iter['total_tokens']} (轮次 {min_iter['iteration_number']})")
     print()
 
 
@@ -2284,9 +2227,8 @@ def _show_help() -> None:
     print("  /memory off       禁用长期记忆")
     print("  /stats on         启用统计自动显示")
     print("  /stats off        禁用统计自动显示")
-    print("  /stats tokens     显示 Token 分类明细")
-    print("  /stats breakdown  显示各轮 Token 消耗")
-    print("  /stats tools      显示工具消耗排名")
+    print("  /stats context    显示当前上下文组成")
+    print("  /stats breakdown  显示各轮消耗趋势")
 
     print("\n## 规划模式")
     print("  /plan <任务>      进入规划模式，制定分阶段计划")
