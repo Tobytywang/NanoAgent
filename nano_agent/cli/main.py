@@ -2019,33 +2019,36 @@ def _show_stats_status(agent, config) -> None:
     print("📊 会话统计")
     print("=" * 50)
 
-    def format_line(label: str, value: str, width: int = 20) -> str:
+    def format_line(label: str, value: str, width: int = 18) -> str:
         return f"  {label:<{width}} {value}"
 
     # 显示会话统计
     if hasattr(agent, 'tracker'):
         session_summary = agent.tracker.get_session_summary()
+        iteration_list = agent.tracker.get_iteration_token_list()
+
         if session_summary:
             # 消耗概览
             print("\n## 消耗概览")
             total_tokens = session_summary.get('total_tokens', 0)
-            total_iterations = session_summary.get('total_iterations', 0)
             total_llm_calls = session_summary.get('total_llm_calls', 0)
 
-            print(format_line("总轮次:", str(total_iterations)))
-            print(format_line("总 LLM 调用:", str(total_llm_calls)))
             print(format_line("总 Token:", str(total_tokens)))
+            print(format_line("总 LLM 调用:", str(total_llm_calls)))
 
-            # 平均每轮
-            avg_per_iteration = total_tokens / total_iterations if total_iterations > 0 else 0
-            print(format_line("平均每轮:", f"{avg_per_iteration:.0f} tokens"))
+            # 当前 run 的轮次（更直观）
+            current_run_iterations = len(iteration_list)
+            if current_run_iterations > 0:
+                print(format_line("本轮迭代:", str(current_run_iterations)))
+                avg_per_iteration = total_tokens / current_run_iterations
+                print(format_line("平均每轮:", f"{avg_per_iteration:.0f} tokens"))
 
             # 上下文状态（使用最后一轮的 prompt_tokens）
             print("\n## 上下文状态")
             last_tokens = agent.tracker.get_last_iteration_tokens()
             if last_tokens:
                 current_context = last_tokens.get('prompt_tokens', 0)
-                print(format_line("当前上下文:", f"{current_context} tokens (最后一轮输入)"))
+                print(format_line("当前上下文:", f"{current_context} tokens"))
 
                 if config and hasattr(config, 'llm'):
                     context_length = config.llm.get_context_length()
@@ -2077,7 +2080,7 @@ def _show_stats_status(agent, config) -> None:
 
 
 def _show_context_composition(agent, config) -> None:
-    """显示当前上下文组成（完整消息列表）"""
+    """显示当前上下文组成（按轮次分组）"""
     if not hasattr(agent, 'memory'):
         Console.print("Memory not available", style="warning")
         return
@@ -2090,30 +2093,79 @@ def _show_context_composition(agent, config) -> None:
     print("\n📊 当前上下文组成 (准备发送给 LLM 的内容):")
     print("─" * 70)
 
-    # 表头
-    print(f"  {'#':<4} {'角色':<10} {'字符数':<10} {'Token数':<10} 内容预览")
-    print("─" * 70)
+    # 按轮次分组消息
+    # 轮次定义: user + assistant(tool_calls) + tool(s) = 一轮
+    rounds = []
+    current_round = {"messages": [], "chars": 0, "tokens": 0}
 
-    total_chars = 0
-    total_tokens = 0
-
-    for i, msg in enumerate(messages, 1):
+    for msg in messages:
         role = msg.get("role", "")
         content = msg.get("content", "")
         chars = len(content) if isinstance(content, str) else 0
         tokens = estimate_text_tokens(content) if content else 0
 
-        total_chars += chars
-        total_tokens += tokens
+        current_round["messages"].append({
+            "role": role,
+            "content": content,
+            "chars": chars,
+            "tokens": tokens,
+        })
+        current_round["chars"] += chars
+        current_round["tokens"] += tokens
 
-        # 内容预览（前30字符）
-        preview = content[:30] + "..." if len(content) > 30 else content
-        preview = preview.replace("\n", " ")
+        # 一轮结束的判断：
+        # - user 消息后遇到 assistant（无 tool_calls）或新的 user
+        # - assistant(tool_calls) + 所有 tool 结果后遇到新的 user 或 assistant
+        if role == "user":
+            # 如果当前轮已有内容，保存并开始新轮
+            if len(current_round["messages"]) > 1:
+                rounds.append(current_round)
+                current_round = {"messages": [], "chars": 0, "tokens": 0}
 
-        print(f"  {i:<4} {role:<10} {chars:<10} {tokens:<10} {preview}")
+    # 保存最后一轮
+    if current_round["messages"]:
+        rounds.append(current_round)
+
+    # 显示按轮次分组的统计
+    print(f"\n  共 {len(rounds)} 轮对话，{len(messages)} 条消息")
+    print("─" * 70)
+
+    total_chars = 0
+    total_tokens = 0
+
+    for i, round_data in enumerate(rounds, 1):
+        round_chars = round_data["chars"]
+        round_tokens = round_data["tokens"]
+        msg_count = len(round_data["messages"])
+
+        total_chars += round_chars
+        total_tokens += round_tokens
+
+        # 显示该轮摘要
+        roles = [m["role"] for m in round_data["messages"]]
+        role_summary = " → ".join(roles)
+
+        print(f"  轮次 {i}: {msg_count} 条消息 ({role_summary})")
+        print(f"         {round_chars} chars, {round_tokens} tokens")
+
+        # 显示该轮的消息详情
+        for j, msg in enumerate(round_data["messages"], 1):
+            role = msg["role"]
+            chars = msg["chars"]
+            tokens = msg["tokens"]
+            content = msg["content"]
+
+            # 内容预览
+            preview = content[:25] + "..." if len(content) > 25 else content
+            preview = preview.replace("\n", " ")
+
+            indent = "    " if j > 1 else "    "
+            print(f"{indent}{j}. {role:<10} {chars:>6} chars, {tokens:>4} tokens  {preview}")
+
+        print()
 
     print("─" * 70)
-    print(f"  总计 {len(messages)} 条消息  {total_chars} chars  {total_tokens} tokens")
+    print(f"  总计: {total_chars} chars, {total_tokens} tokens")
 
     # 上下文使用率
     if config and hasattr(config, 'llm'):
