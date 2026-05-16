@@ -89,7 +89,8 @@ class ConfigLoader:
             storage_path=data.get("storage_path", ".nano_agent/memory"),
             session_id=data.get("session_id"),
             long_term_storage_path=data.get("long_term_storage_path", ".nano_agent/long_term_memory"),
-            auto_extract=data.get("auto_extract", True)
+            auto_extract=data.get("auto_extract", True),
+            clean_threshold=data.get("clean_threshold", 3)
         )
 
     @classmethod
@@ -198,7 +199,8 @@ class ConfigLoader:
                 "storage_path": config.memory.storage_path,
                 "session_id": config.memory.session_id,
                 "long_term_storage_path": config.memory.long_term_storage_path,
-                "auto_extract": config.memory.auto_extract
+                "auto_extract": config.memory.auto_extract,
+                "clean_threshold": config.memory.clean_threshold
             },
             "tools": {
                 "enabled": config.tools.enabled,
