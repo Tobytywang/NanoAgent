@@ -89,12 +89,13 @@ class PersistentMemory(BaseMemory):
             msg["tool_calls"] = tool_calls
         self.add(msg)
 
-    def add_tool_result(self, tool_call_id: str, content: str) -> None:
+    def add_tool_result(self, tool_call_id: str, content: str, tool_name: str = "unknown") -> None:
         """添加工具执行结果。"""
         self.add({
             "role": "tool",
             "tool_call_id": tool_call_id,
-            "content": content
+            "content": content,
+            "name": tool_name  # 添加工具名称用于统计
         })
 
     def get_all(self) -> list:

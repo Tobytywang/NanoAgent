@@ -286,17 +286,17 @@ class TestTokenAnalyzer:
         assert len(analyzer._tool_token_usage) == 0
         assert len(analyzer._iteration_breakdowns) == 0
 
-    def test_estimate_message_tokens_string(self):
-        """Test estimating tokens for string content."""
+    def test_estimate_message_chars_string(self):
+        """Test estimating chars for string content."""
         analyzer = TokenAnalyzer()
 
-        # English text (~4 chars/token)
+        # English text
         msg = {"role": "user", "content": "Hello world"}
-        tokens = analyzer._estimate_message_tokens(msg)
-        assert tokens > 0
+        chars = analyzer._estimate_message_chars(msg)
+        assert chars == 11  # "Hello world" has 11 characters
 
-    def test_estimate_message_tokens_list(self):
-        """Test estimating tokens for list content."""
+    def test_estimate_message_chars_list(self):
+        """Test estimating chars for list content."""
         analyzer = TokenAnalyzer()
 
         msg = {
@@ -306,8 +306,8 @@ class TestTokenAnalyzer:
                 {"type": "text", "text": "World"},
             ],
         }
-        tokens = analyzer._estimate_message_tokens(msg)
-        assert tokens > 0
+        chars = analyzer._estimate_message_chars(msg)
+        assert chars == 10  # "Hello" + "World" = 10 characters
 
     def test_multiple_iterations_accumulate(self):
         """Test that multiple iterations accumulate correctly."""

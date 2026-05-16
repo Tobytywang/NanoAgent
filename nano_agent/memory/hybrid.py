@@ -72,9 +72,9 @@ class HybridMemory(BaseMemory):
         """添加助手消息到工作内存。"""
         self.working_memory.add_assistant_message(content, tool_calls)
 
-    def add_tool_result(self, tool_call_id: str, content: str) -> None:
+    def add_tool_result(self, tool_call_id: str, content: str, tool_name: str = "unknown") -> None:
         """添加工具结果到工作内存。"""
-        self.working_memory.add_tool_result(tool_call_id, content)
+        self.working_memory.add_tool_result(tool_call_id, content, tool_name)
 
     def set_system_prompt(self, prompt: str) -> None:
         """设置工作内存中的系统提示。"""

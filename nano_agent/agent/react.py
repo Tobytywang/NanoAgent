@@ -544,7 +544,8 @@ class ReActAgent(BaseAgent):
 
         self.memory.add_tool_result(
             tool_call_id=tool_call.id,
-            content=result_content
+            content=result_content,
+            tool_name=tool_call.name
         )
 
     def _answer_simple_question(self, user_input: str) -> str:
