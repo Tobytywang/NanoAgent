@@ -973,6 +973,142 @@ nano_agent/agent/react.py      # 集成缓存和压缩
 
 ---
 
+### v0.7.4 - Token 统计增强 ✅
+
+**目标**: 增强 `/stats` 命令，按类型显示 Token 消耗明细，帮助用户定位优化点。
+
+**背景**:
+当前 `/stats` 只显示总 Token 数，无法区分不同来源的消耗。用户需要知道：
+- 系统提示词消耗多少？
+- 工具输出消耗多少？
+- 历史消息消耗多少？
+- LLM 响应消耗多少？
+
+**架构归属**: 监控层 - 统计分析
+
+**任务列表**:
+
+**1. Token 分类统计**:
+- [x] 定义 `TokenCategory` 枚举 - system/tools/history/response/compressed
+- [x] 实现 `TokenAnalyzer` 类 - 分析 Token 来源
+- [x] 在 `record_llm_call()` 中记录分类信息
+- [x] 累计各类 Token 消耗
+
+**2. `/stats` 命令增强**:
+- [x] `/stats` - 显示完整统计（含分类明细）
+- [x] `/stats tokens` - 仅显示 Token 分类明细
+- [x] `/stats breakdown` - 显示各轮 Token 消耗详情
+- [x] `/stats tools` - 显示各工具的 Token 消耗排名
+
+**3. Token 分类明细显示**:
+- [x] 系统提示词 Token（固定成本）
+- [x] 工具输出 Token（可优化成本）
+- [x] 历史消息 Token（累积成本）
+- [x] LLM 响应 Token（输出成本）
+- [x] 压缩节省 Token（优化效果）
+
+**新增文件**:
+```
+nano_agent/monitoring/
+├── token_analyzer.py    # TokenAnalyzer, TokenCategory
+tests/test_token_analyzer.py  # 测试用例
+```
+
+**修改文件**:
+```
+nano_agent/monitoring/tracker.py    # 集成 TokenAnalyzer
+nano_agent/cli/main.py              # /stats 子命令增强
+```
+
+**技术方案**:
+```python
+# nano_agent/monitoring/token_analyzer.py
+
+class TokenCategory(Enum):
+    """Token 消耗分类"""
+    SYSTEM = "system"        # 系统提示词
+    TOOLS = "tools"          # 工具输出
+    HISTORY = "history"      # 历史消息（非工具）
+    RESPONSE = "response"    # LLM 响应
+    COMPRESSED = "compressed" # 压缩节省
+
+@dataclass
+class TokenBreakdown:
+    """Token 消耗明细"""
+    category: TokenCategory
+    tokens: int
+    percentage: float
+    details: dict[str, int]  # 子分类详情
+
+class TokenAnalyzer:
+    """Token 分析器"""
+
+    def __init__(self):
+        self._category_totals: dict[TokenCategory, int] = {}
+        self._tool_token_usage: dict[str, int] = {}  # 工具名 → Token 数
+
+    def analyze_llm_call(self, metrics: LLMCallMetrics) -> TokenBreakdown:
+        """分析单次 LLM 调用的 Token 消耗"""
+        # 从 input_messages 中分类统计
+        for msg in metrics.input_messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+
+            if role == "system":
+                self._category_totals[TokenCategory.SYSTEM] += estimate_tokens(content)
+            elif "tool_result" in msg:
+                self._category_totals[TokenCategory.TOOLS] += estimate_tokens(content)
+            else:
+                self._category_totals[TokenCategory.HISTORY] += estimate_tokens(content)
+
+        # 响应 Token
+        self._category_totals[TokenCategory.RESPONSE] += metrics.completion_tokens
+
+    def get_breakdown(self) -> list[TokenBreakdown]:
+        """获取 Token 消耗明细"""
+        total = sum(self._category_totals.values())
+        return [
+            TokenBreakdown(
+                category=cat,
+                tokens=tokens,
+                percentage=tokens / total * 100 if total > 0 else 0,
+                details={}
+            )
+            for cat, tokens in self._category_totals.items()
+        ]
+
+    def get_tool_ranking(self, limit: int = 10) -> list[tuple[str, int]]:
+        """获取工具 Token 消耗排名"""
+        return sorted(
+            self._tool_token_usage.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:limit]
+
+# CLI 显示格式
+def _show_token_breakdown(analyzer: TokenAnalyzer):
+    """显示 Token 分类明细"""
+    print("\n📊 Token 消耗明细:")
+    print("-" * 40)
+
+    breakdown = analyzer.get_breakdown()
+    for item in breakdown:
+        bar = "█" * int(item.percentage / 5)  # 5% = 1 格
+        print(f"  {item.category.value:<12} {item.tokens:>6} ({item.percentage:>5.1f}%) {bar}")
+
+    # 工具消耗排名
+    print("\n🔧 工具消耗排名:")
+    for tool, tokens in analyzer.get_tool_ranking(5):
+        print(f"  {tool:<20} {tokens:>6} tokens")
+```
+
+**预期效果**:
+- 用户可快速定位高消耗来源
+- 工具优化有明确数据支撑
+- 历史消息压缩效果可视化
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1342,6 +1478,7 @@ persona:
 | v0.7.1 | Token 消耗优化 ✅ | 输出风格控制、提示词简化、工具结果截断 |
 | v0.7.2 | Token 消耗深度优化 ✅ | 智能工具合并、工具结果智能摘要 |
 | v0.7.3 | Token 消耗进阶优化 ✅ | 工具结果缓存、历史消息压缩、项目文件精简 |
+| v0.7.4 | Token 统计增强 ✅ | Token 分类统计、/stats 子命令增强、工具消耗排名 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |

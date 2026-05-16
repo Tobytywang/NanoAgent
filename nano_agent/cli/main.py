@@ -1995,15 +1995,24 @@ def _handle_stats_command(agent, config, command: str) -> None:
     parts = command.strip().split() if command else []
 
     if not parts or parts[0].lower() in ["status", ""]:
-        # 显示当前会话统计
+        # 显示当前会话统计（完整）
         _show_stats_status(agent, config)
+    elif parts[0].lower() == "tokens":
+        # 显示 Token 分类明细
+        _show_token_breakdown(agent)
+    elif parts[0].lower() == "breakdown":
+        # 显示各轮 Token 消耗详情
+        _show_iteration_breakdown(agent)
+    elif parts[0].lower() == "tools":
+        # 显示工具消耗排名
+        _show_tool_ranking(agent)
     elif parts[0].lower() == "on":
         _enable_run_stats()
     elif parts[0].lower() == "off":
         _disable_run_stats()
     else:
         Console.print(f"Unknown subcommand: {parts[0]}", style="error")
-        Console.print("Available: status, on, off", style="info")
+        Console.print("Available: status, tokens, breakdown, tools, on, off", style="info")
 
 
 def _show_stats_status(agent, config) -> None:
@@ -2042,15 +2051,154 @@ def _show_stats_status(agent, config) -> None:
                 if context_length > 0:
                     usage_percent = (total_tokens / context_length) * 100
                     print(format_line("Context Usage:", f"{usage_percent:.1f}% ({total_tokens}/{context_length})"))
+
+            # 显示 Token 分类摘要
+            if hasattr(agent.tracker, 'token_analyzer'):
+                summary = agent.tracker.token_analyzer.get_summary()
+                if summary and summary.get('categories'):
+                    print("\n## Token Breakdown")
+                    for cat in summary['categories']:
+                        print(format_line(f"{cat['name']}:", f"{cat['tokens']} ({cat['percentage']}%)"))
         else:
             print("\n## Session Summary")
             print("  No data yet. Run a query first.")
 
     print("\n## Commands")
-    print("  /stats on   - Enable auto display after each run")
-    print("  /stats off  - Disable auto display after each run")
+    print("  /stats          - Show full statistics")
+    print("  /stats tokens   - Show token category breakdown")
+    print("  /stats breakdown - Show per-iteration token usage")
+    print("  /stats tools    - Show tool token ranking")
+    print("  /stats on       - Enable auto display after each run")
+    print("  /stats off      - Disable auto display after each run")
 
     print("\n" + "=" * 50 + "\n")
+
+
+def _show_token_breakdown(agent) -> None:
+    """显示 Token 分类明细"""
+    if not hasattr(agent, 'tracker') or not hasattr(agent.tracker, 'token_analyzer'):
+        Console.print("Token analyzer not available", style="warning")
+        return
+
+    analyzer = agent.tracker.token_analyzer
+    breakdowns = analyzer.get_breakdown()
+
+    if not breakdowns:
+        Console.print("No token data yet. Run a query first.", style="info")
+        return
+
+    print("\n📊 Token 消耗明细:")
+    print("-" * 50)
+
+    # 计算总消耗
+    total = sum(b.tokens for b in breakdowns if b.category.value != "compressed")
+
+    for b in breakdowns:
+        # 进度条（5% = 1 格）
+        bar_len = min(int(b.percentage / 5), 20)
+        bar = "█" * bar_len + "░" * (20 - bar_len)
+
+        # 标签颜色
+        label_map = {
+            "system": "系统提示词",
+            "tools": "工具输出",
+            "history": "历史消息",
+            "response": "LLM响应",
+            "compressed": "压缩节省",
+        }
+        label = label_map.get(b.category.value, b.category.value)
+
+        # 格式化输出
+        print(f"  {label:<12} {b.tokens:>6} ({b.percentage:>5.1f}%) |{bar}|")
+
+    print("-" * 50)
+    print(f"  {'总计':<12} {total:>6} tokens")
+
+    # 显示压缩节省
+    compressed = next(
+        (b.tokens for b in breakdowns if b.category.value == "compressed"),
+        0
+    )
+    if compressed > 0:
+        savings_percent = (compressed / (total + compressed)) * 100
+        print(f"\n  💡 压缩节省: {compressed} tokens ({savings_percent:.1f}% 原始消耗)")
+    print()
+
+
+def _show_iteration_breakdown(agent) -> None:
+    """显示各轮 Token 消耗详情"""
+    if not hasattr(agent, 'tracker') or not hasattr(agent.tracker, 'token_analyzer'):
+        Console.print("Token analyzer not available", style="warning")
+        return
+
+    analyzer = agent.tracker.token_analyzer
+    iterations = analyzer.get_iteration_breakdowns()
+
+    if not iterations:
+        Console.print("No iteration data yet. Run a query first.", style="info")
+        return
+
+    print("\n📊 各轮 Token 消耗:")
+    print("-" * 60)
+
+    # 表头
+    print(f"  {'轮次':<6} {'系统':<8} {'工具':<8} {'历史':<8} {'响应':<8} {'总计':<8}")
+    print("-" * 60)
+
+    # 各轮数据
+    for i, iter_data in enumerate(iterations, 1):
+        print(f"  {i:<6} {iter_data['system']:<8} {iter_data['tools']:<8} "
+              f"{iter_data['history']:<8} {iter_data['response']:<8} {iter_data['total']:<8}")
+
+    print("-" * 60)
+
+    # 汇总
+    total_system = sum(i['system'] for i in iterations)
+    total_tools = sum(i['tools'] for i in iterations)
+    total_history = sum(i['history'] for i in iterations)
+    total_response = sum(i['response'] for i in iterations)
+    total_all = sum(i['total'] for i in iterations)
+
+    print(f"  {'汇总':<6} {total_system:<8} {total_tools:<8} "
+          f"{total_history:<8} {total_response:<8} {total_all:<8}")
+    print()
+
+
+def _show_tool_ranking(agent) -> None:
+    """显示工具 Token 消耗排名"""
+    if not hasattr(agent, 'tracker') or not hasattr(agent.tracker, 'token_analyzer'):
+        Console.print("Token analyzer not available", style="warning")
+        return
+
+    analyzer = agent.tracker.token_analyzer
+    ranking = analyzer.get_tool_ranking(limit=10)
+
+    if not ranking:
+        Console.print("No tool data yet. Run a query first.", style="info")
+        return
+
+    print("\n🔧 工具 Token 消耗排名:")
+    print("-" * 60)
+
+    # 表头
+    print(f"  {'排名':<6} {'工具名':<20} {'输入':<10} {'输出':<10} {'总计':<10} {'调用':<6}")
+    print("-" * 60)
+
+    # 各工具数据
+    for i, tool in enumerate(ranking, 1):
+        total = tool.input_tokens + tool.output_tokens
+        print(f"  {i:<6} {tool.tool_name:<20} {tool.input_tokens:<10} "
+              f"{tool.output_tokens:<10} {total:<10} {tool.call_count:<6}")
+
+    print("-" * 60)
+
+    # 汇总
+    total_input = sum(t.input_tokens for t in ranking)
+    total_output = sum(t.output_tokens for t in ranking)
+    total_calls = sum(t.call_count for t in ranking)
+    print(f"  {'汇总':<6} {'':<20} {total_input:<10} {total_output:<10} "
+          f"{total_input + total_output:<10} {total_calls:<6}")
+    print()
 
 
 def _enable_run_stats() -> None:
@@ -2106,6 +2254,9 @@ def _show_help() -> None:
     print("  /memory off       禁用长期记忆")
     print("  /stats on         启用统计自动显示")
     print("  /stats off        禁用统计自动显示")
+    print("  /stats tokens     显示 Token 分类明细")
+    print("  /stats breakdown  显示各轮 Token 消耗")
+    print("  /stats tools      显示工具消耗排名")
 
     print("\n## 规划模式")
     print("  /plan <任务>      进入规划模式，制定分阶段计划")

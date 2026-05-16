@@ -9,6 +9,12 @@ from .metrics import (
     RunMetrics,
 )
 from .tracker import MetricsTracker
+from .token_analyzer import (
+    TokenCategory,
+    TokenBreakdown,
+    ToolTokenUsage,
+    TokenAnalyzer,
+)
 from .logger import (
     AgentLogger,
     get_logger,
@@ -26,6 +32,10 @@ __all__ = [
     "IterationMetrics",
     "RunMetrics",
     "MetricsTracker",
+    "TokenCategory",
+    "TokenBreakdown",
+    "ToolTokenUsage",
+    "TokenAnalyzer",
     "AgentLogger",
     "get_logger",
     "configure_logging",

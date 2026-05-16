@@ -13,6 +13,7 @@ from .metrics import (
     IterationMetrics,
     RunMetrics,
 )
+from .token_analyzer import TokenAnalyzer
 
 
 class MetricsTracker:
@@ -39,6 +40,9 @@ class MetricsTracker:
         self._session_successful_tool_calls: int = 0
         self._session_failed_tool_calls: int = 0
         self._session_start_time: float = time.perf_counter()
+
+        # Token analyzer
+        self.token_analyzer = TokenAnalyzer()
 
     def start_run(self, user_input: str) -> None:
         """
@@ -155,6 +159,14 @@ class MetricsTracker:
 
         # Increment LLM call count
         self._session_total_llm_calls += 1
+
+        # Analyze token consumption
+        self.token_analyzer.analyze_llm_call(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            input_messages=input_messages or [],
+            tool_calls=tool_calls,
+        )
 
     def record_tool_execution(
         self,
