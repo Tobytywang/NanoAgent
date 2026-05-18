@@ -1208,6 +1208,146 @@ class QueryRouter:
 
 ---
 
+### v0.7.6 - Prompt 模块完善
+
+**目标**: 补充 Claude Code harness 对标的 prompt 模块，完善系统提示词体系。
+
+**背景**:
+通过分析 Claude Code 的 `/context` API 调用记录，发现 NanoAgent 缺少部分 prompt 模块。这些模块对 Agent 的行为规范和安全性有重要作用。
+
+**架构归属**: 执行层 - Prompt 系统
+
+**任务列表**:
+
+**1. 开发规范模块 (P1)**:
+- [ ] 添加 `development_guidelines` 模块 - 文档更新规则、测试覆盖率检查
+- [ ] 内容包括：提交前验证、文档同步、测试要求
+- [ ] 更新 `prompt_modules.py` 和 `config/prompts.xlsx`
+
+**2. 记忆类型定义模块 (P1)**:
+- [ ] 扩展 `memory_guide` 模块 - 完整记忆类型定义
+- [ ] 类型包括：user（用户信息）、feedback（用户反馈）、project（项目信息）、reference（外部引用）
+- [ ] 添加记忆存储/访问规则说明
+
+**3. 会话指导模块 (P2)**:
+- [ ] 添加 `session_guidance` 模块 - Agent 使用策略、Skill 调用规则
+- [ ] 内容包括：多 Agent 场景、技能包使用、子任务委托
+
+**4. 项目配置模板 (P3)**:
+- [ ] 创建 `CLAUDE.md` 模板文件 - 项目级配置示例
+- [ ] 包含：项目概述、开发规范、架构说明、常用命令
+
+**修改文件**:
+```
+nano_agent/agent/prompt_modules.py    # 新增模块定义
+config/prompts.xlsx                    # 更新 Excel 配置
+docs/examples/CLAUDE.md               # 项目配置模板
+```
+
+**技术方案**:
+```python
+# nano_agent/agent/prompt_modules.py
+
+# 新增模块
+MODULES = {
+    # ... 现有模块 ...
+
+    "development_guidelines": PromptModule(
+        name="development_guidelines",
+        description="开发规范",
+        content="""## Development Guidelines
+
+### Before Committing
+1. Run tests: `pytest tests/ -v`
+2. Check coverage: aim for 75%+
+3. Update documentation if needed
+4. Update ROADMAP.md for new features
+
+### Code Quality
+- Write tests for new features
+- Fix bugs before adding features
+- Keep changes minimal and focused""",
+        priority=22,
+        always_on=False,
+        token_estimate=80,
+        enabled=True,
+    ),
+
+    "memory_types": PromptModule(
+        name="memory_types",
+        description="记忆类型定义",
+        content="""## Memory Types
+
+### user
+- User's role, preferences, knowledge level
+- Save when learning about user's background
+
+### feedback
+- Guidance on how to approach work
+- Save corrections and validated approaches
+
+### project
+- Ongoing work, goals, deadlines
+- Save project context and decisions
+
+### reference
+- Pointers to external resources
+- Save links to docs, dashboards, etc.""",
+        priority=61,
+        always_on=False,
+        token_estimate=100,
+        enabled=True,
+    ),
+
+    "session_guidance": PromptModule(
+        name="session_guidance",
+        description="会话指导",
+        content="""## Session Guidance
+
+- For shell commands requiring user interaction, suggest `! <command>`
+- Use specialized agents for complex tasks
+- For broad codebase exploration, spawn Explore agent
+- Only invoke skills that match user request""",
+        priority=70,
+        always_on=False,
+        token_estimate=50,
+        enabled=False,  # 可选启用
+    ),
+}
+
+# 更新 Style 预设
+STYLE_PRESETS = {
+    "concise": {...},
+    "standard": {
+        "modules": [
+            "core", "tools", "efficiency", "modification",
+            "constitution", "risk_awareness",
+            "development_guidelines",  # 新增
+            "language"
+        ],
+        "token_budget": 1200,
+    },
+    "detailed": {
+        "modules": [
+            "core", "tools", "efficiency", "modification",
+            "constitution", "risk_awareness", "security_rules",
+            "development_guidelines",  # 新增
+            "memory_types",  # 新增
+            "output_style", "memory_guide", "language"
+        ],
+        "token_budget": 2500,
+    },
+}
+```
+
+**预期效果**:
+- 开发规范模块: 提升代码质量意识
+- 记忆类型模块: 更好的记忆系统使用
+- 会话指导模块: 支持未来多 Agent 场景
+- 项目配置模板: 便于项目级定制
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1579,6 +1719,7 @@ persona:
 | v0.7.3 | Token 消耗进阶优化 ✅ | 工具结果缓存、历史消息压缩、项目文件精简 |
 | v0.7.4 | Token 统计增强 ✅ | Token 分类统计、/stats 子命令增强、工具消耗排名 |
 | v0.7.5 | Token 消耗智能优化 | 置信度早停、Token 预算、查询路由、工具摘要增强 |
+| v0.7.6 | Prompt 模块完善 | 开发规范、记忆类型、会话指导、项目配置模板 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
