@@ -1211,47 +1211,120 @@ class QueryRouter:
 
 ---
 
-### v0.7.6 - Prompt 模块完善
+### v0.7.6 - 前缀缓存感知优化与 Prompt 模块完善
 
-**目标**: 补充 Claude Code harness 对标的 prompt 模块，完善系统提示词体系。
+**目标**: 实现前缀缓存感知的消息管理，补充 Claude Code harness 对标的 prompt 模块。
 
 **背景**:
-通过分析 Claude Code 的 `/context` API 调用记录，发现 NanoAgent 缺少部分 prompt 模块。这些模块对 Agent 的行为规范和安全性有重要作用。
+1. **前缀缓存**: LLM 提供商会对消息前缀进行缓存，相同前缀的后续请求可命中缓存。当前压缩策略会破坏缓存，导致后续请求需要重新计算。
+2. **Prompt 模块**: 通过分析 Claude Code 的 `/context` API 调用记录，发现 NanoAgent 缺少部分 prompt 模块。
 
-**架构归属**: 执行层 - Prompt 系统
+**架构归属**: 执行层 - 消息管理 + Prompt 系统
 
 **任务列表**:
 
-**1. 开发规范模块 (P1)**:
+**1. 前缀缓存感知优化 (P0)**:
+- [ ] 实现 `PrefixAwareMemory` 类 - 稳定摘要层，保持前缀不变
+- [ ] 延迟压缩策略 - 提高阈值（6000 tokens），减少压缩频率
+- [ ] 稳定摘要位置 - 摘要消息固定在 System Prompt 之后
+- [ ] 缓存命中率追踪 - `CacheStats` 类记录缓存效果
+- [ ] 配置支持 - `PrefixCacheConfig` 数据类
+
+**2. 开发规范模块 (P1)**:
 - [ ] 添加 `development_guidelines` 模块 - 文档更新规则、测试覆盖率检查
 - [ ] 内容包括：提交前验证、文档同步、测试要求
-- [ ] 更新 `prompt_modules.py` 和 `config/prompts.xlsx`
+- [ ] 更新 `prompt_modules.py` 和 `prompts.xlsx`
 
-**2. 记忆类型定义模块 (P1)**:
+**3. 记忆类型定义模块 (P1)**:
 - [ ] 扩展 `memory_guide` 模块 - 完整记忆类型定义
 - [ ] 类型包括：user（用户信息）、feedback（用户反馈）、project（项目信息）、reference（外部引用）
 - [ ] 添加记忆存储/访问规则说明
 
-**3. 会话指导模块 (P2)**:
+**4. 会话指导模块 (P2)**:
 - [ ] 添加 `session_guidance` 模块 - Agent 使用策略、Skill 调用规则
 - [ ] 内容包括：多 Agent 场景、技能包使用、子任务委托
 
-**4. 项目配置模板 (P3)**:
+**5. 项目配置模板 (P3)**:
 - [ ] 创建 `CLAUDE.md` 模板文件 - 项目级配置示例
 - [ ] 包含：项目概述、开发规范、架构说明、常用命令
 
+**新增文件**:
+```
+nano_agent/memory/
+├── prefix_aware.py          # PrefixAwareMemory, CacheStats
+
+nano_agent/agent/
+├── prompt_modules.py        # 新增模块定义（修改）
+```
+
 **修改文件**:
 ```
-nano_agent/agent/prompt_modules.py    # 新增模块定义
-config/prompts.xlsx                    # 更新 Excel 配置
-docs/examples/CLAUDE.md               # 项目配置模板
+nano_agent/agent/compressor.py    # 延迟压缩策略
+nano_agent/agent/react.py         # 集成 PrefixAwareMemory
+nano_agent/config/schema.py       # PrefixCacheConfig
+config/prompts.xlsx               # 更新 Excel 配置
+docs/examples/CLAUDE.md           # 项目配置模板
 ```
 
 **技术方案**:
 ```python
-# nano_agent/agent/prompt_modules.py
+# nano_agent/memory/prefix_aware.py
 
-# 新增模块
+class PrefixAwareMemory(ShortTermMemory):
+    """前缀缓存感知的记忆管理"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._summary_message: dict | None = None  # 稳定的摘要消息
+        self._summary_index: int = 1  # 摘要位置（在 system 之后）
+        self._cache_stats = CacheStats()
+
+    def compress(self, summary: str) -> None:
+        """压缩时生成摘要消息，保持稳定"""
+        if self._summary_message is None:
+            # 首次压缩：在 system 后插入摘要
+            self._summary_message = {
+                "role": "user",
+                "content": f"[历史摘要]\n{summary}"
+            }
+            self._messages.insert(self._summary_index, self._summary_message)
+            # 删除摘要之前的旧消息（保留 system）
+            ...
+        else:
+            # 后续压缩：只更新摘要内容，不改变消息结构
+            self._summary_message["content"] = f"[历史摘要]\n{summary}"
+
+    def get_prefix_tokens(self) -> int:
+        """获取稳定前缀的 token 数（用于缓存命中计算）"""
+        # System + 摘要（如果有）
+        prefix_end = self._summary_index + 1 if self._summary_message else 1
+        return estimate_tokens(self._messages[:prefix_end])
+
+class CacheStats:
+    """追踪前缀缓存效果"""
+
+    def __init__(self):
+        self.total_requests = 0
+        self.cache_hits = 0
+        self.tokens_saved = 0
+
+    def record_hit(self, cached_tokens: int) -> None:
+        self.cache_hits += 1
+        self.tokens_saved += cached_tokens
+
+    @property
+    def hit_rate(self) -> float:
+        return self.cache_hits / self.total_requests if self.total_requests > 0 else 0
+
+# nano_agent/agent/compressor.py - 延迟压缩配置
+
+class CompressorConfig:
+    threshold_tokens: int = 6000      # 提高阈值，减少压缩频率
+    keep_recent: int = 6              # 保留更多最近消息
+    min_compress_interval: int = 3    # 至少间隔 3 次迭代才压缩
+
+# nano_agent/agent/prompt_modules.py - 新增模块
+
 MODULES = {
     # ... 现有模块 ...
 
@@ -1264,12 +1337,7 @@ MODULES = {
 1. Run tests: `pytest tests/ -v`
 2. Check coverage: aim for 75%+
 3. Update documentation if needed
-4. Update ROADMAP.md for new features
-
-### Code Quality
-- Write tests for new features
-- Fix bugs before adding features
-- Keep changes minimal and focused""",
+4. Update ROADMAP.md for new features""",
         priority=22,
         always_on=False,
         token_estimate=80,
@@ -1281,21 +1349,10 @@ MODULES = {
         description="记忆类型定义",
         content="""## Memory Types
 
-### user
-- User's role, preferences, knowledge level
-- Save when learning about user's background
-
-### feedback
-- Guidance on how to approach work
-- Save corrections and validated approaches
-
-### project
-- Ongoing work, goals, deadlines
-- Save project context and decisions
-
-### reference
-- Pointers to external resources
-- Save links to docs, dashboards, etc.""",
+### user - User's role, preferences, knowledge level
+### feedback - Guidance on how to approach work
+### project - Ongoing work, goals, deadlines
+### reference - Pointers to external resources""",
         priority=61,
         always_on=False,
         token_estimate=100,
@@ -1309,45 +1366,20 @@ MODULES = {
 
 - For shell commands requiring user interaction, suggest `! <command>`
 - Use specialized agents for complex tasks
-- For broad codebase exploration, spawn Explore agent
-- Only invoke skills that match user request""",
+- For broad codebase exploration, spawn Explore agent""",
         priority=70,
         always_on=False,
         token_estimate=50,
-        enabled=False,  # 可选启用
+        enabled=False,
     ),
-}
-
-# 更新 Style 预设
-STYLE_PRESETS = {
-    "concise": {...},
-    "standard": {
-        "modules": [
-            "core", "tools", "efficiency", "modification",
-            "constitution", "risk_awareness",
-            "development_guidelines",  # 新增
-            "language"
-        ],
-        "token_budget": 1200,
-    },
-    "detailed": {
-        "modules": [
-            "core", "tools", "efficiency", "modification",
-            "constitution", "risk_awareness", "security_rules",
-            "development_guidelines",  # 新增
-            "memory_types",  # 新增
-            "output_style", "memory_guide", "language"
-        ],
-        "token_budget": 2500,
-    },
 }
 ```
 
 **预期效果**:
+- 前缀缓存优化: 30-50% token 节省（长对话场景）
 - 开发规范模块: 提升代码质量意识
 - 记忆类型模块: 更好的记忆系统使用
 - 会话指导模块: 支持未来多 Agent 场景
-- 项目配置模板: 便于项目级定制
 
 ---
 
