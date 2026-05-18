@@ -104,11 +104,13 @@ class QueryRouter:
         Returns:
             QueryAnalysis 包含复杂度和建议
         """
+        import re
         query_lower = query.lower().strip()
 
-        # 1. 检查简单模式
+        # 1. 检查简单模式（使用单词边界匹配）
         for pattern in self.config.simple_patterns:
-            if pattern in query_lower:
+            # 使用单词边界匹配，避免 "something" 匹配 "hi"
+            if re.search(r'\b' + re.escape(pattern) + r'\b', query_lower):
                 return QueryAnalysis(
                     complexity=QueryComplexity.SIMPLE,
                     confidence=0.9,
@@ -119,15 +121,27 @@ class QueryRouter:
 
         # 2. 检查长度
         if len(query) < self.config.short_query_max_length:
-            # 短查询可能是简单的
-            if not any(c in query for c in ["?", "？", "请", "帮"]):
-                return QueryAnalysis(
-                    complexity=QueryComplexity.SIMPLE,
-                    confidence=0.7,
-                    reasoning="短查询，无明确任务",
-                    suggested_tools=[],
-                    can_answer_directly=True,
-                )
+            # 短查询可能是简单的，但需要更严格的检查
+            # 只有明确的问候/感谢/确认才认为是简单查询
+            simple_indicators = ["你好", "hello", "hi", "嗨", "谢谢", "thanks", "好的", "ok", "明白"]
+            # 使用单词边界匹配
+            for indicator in simple_indicators:
+                if re.search(r'\b' + re.escape(indicator) + r'\b', query_lower):
+                    return QueryAnalysis(
+                        complexity=QueryComplexity.SIMPLE,
+                        confidence=0.7,
+                        reasoning=f"短查询，匹配简单指示词: {indicator}",
+                        suggested_tools=[],
+                        can_answer_directly=True,
+                    )
+            # 其他短查询默认为中等复杂度，让 LLM 决定
+            return QueryAnalysis(
+                complexity=QueryComplexity.MODERATE,
+                confidence=0.5,
+                reasoning="短查询，需要 LLM 判断",
+                suggested_tools=[],
+                can_answer_directly=False,
+            )
 
         # 3. 检查复杂模式
         for pattern in self.config.complex_patterns:

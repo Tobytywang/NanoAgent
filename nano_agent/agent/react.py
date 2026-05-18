@@ -21,6 +21,7 @@ from .tool_merger import ToolCallMerger, ToolMergeConfig
 from .cache import ToolResultCache, CacheConfig
 from .compressor import MessageCompressor, CompressorConfig
 from .token_budget import TokenBudget, TokenBudgetConfig, BudgetAction
+from .router import QueryRouter, RouterConfig, QueryComplexity, RoutingDecision
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
@@ -101,6 +102,7 @@ class ReActAgent(BaseAgent):
         cache_config: CacheConfig | None = None,
         compressor_config: CompressorConfig | None = None,
         token_budget_config: TokenBudgetConfig | None = None,
+        router_config: RouterConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -122,6 +124,7 @@ class ReActAgent(BaseAgent):
             cache_config: Tool result caching configuration
             compressor_config: Message compression configuration
             token_budget_config: Token budget configuration for early stopping
+            router_config: Query routing configuration
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -144,6 +147,9 @@ class ReActAgent(BaseAgent):
 
         # Token budget manager
         self.token_budget = TokenBudget(token_budget_config)
+
+        # Query router
+        self.router = QueryRouter(router_config)
 
         # Context manager
         self.context_manager = ContextManager(
@@ -240,15 +246,26 @@ class ReActAgent(BaseAgent):
         # Prepare execution
         self._prepare_run(user_input, session_id)
 
-        # Pre-check: simple questions can be answered directly
-        if self.output_style_config.style == "concise" and _is_simple_question(user_input):
-            # Direct answer for simple questions (skip tool calls)
-            response = self._answer_simple_question(user_input)
-            self.tracker.end_run(response)
-            return self._build_result(response, 0, success=True)
+        # Query routing: analyze complexity and decide processing path
+        routing = RoutingDecision.from_analysis(self.router.analyze(user_input))
+
+        if self.verbose:
+            print(f"[Router] Complexity: {routing.analysis.complexity.value}, "
+                  f"Max iterations: {routing.max_iterations}")
+
+        # SIMPLE complexity: still call LLM but with 0 max iterations (no tool calls)
+        # This allows LLM to generate a natural response
+        if routing.skip_tools:
+            # Call LLM once for natural response
+            think = self._think()
+            self.tracker.end_run(think.response_text)
+            return self._build_result(think.response_text, 1, success=True)
+
+        # Use routed max_iterations for MODERATE complexity
+        effective_max_iterations = min(routing.max_iterations, self.max_iterations) if routing.max_iterations > 0 else self.max_iterations
 
         iteration = 0
-        while iteration < self.max_iterations:
+        while iteration < effective_max_iterations:
             iteration += 1
 
             # Budget check
@@ -260,7 +277,7 @@ class ReActAgent(BaseAgent):
             self.tracker.start_iteration(iteration)
 
             if self.verbose:
-                print(f"\n[Iteration {iteration}/{self.max_iterations}]")
+                print(f"\n[Iteration {iteration}/{effective_max_iterations}]")
 
             # Think phase
             think = self._think()
