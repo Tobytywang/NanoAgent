@@ -20,6 +20,7 @@ from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from .tool_merger import ToolCallMerger, ToolMergeConfig
 from .cache import ToolResultCache, CacheConfig
 from .compressor import MessageCompressor, CompressorConfig
+from .token_budget import TokenBudget, TokenBudgetConfig, BudgetAction
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
@@ -99,6 +100,7 @@ class ReActAgent(BaseAgent):
         tool_merge_config: ToolMergeConfig | None = None,
         cache_config: CacheConfig | None = None,
         compressor_config: CompressorConfig | None = None,
+        token_budget_config: TokenBudgetConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -119,6 +121,7 @@ class ReActAgent(BaseAgent):
             tool_merge_config: Tool merging configuration for token efficiency
             cache_config: Tool result caching configuration
             compressor_config: Message compression configuration
+            token_budget_config: Token budget configuration for early stopping
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -138,6 +141,9 @@ class ReActAgent(BaseAgent):
 
         # Message compressor
         self.compressor = MessageCompressor(compressor_config)
+
+        # Token budget manager
+        self.token_budget = TokenBudget(token_budget_config)
 
         # Context manager
         self.context_manager = ContextManager(
@@ -258,6 +264,13 @@ class ReActAgent(BaseAgent):
 
             # Think phase
             think = self._think()
+
+            # Check early stopping conditions
+            if self._should_stop_early(think, iteration):
+                self.tracker.end_iteration()
+                self.tracker.end_run(think.response_text)
+                return self._build_result(think.response_text, iteration, success=True)
+
             if think.is_final:
                 self.tracker.end_iteration()
                 self.tracker.end_run(think.response_text)
@@ -365,11 +378,19 @@ class ReActAgent(BaseAgent):
                 tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
+        # Extract confidence from response
+        confidence = self._extract_confidence(response_text)
+
+        # Update token budget
+        self.token_budget.consume(usage.total_tokens, phase="think")
+
         return ThinkResult(
             response_text=response_text,
             tool_calls=tool_calls or [],
             usage=usage,
-            is_final=not tool_calls
+            is_final=not tool_calls,
+            confidence=confidence,
+            can_answer=confidence >= 0.8 and not tool_calls,
         )
 
     def _merge_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolCall]:
@@ -582,6 +603,79 @@ class ReActAgent(BaseAgent):
 
         # Default: let LLM handle it
         return "请继续说明你的需求。"
+
+    def _should_stop_early(self, think: ThinkResult, iteration: int) -> bool:
+        """
+        Check if we should stop early based on confidence and budget.
+
+        Early stopping conditions:
+        1. High confidence (>= 0.8) and has final answer
+        2. Token budget near limit
+        3. can_answer flag is True
+
+        Args:
+            think: The think result from current iteration
+            iteration: Current iteration number
+
+        Returns:
+            True if should stop early
+        """
+        # Condition 1: High confidence with final answer
+        if think.confidence >= 0.8 and think.is_final:
+            if self.verbose:
+                print(f"[Early Stop] High confidence ({think.confidence:.2f}), stopping at iteration {iteration}")
+            return True
+
+        # Condition 2: can_answer flag
+        if think.can_answer and think.is_final:
+            if self.verbose:
+                print(f"[Early Stop] can_answer=True, stopping at iteration {iteration}")
+            return True
+
+        # Condition 3: Token budget near limit
+        if self.token_budget.should_force_summary():
+            if self.verbose:
+                print(f"[Early Stop] Token budget near limit ({self.token_budget.usage_ratio:.1%})")
+            return True
+
+        return False
+
+    def _extract_confidence(self, response_text: str) -> float:
+        """
+        Extract confidence score from LLM response.
+
+        Looks for patterns like:
+        - "confidence: 0.8"
+        - "置信度: 0.8"
+        - "[confidence: 0.8]"
+
+        Args:
+            response_text: The LLM response text
+
+        Returns:
+            Confidence score (0.0-1.0), defaults to 0.5 if not found
+        """
+        import re
+
+        # Try various patterns
+        patterns = [
+            r"confidence:\s*([0-9.]+)",
+            r"置信度:\s*([0-9.]+)",
+            r"\[confidence:\s*([0-9.]+)\]",
+            r"confidence\s*=\s*([0-9.]+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                try:
+                    confidence = float(match.group(1))
+                    return min(1.0, max(0.0, confidence))  # Clamp to [0, 1]
+                except ValueError:
+                    continue
+
+        # Default confidence
+        return 0.5
 
     def _build_result(
         self,

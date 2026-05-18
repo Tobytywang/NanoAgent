@@ -5,10 +5,13 @@ Provides intelligent summarization strategies per tool type:
 - file_read: Extract key sections (imports, classes, functions)
 - shell_execute: Filter meaningful output, extract errors
 - file_search: Keep count and representative samples
+- python_execute: Extract output and errors
+- web_search: Summarize search results
 """
 
 from dataclasses import dataclass, field
 import re
+from typing import Optional
 
 
 @dataclass
@@ -24,6 +27,11 @@ class SummarizerConfig:
     extract_signatures: bool = True  # Extract class/function signatures
     extract_errors: bool = True  # Extract error messages
     file_search_count_only: bool = False  # Show only count for file searches
+    # v0.7.5 enhancements
+    extract_docstrings: bool = True  # Extract docstrings
+    extract_constants: bool = True  # Extract constants
+    max_summary_tokens: int = 500  # Target max tokens in summary
+    preserve_structure: bool = True  # Preserve code structure hints
 
 
 class ToolResultSummarizer:
@@ -34,8 +42,10 @@ class ToolResultSummarizer:
     CLASS_PATTERN = re.compile(r"^(class |async class )")
     FUNCTION_PATTERN = re.compile(r"^(def |async def )")
     ERROR_PATTERN = re.compile(r"(error|Error|ERROR|failed|Failed|FAILED|exception)")
+    DOCSTRING_PATTERN = re.compile(r'^("""|\'\'\')')
+    CONSTANT_PATTERN = re.compile(r"^([A-Z_]+)\s*=")
 
-    def __init__(self, config: SummarizerConfig | None = None):
+    def __init__(self, config: Optional[SummarizerConfig] = None):
         self.config = config or SummarizerConfig()
 
     def summarize(self, output: str, tool_name: str) -> str:
@@ -58,6 +68,10 @@ class ToolResultSummarizer:
             return self._summarize_shell(output)
         elif tool_name == "file_search":
             return self._summarize_file_search(output)
+        elif tool_name == "python_execute":
+            return self._summarize_python(output)
+        elif tool_name == "web_search":
+            return self._summarize_web_search(output)
         else:
             return self._summarize_generic(output)
 
@@ -231,3 +245,149 @@ class ToolResultSummarizer:
             "No files found",
         ]
         return any(line.startswith(p) for p in noise_patterns)
+
+    def _summarize_python(self, output: str) -> str:
+        """
+        Summarize Python execution output.
+
+        Strategy:
+        1. Extract stdout/stderr sections
+        2. Show output with error highlighting
+        3. Limit long outputs
+        """
+        lines = output.split("\n")
+
+        # Categorize lines
+        stdout_lines = []
+        stderr_lines = []
+        current_section = "stdout"
+
+        for line in lines:
+            if "STDERR:" in line or "Error:" in line:
+                current_section = "stderr"
+                stderr_lines.append(line)
+            elif current_section == "stderr":
+                stderr_lines.append(line)
+            else:
+                stdout_lines.append(line)
+
+        result_parts = []
+
+        # Add stdout
+        if stdout_lines:
+            meaningful_stdout = [l for l in stdout_lines if l.strip() and not self._is_noise(l.strip())]
+            if meaningful_stdout:
+                result_parts.append("# Output:")
+                if len(meaningful_stdout) > self.config.max_lines:
+                    result_parts.extend(meaningful_stdout[:self.config.max_lines])
+                    result_parts.append(f"... [{len(meaningful_stdout) - self.config.max_lines} more lines]")
+                else:
+                    result_parts.extend(meaningful_stdout)
+
+        # Add stderr
+        if stderr_lines:
+            result_parts.append("\n# Errors:")
+            result_parts.extend(stderr_lines[:10])  # Limit error lines
+
+        if not result_parts:
+            return "[No output]"
+
+        return "\n".join(result_parts)
+
+    def _summarize_web_search(self, output: str) -> str:
+        """
+        Summarize web search results.
+
+        Strategy:
+        1. Extract titles and URLs
+        2. Show top results with brief snippets
+        3. Limit total results shown
+        """
+        lines = output.split("\n")
+
+        if len(lines) <= 5:
+            return output
+
+        # Try to extract structured results
+        results = []
+        current_result = {}
+
+        for line in lines:
+            # Look for title patterns
+            if line.startswith("Title:") or line.startswith("# "):
+                if current_result:
+                    results.append(current_result)
+                current_result = {"title": line.replace("Title:", "").replace("# ", "").strip()}
+            elif line.startswith("URL:") or line.startswith("http"):
+                current_result["url"] = line.replace("URL:", "").strip()
+            elif line.startswith("Snippet:") or line.startswith("Description:"):
+                snippet = line.replace("Snippet:", "").replace("Description:", "").strip()
+                current_result["snippet"] = snippet[:100] + "..." if len(snippet) > 100 else snippet
+
+        if current_result:
+            results.append(current_result)
+
+        # Build summary
+        if results:
+            result_parts = [f"# Found {len(results)} results\n"]
+
+            for i, r in enumerate(results[:5], 1):  # Show top 5
+                result_parts.append(f"{i}. {r.get('title', 'Unknown')}")
+                if "url" in r:
+                    result_parts.append(f"   URL: {r['url']}")
+                if "snippet" in r:
+                    result_parts.append(f"   {r['snippet']}")
+                result_parts.append("")
+
+            if len(results) > 5:
+                result_parts.append(f"... and {len(results) - 5} more results")
+
+            return "\n".join(result_parts)
+
+        # Fallback to generic
+        return self._summarize_generic(output)
+
+    def _extract_docstrings(self, lines: list[str]) -> list[str]:
+        """Extract docstrings from code lines."""
+        docstrings = []
+        in_docstring = False
+        current_docstring = []
+        docstring_start_line = -1
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+
+            if not in_docstring:
+                # Check for docstring start
+                if self.DOCSTRING_PATTERN.match(stripped):
+                    in_docstring = True
+                    current_docstring = [line]
+                    docstring_start_line = i
+                    # Check for single-line docstring
+                    if stripped.count('"""') >= 2 or stripped.count("'''") >= 2:
+                        docstrings.append("\n".join(current_docstring))
+                        in_docstring = False
+                        current_docstring = []
+            else:
+                current_docstring.append(line)
+                # Check for docstring end
+                if '"""' in stripped or "'''" in stripped:
+                    docstrings.append("\n".join(current_docstring))
+                    in_docstring = False
+                    current_docstring = []
+
+        return docstrings
+
+    def estimate_tokens(self, text: str) -> int:
+        """
+        Estimate token count for text.
+
+        Rough estimate: 1 token ~ 4 characters for English.
+
+        Args:
+            text: Text to estimate
+
+        Returns:
+            Estimated token count
+        """
+        return len(text) // 4

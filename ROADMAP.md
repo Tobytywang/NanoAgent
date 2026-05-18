@@ -1109,7 +1109,7 @@ def _show_token_breakdown(analyzer: TokenAnalyzer):
 
 ---
 
-### v0.7.5 - Token 消耗智能优化
+### v0.7.5 - Token 消耗智能优化 ✅
 
 **目标**: 实现动态思考深度控制，让 Agent 学会"适可而止"。
 
@@ -1121,41 +1121,44 @@ v0.7.1-v0.7.4 实现了静态优化（输出风格、工具合并、缓存、压
 **任务列表**:
 
 **1. 置信度评估与早停 (P0)**:
-- [ ] 扩展 `ThinkResult` 数据类 - 增加 `confidence` 和 `can_answer` 字段
-- [ ] 修改 System Prompt - 要求 LLM 输出置信度评估
-- [ ] 实现 `_should_stop_early()` 方法 - 置信度 > 0.9 且可回答时早停
-- [ ] 测试验证 - 确保早停逻辑正确
+- [x] 扩展 `ThinkResult` 数据类 - 增加 `confidence` 和 `can_answer` 字段
+- [x] 修改 System Prompt - 要求 LLM 输出置信度评估
+- [x] 实现 `_should_stop_early()` 方法 - 置信度 > 0.8 且可回答时早停
+- [x] 实现 `_extract_confidence()` 方法 - 从响应中提取置信度
+- [x] 测试验证 - 确保早停逻辑正确
 
 **2. Token 预算管理增强 (P0)**:
-- [ ] 实现 `TokenBudget` 类 - 剩余预算追踪
-- [ ] 预算耗尽时强制总结 - 返回最佳尝试答案
-- [ ] 配置支持 - `token_budget` 配置项
+- [x] 实现 `TokenBudget` 类 - 剩余预算追踪、分阶段预算
+- [x] 预算耗尽时强制总结 - 返回最佳尝试答案
+- [x] `BudgetAwareExecutor` - 预算感知执行器
+- [x] 配置支持 - `TokenBudgetConfig` 数据类
 
 **3. 查询复杂度路由 (P1)**:
-- [ ] 实现 `QueryRouter` 类 - 分类查询复杂度（SIMPLE/MODERATE/COMPLEX）
-- [ ] 扩展 `_answer_simple_question()` - 支持更多简单任务
-- [ ] 中等复杂度处理 - 单次 LLM + 最多 1 次工具
-- [ ] 配置支持 - `routing.enabled` 配置项
+- [x] 实现 `QueryRouter` 类 - 分类查询复杂度（SIMPLE/MODERATE/COMPLEX）
+- [x] 实现 `RoutingDecision` 类 - 路由决策封装
+- [x] 中等复杂度处理 - 根据复杂度设置最大迭代次数
+- [x] 配置支持 - `RouterConfig` 数据类
 
 **4. 工具返回智能摘要增强 (P1)**:
-- [ ] 实现 `ToolResultProcessor` 类 - 提取-摘要-结构化
-- [ ] 针对每个工具定制处理逻辑
-- [ ] 配置支持 - `tool_summary.enabled` 配置项
+- [x] 增强 `ToolResultSummarizer` 类 - 添加 python_execute/web_search 摘要
+- [x] 提取 docstrings 和 constants - 代码结构分析增强
+- [x] Token 估算方法 - `estimate_tokens()` 辅助方法
+- [x] 配置支持 - 扩展 `SummarizerConfig`
 
 **新增文件**:
 ```
 nano_agent/agent/
-├── router.py              # QueryRouter
-├── token_budget.py        # TokenBudget
-└── tool_processor.py      # ToolResultProcessor
+├── router.py              # QueryRouter, RoutingDecision
+├── token_budget.py        # TokenBudget, TokenBudgetConfig, BudgetAwareExecutor
+└── result_summarizer.py   # ToolResultSummarizer (增强)
 ```
 
 **修改文件**:
 ```
-nano_agent/agent/types.py      # ThinkResult 扩展
-nano_agent/agent/react.py      # 早停逻辑、预算管理
-nano_agent/agent/prompts.py    # 置信度评估提示词
-nano_agent/config/schema.py    # 新增配置项
+nano_agent/agent/types.py          # ThinkResult 扩展 (confidence, can_answer)
+nano_agent/agent/react.py          # 早停逻辑、预算管理集成
+nano_agent/agent/prompts.py        # 置信度评估提示词
+nano_agent/agent/prompt_modules.py # 核心模块增加置信度引导
 ```
 
 **技术方案**:

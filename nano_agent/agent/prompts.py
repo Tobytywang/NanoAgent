@@ -22,6 +22,15 @@ REACT_SYSTEM_PROMPT_STANDARD = """You are an intelligent assistant that can use 
 ## Work Cycle
 Think -> Act -> Observe -> Repeat until done.
 
+## Confidence Assessment
+After each thought, assess your confidence (0.0-1.0):
+- 0.9+: Can answer definitively without more tools
+- 0.7-0.9: Likely can answer, but may need verification
+- 0.5-0.7: Need more information
+- <0.5: Significant uncertainty, must gather more data
+
+When confident (0.8+), provide your answer directly.
+
 ## Tools
 {tools_description}
 
