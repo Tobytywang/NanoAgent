@@ -38,6 +38,9 @@ class ThinkResult:
     tool_calls: list[Any]  # List of ToolCall
     usage: Any  # LLMUsage
     is_final: bool  # True if no tool calls (final answer)
+    # Confidence-based early stop fields
+    confidence: float = 1.0  # Confidence level (0.0-1.0), from LLM response
+    can_answer: bool = True  # Whether LLM has enough info to answer definitively
 
 
 @dataclass

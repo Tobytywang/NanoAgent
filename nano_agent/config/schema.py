@@ -235,6 +235,40 @@ class ProjectFileConfig:
 
 
 @dataclass
+class SmartOptimizationConfig:
+    """Smart optimization configuration for dynamic token efficiency.
+
+    These features are designed to reduce token consumption by adapting
+    to task complexity and confidence levels.
+    """
+
+    # === Confidence-based Early Stop ===
+    confidence_enabled: bool = True  # Enable confidence-based early stopping
+    confidence_threshold: float = 0.9  # Stop early when confidence >= threshold
+    confidence_prompt_suffix: str = (
+        "\n\nAfter your response, indicate your confidence level (0.0-1.0) "
+        "and whether you have enough information to answer definitively. "
+        "Format: [CONFIDENCE: X.XX] [CAN_ANSWER: yes/no]"
+    )
+
+    # === Token Budget Management ===
+    budget_enabled: bool = True  # Enable token budget tracking
+    initial_budget: int = 2000  # Initial token budget per session
+    budget_warning_threshold: float = 0.2  # Warn when budget < 20%
+    budget_force_summarize: bool = True  # Force summarize when budget exhausted
+
+    # === Query Complexity Routing ===
+    routing_enabled: bool = True  # Enable query complexity routing
+    routing_simple_direct: bool = True  # Answer simple queries directly (no LLM call)
+    routing_moderate_single_tool: bool = True  # Allow max 1 tool for moderate queries
+    routing_complex_full_loop: bool = True  # Full ReAct loop for complex queries
+
+    # === Tool Result Processing ===
+    tool_processor_enabled: bool = True  # Enable intelligent tool result processing
+    tool_processor_max_output_tokens: int = 300  # Max tokens for processed tool output
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -253,3 +287,4 @@ class Config:
     cache: CacheConfig = field(default_factory=CacheConfig)
     compressor: CompressorConfig = field(default_factory=CompressorConfig)
     project_file: ProjectFileConfig = field(default_factory=ProjectFileConfig)
+    smart_optimization: SmartOptimizationConfig = field(default_factory=SmartOptimizationConfig)
