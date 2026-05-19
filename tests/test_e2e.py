@@ -343,3 +343,68 @@ class TestAgentLifecycleEndToEnd:
 
         assert stats is not None
         assert stats.total_iterations >= 1
+
+
+@pytest.mark.e2e
+class TestToolMergeEndToEnd:
+    """End-to-end tests for tool merging with actual tool execution."""
+
+    def test_file_search_with_merged_patterns(self, temp_dir):
+        """Test that file_search correctly handles merged patterns with pipe separator.
+
+        This test verifies the fix for BUG-002: file_search tool must support
+        pipe separator when tool_merger combines multiple search patterns.
+        """
+        from nano_agent.tools.builtin.file_ops import FileSearchTool
+
+        # Create test files
+        Path(temp_dir, "plan.md").touch()
+        Path(temp_dir, "todo.txt").touch()
+        Path(temp_dir, "other.py").touch()
+        Path(temp_dir, "project_plan.md").touch()
+
+        tool = FileSearchTool()
+
+        # Test merged pattern (what tool_merger produces)
+        result = tool.execute(directory=temp_dir, pattern="*plan*|*.txt")
+
+        assert result.success is True
+        assert "plan.md" in result.output
+        assert "todo.txt" in result.output
+        assert "project_plan.md" in result.output
+        assert "other.py" not in result.output
+
+    def test_tool_merger_produces_valid_file_search_pattern(self, temp_dir):
+        """Test that ToolCallMerger produces patterns that file_search can execute.
+
+        This is an integration test between tool_merger and file_search tool.
+        """
+        from nano_agent.agent.tool_merger import ToolCallMerger, ToolMergeConfig
+        from nano_agent.tools.builtin.file_ops import FileSearchTool
+
+        # Create test files
+        Path(temp_dir, "plan.md").touch()
+        Path(temp_dir, "todo.txt").touch()
+
+        # Simulate what tool_merger does: merge multiple file_search calls
+        merger = ToolCallMerger(ToolMergeConfig(enabled=True))
+        calls = [
+            ToolCall(id="1", name="file_search", arguments={"directory": temp_dir, "pattern": "*plan*"}),
+            ToolCall(id="2", name="file_search", arguments={"directory": temp_dir, "pattern": "*.txt"}),
+        ]
+
+        merged = merger.analyze_and_merge(calls)
+        assert len(merged) == 1  # Should merge into one call
+
+        # Execute the merged call
+        merged_pattern = merged[0].arguments["pattern"]
+        tool = FileSearchTool()
+        result = tool.execute(
+            directory=merged[0].arguments["directory"],
+            pattern=merged_pattern
+        )
+
+        # Verify the merged pattern works correctly
+        assert result.success is True
+        assert "plan.md" in result.output
+        assert "todo.txt" in result.output

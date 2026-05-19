@@ -82,6 +82,87 @@ def get_stable_system_prompt(self) -> str:
 
 ---
 
+## BUG-002: file_search 工具不支持管道分隔的多模式搜索
+
+**发现日期**: 2026-05-19
+
+**严重程度**: 中等（导致搜索结果为空）
+
+**影响范围**: 使用 `file_search` 搜索多个模式时，合并后的搜索无法找到文件
+
+### 问题描述
+
+用户在 TYNote 项目中运行 `nano-agent`，请求"请帮我查看当前项目的plan"。Agent 调用 `file_search` 搜索 `*plan*|*.md|*.txt`，但返回"No files matching found"，而实际上 `.nano_agent/plans/frontmatter-optimization-plan.md` 文件存在。
+
+### 根因分析
+
+`tool_merger.py` 将多个 `file_search` 调用合并为一个，使用 `|` 分隔多个模式：
+
+```python
+# tool_merger.py 第 143 行
+return "|".join(patterns)  # 生成 "*plan*|*.md|*.txt"
+```
+
+但 `file_search` 工具使用 Python 的 `rglob()`，**不支持 `|` 作为模式分隔符**：
+
+```python
+# file_ops.py 原代码
+matches = base_path.rglob(pattern)  # "*plan*|*.md|*.txt" 无法匹配
+```
+
+### 为什么测试没发现
+
+1. `test_tool_merger.py` 测试了合并逻辑，但没有测试合并后的模式是否能被 `file_search` 正确执行
+2. 测试用例 `test_complex_pattern_not_simple_extension` 期望使用管道分隔符，但这是错误的设计
+3. 缺少端到端测试验证合并后的工具调用能正确工作
+
+### 修复方案
+
+修改 `file_search` 工具，支持 `|` 分隔的多模式搜索：
+
+```python
+# nano_agent/tools/builtin/file_ops.py
+
+def execute(self, directory: str, pattern: str, recursive: bool = True) -> ToolResult:
+    # Support pipe separator for multiple patterns
+    patterns = pattern.split("|") if "|" in pattern else [pattern]
+
+    # Collect matches from all patterns
+    all_matches = set()
+    for p in patterns:
+        p = p.strip()
+        if p:
+            matches = base_path.rglob(p) if recursive else base_path.glob(p)
+            all_matches.update(matches)
+
+    # Sort and return results
+    sorted_matches = sorted(all_matches, key=lambda m: str(m))
+    ...
+```
+
+### 补充的测试用例
+
+**`test_tools.py`** - 添加 2 个测试：
+- `test_search_with_pipe_separator`: 测试管道分隔符能正确搜索多个模式
+- `test_search_with_pipe_separator_no_matches`: 测试无匹配时的正确行为
+
+**`test_e2e.py`** - 添加 2 个端到端测试（防止回归）：
+- `test_file_search_with_merged_patterns`: 验证 `file_search` 支持管道分隔符
+- `test_tool_merger_produces_valid_file_search_pattern`: 验证 `ToolCallMerger` 产生的模式能被 `file_search` 正确执行
+
+### 经验教训
+
+1. **工具合并要与工具实现协调**：当 `tool_merger` 产生新的调用格式时，对应的工具必须支持该格式
+2. **端到端测试很重要**：单元测试只验证了各模块独立工作，没有验证模块间的协作
+3. **测试用例的预期要正确**：`test_complex_pattern_not_simple_extension` 的注释说"should use pipe separator"，但这是基于错误假设
+
+### 相关提交
+
+- Tool merger 逻辑在 `nano_agent/agent/tool_merger.py`
+- File search 工具在 `nano_agent/tools/builtin/file_ops.py`
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：
