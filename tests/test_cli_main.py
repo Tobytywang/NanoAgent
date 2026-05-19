@@ -1162,12 +1162,6 @@ class TestExportReport:
 class TestSlashCommandsExtended:
     """Extended tests for slash commands."""
 
-    def test_undo_command_calls_handler(self):
-        """Test /undo command calls _handle_undo."""
-        # This test verifies the command is recognized
-        # The actual undo logic is tested in TestUndoHandler
-        pass
-
     def test_history_command_with_git(self):
         """Test /history command with Git integration."""
         from nano_agent.agent.git_manager import GitManager
@@ -1182,30 +1176,6 @@ class TestSlashCommandsExtended:
         # Verify history can be retrieved
         history = git_manager.get_history(limit=10)
         assert len(history) == 1
-
-    def test_report_command(self):
-        """Test /report command exports report."""
-        from nano_agent.cli.main import run_interactive
-
-        orchestrator = Mock()
-        orchestrator.agent = Mock()
-        orchestrator.agent.tool_registry = Mock()
-        orchestrator.agent.tool_registry.list_tools.return_value = []
-        orchestrator.agent.memory = ShortTermMemory()
-        orchestrator.agent.events = Mock()
-        orchestrator.agent.tracker = Mock()
-        orchestrator.agent.tracker.get_full_report.return_value = {}
-        orchestrator._config_source = "test"
-
-        config = Config()
-        config.agent = AgentConfig()
-        config.agent.user_name = "User"
-        config.agent.agent_name = "Agent"
-        config.llm = LLMConfig()
-
-        with patch('builtins.input', return_value="/report"):
-            with patch('builtins.print'):
-                pass
 
 
 class TestRunInteractiveLoop:
