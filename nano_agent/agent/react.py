@@ -909,5 +909,13 @@ class ReActAgent(BaseAgent):
             tool: Tool instance to add
         """
         self.tool_registry.register(tool)
+        # Rebuild stable portion with new tool
+        if self._prompt_builder is not None:
+            style = self.prompt_config.style or self.output_style_config.style
+            tools_desc = self._format_tools_description(style)
+            self._stable_system_prompt = self._prompt_builder.build_stable(
+                tools_description=tools_desc,
+                stable_modules=self.prompt_config.stable_modules,
+            )
         # Update system prompt with new tool
         self._setup_system_prompt()
