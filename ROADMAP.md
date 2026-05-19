@@ -1109,7 +1109,7 @@ def _show_token_breakdown(analyzer: TokenAnalyzer):
 
 ---
 
-### v0.7.5 - Token 消耗智能优化
+### v0.7.5 - Token 消耗智能优化 ✅
 
 **目标**: 实现动态思考深度控制，让 Agent 学会"适可而止"。
 
@@ -1121,41 +1121,45 @@ v0.7.1-v0.7.4 实现了静态优化（输出风格、工具合并、缓存、压
 **任务列表**:
 
 **1. 置信度评估与早停 (P0)**:
-- [ ] 扩展 `ThinkResult` 数据类 - 增加 `confidence` 和 `can_answer` 字段
-- [ ] 修改 System Prompt - 要求 LLM 输出置信度评估
-- [ ] 实现 `_should_stop_early()` 方法 - 置信度 > 0.9 且可回答时早停
-- [ ] 测试验证 - 确保早停逻辑正确
+- [x] 扩展 `ThinkResult` 数据类 - 增加 `confidence` 和 `can_answer` 字段
+- [x] 修改 System Prompt - 要求 LLM 输出置信度评估
+- [x] 实现 `ConfidenceParser` 类 - 解析置信度标记
+- [x] 集成早停逻辑 - 置信度 >= threshold 且可回答时早停
+- [x] 测试验证 - 37 个测试用例
 
 **2. Token 预算管理增强 (P0)**:
-- [ ] 实现 `TokenBudget` 类 - 剩余预算追踪
-- [ ] 预算耗尽时强制总结 - 返回最佳尝试答案
-- [ ] 配置支持 - `token_budget` 配置项
+- [x] 实现 `TokenBudget` 类 - 剩余预算追踪
+- [x] 预算耗尽时强制总结 - `_force_summarize()` 方法
+- [x] 配置支持 - `SmartOptimizationConfig` 配置项
 
 **3. 查询复杂度路由 (P1)**:
-- [ ] 实现 `QueryRouter` 类 - 分类查询复杂度（SIMPLE/MODERATE/COMPLEX）
-- [ ] 扩展 `_answer_simple_question()` - 支持更多简单任务
-- [ ] 中等复杂度处理 - 单次 LLM + 最多 1 次工具
-- [ ] 配置支持 - `routing.enabled` 配置项
+- [x] 实现 `QueryRouter` 类 - 分类查询复杂度（SIMPLE/MODERATE/COMPLEX）
+- [x] 支持中英文问候语识别
+- [x] 中等复杂度处理 - 单次 LLM + 最多 1 次工具
+- [x] 配置支持 - `routing.enabled` 配置项
 
 **4. 工具返回智能摘要增强 (P1)**:
-- [ ] 实现 `ToolResultProcessor` 类 - 提取-摘要-结构化
-- [ ] 针对每个工具定制处理逻辑
-- [ ] 配置支持 - `tool_summary.enabled` 配置项
+- [ ] 实现 `ToolResultProcessor` 类 - 提取-摘要-结构化（暂缓）
+- [ ] 针对每个工具定制处理逻辑（暂缓）
+- [x] 配置支持 - `tool_processor.enabled` 配置项已预留
 
 **新增文件**:
 ```
 nano_agent/agent/
-├── router.py              # QueryRouter
-├── token_budget.py        # TokenBudget
-└── tool_processor.py      # ToolResultProcessor
+├── router.py              # QueryRouter, QueryComplexity, RoutingResult
+├── token_budget.py        # TokenBudget, TokenBudgetConfig
+├── confidence.py          # ConfidenceParser, ConfidenceResult
+tests/test_smart_optimization.py  # 37 个测试用例
 ```
 
 **修改文件**:
 ```
-nano_agent/agent/types.py      # ThinkResult 扩展
-nano_agent/agent/react.py      # 早停逻辑、预算管理
-nano_agent/agent/prompts.py    # 置信度评估提示词
-nano_agent/config/schema.py    # 新增配置项
+nano_agent/agent/types.py      # ThinkResult 扩展 confidence/can_answer
+nano_agent/agent/react.py      # 早停逻辑、预算管理、路由集成
+nano_agent/agent/prompts.py    # CONFIDENCE_SUFFIX 置信度提示词
+nano_agent/agent/__init__.py   # 导出新模块
+nano_agent/config/schema.py    # SmartOptimizationConfig 配置类
+nano_agent/core/builder.py     # 传递 smart_optimization_config
 ```
 
 **技术方案**:
@@ -1167,21 +1171,21 @@ class ThinkResult:
     tool_calls: list[ToolCall]
     usage: LLMUsage
     is_final: bool
-    confidence: float = 1.0      # 新增：当前结论置信度 (0-1)
-    can_answer: bool = True      # 新增：是否已有足够信息回答
+    confidence: float = 1.0      # 当前结论置信度 (0-1)
+    can_answer: bool = True      # 是否已有足够信息回答
 
 # nano_agent/agent/token_budget.py
 class TokenBudget:
-    def __init__(self, initial_budget: int = 2000):
-        self.initial_budget = initial_budget
-        self.remaining = initial_budget
+    def __init__(self, config: TokenBudgetConfig):
+        self.initial_budget = config.initial_budget
+        self.remaining = self.initial_budget
 
     def consume(self, tokens: int) -> None:
         self.remaining = max(0, self.remaining - tokens)
 
     def should_summarize(self) -> bool:
-        """剩余预算 < 20% 时，强制进入总结模式"""
-        return self.remaining < self.initial_budget * 0.2
+        """剩余预算耗尽时，强制进入总结模式"""
+        return self.remaining <= 0 and self.config.force_summarize
 
 # nano_agent/agent/router.py
 class QueryComplexity(Enum):
@@ -1190,21 +1194,17 @@ class QueryComplexity(Enum):
     COMPLEX = "complex"     # 多步推理
 
 class QueryRouter:
-    def classify(self, query: str) -> QueryComplexity:
-        if self._is_greeting(query):
-            return QueryComplexity.SIMPLE
-        if self._is_simple_fact(query):
-            return QueryComplexity.SIMPLE
-        if self._needs_single_tool(query):
-            return QueryComplexity.MODERATE
-        return QueryComplexity.COMPLEX
+    def classify(self, query: str) -> RoutingResult:
+        # 优先检查简单模式（问候、感谢等）
+        # 然后检查复杂模式（分析、实现、重构等）
+        # 最后检查中等模式
+        # 默认返回复杂
 ```
 
 **预期效果**:
 - 置信度早停: 减少 30% 无效迭代
 - Token 预算: 防止无限消耗
 - 查询路由: 减少 50% 简单任务消耗
-- 工具摘要: 减少 40% 工具输出 token
 
 ---
 
@@ -1578,7 +1578,7 @@ persona:
 | v0.7.2 | Token 消耗深度优化 ✅ | 智能工具合并、工具结果智能摘要 |
 | v0.7.3 | Token 消耗进阶优化 ✅ | 工具结果缓存、历史消息压缩、项目文件精简 |
 | v0.7.4 | Token 统计增强 ✅ | Token 分类统计、/stats 子命令增强、工具消耗排名 |
-| v0.7.5 | Token 消耗智能优化 | 置信度早停、Token 预算、查询路由、工具摘要增强 |
+| v0.7.5 | Token 消耗智能优化 ✅ | 置信度早停、Token 预算、查询路由、SmartOptimizationConfig |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
