@@ -559,9 +559,12 @@ class PromptBuilder:
         Returns:
             缓存键字符串
         """
+        import hashlib
+
         stable_prompt = self.build_stable(tools_description)
-        # 使用 hash 作为缓存键
-        return f"prompt_{hash(stable_prompt) & 0xFFFFFFFF:08x}"
+        # Use SHA256 for stable cache keys across sessions
+        hash_bytes = hashlib.sha256(stable_prompt.encode()).digest()
+        return f"prompt_{hash_bytes[:4].hex()}"
 
     def get_stable_module_names(self) -> list[str]:
         """获取稳定模块名称列表"""

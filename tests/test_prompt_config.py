@@ -377,6 +377,6 @@ class TestAgentPromptIntegration:
         # Get cache key
         cache_key = agent._prompt_builder.get_cache_key("Test tools")
 
-        # Cache key should be consistent
+        # Cache key should be consistent and use SHA256 format
         assert cache_key.startswith("prompt_")
-        assert len(cache_key) == len("prompt_XXXXXXXX")
+        assert len(cache_key) == len("prompt_XXXXXXXX")  # 8 hex chars
