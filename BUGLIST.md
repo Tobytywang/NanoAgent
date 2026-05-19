@@ -163,6 +163,65 @@ def execute(self, directory: str, pattern: str, recursive: bool = True) -> ToolR
 
 ---
 
+## BUG-003: Token 预算默认值过小导致提前终止
+
+**发现日期**: 2026-05-19
+
+**严重程度**: 高（导致 Agent 无法完成正常任务）
+
+**影响范围**: 所有使用默认配置的用户，当对话历史较长时会提前终止
+
+### 问题描述
+
+用户在 TYNote 项目中测试"请帮我查看项目的plan"，Agent 执行了 1 轮迭代后就返回了 "Based on the information gathered..." 的摘要，没有继续读取 plan 文件内容。
+
+### 根因分析
+
+`SmartOptimizationConfig.initial_budget` 默认值为 **2000 tokens**，这个值太小了：
+
+1. 第 1 轮迭代的 `prompt_tokens` 是 2033（包含历史对话）
+2. 第 1 轮迭代执行后，预算被消耗：`remaining = 2000 - 2033 = -33`
+3. 第 2 轮迭代开始时，`token_budget.should_summarize()` 返回 True
+4. 触发 `_force_summarize()`，提前终止执行
+
+### 为什么测试没发现
+
+1. 单元测试没有模拟多轮对话的场景
+2. 端到端测试使用的是 mock LLM，返回的 token 数量很小
+3. 没有测试验证在正常对话历史下预算是否足够
+
+### 修复方案
+
+将 `initial_budget` 默认值从 2000 调整为 20000：
+
+```python
+# nano_agent/config/schema.py
+class SmartOptimizationConfig:
+    # === Token Budget Management ===
+    budget_enabled: bool = True
+    initial_budget: int = 20000  # Increased from 2000
+    budget_warning_threshold: float = 0.2
+    budget_force_summarize: bool = True
+```
+
+### 补充的测试用例
+
+**需要添加**：测试验证预算设置在正常对话场景下不会提前终止
+
+### 经验教训
+
+1. **默认值要考虑实际使用场景**：2000 tokens 对于单次 LLM 调用都不够，更不用说多轮对话
+2. **预算检查逻辑要合理**：应该在 LLM 调用前检查预算是否足够，而不是在调用后
+3. **端到端测试要模拟真实场景**：包括对话历史、token 数量等
+
+### 相关文件
+
+- `nano_agent/config/schema.py` - SmartOptimizationConfig 定义
+- `nano_agent/agent/react.py` - 预算检查逻辑
+- `nano_agent/agent/token_budget.py` - TokenBudget 实现
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：
