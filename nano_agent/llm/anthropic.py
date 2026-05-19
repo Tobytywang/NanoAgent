@@ -94,27 +94,37 @@ class AnthropicLLM(BaseLLM):
                     })
         return formatted
 
-    def _format_tools(self, tools: list[dict] | None) -> list[dict] | None:
-        """Format tools for Anthropic API.
+    def _format_tools(
+        self,
+        tools: list[dict] | None,
+        cache_tools: bool = True
+    ) -> list[dict] | None:
+        """Format tools for Anthropic API with optional caching.
 
         Args:
             tools: Tool definitions in OpenAI format
+            cache_tools: Whether to add cache_control to tool definitions
 
         Returns:
-            Tools in Anthropic format
+            Tools in Anthropic format with optional cache_control
         """
         if not tools:
             return None
 
         formatted_tools = []
-        for tool in tools:
+        for i, tool in enumerate(tools):
             if tool.get("type") == "function":
                 func = tool.get("function", {})
-                formatted_tools.append({
+                tool_def = {
                     "name": func.get("name", ""),
                     "description": func.get("description", ""),
                     "input_schema": func.get("parameters", {})
-                })
+                }
+                # Add cache_control to the last tool for caching all tools
+                # Anthropic caches from the start up to and including the block with cache_control
+                if cache_tools and i == len(tools) - 1:
+                    tool_def["cache_control"] = {"type": "ephemeral"}
+                formatted_tools.append(tool_def)
         return formatted_tools if formatted_tools else None
 
     def _parse_tool_calls(self, content_blocks: list) -> list[ToolCall]:
@@ -141,6 +151,7 @@ class AnthropicLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
+        cache_tools: bool = True,
         **kwargs
     ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
@@ -152,6 +163,8 @@ class AnthropicLLM(BaseLLM):
             system_stable: Stable system prompt for Prompt Caching
                 When provided, will be sent with cache_control: {"type": "ephemeral"}
                 to enable Anthropic's Prompt Caching feature.
+            cache_tools: Whether to cache tool definitions (default: True)
+                When True, adds cache_control to the last tool definition.
 
         Returns:
             Tuple of (text_response, tool_calls, usage)
@@ -171,8 +184,8 @@ class AnthropicLLM(BaseLLM):
         # Format messages (skip system messages)
         formatted_messages = self._format_messages(messages)
 
-        # Format tools
-        formatted_tools = self._format_tools(tools)
+        # Format tools with caching
+        formatted_tools = self._format_tools(tools, cache_tools=cache_tools)
 
         # Build request params
         request_params = {
@@ -222,6 +235,7 @@ class AnthropicLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
+        cache_tools: bool = True,
         **kwargs
     ) -> Generator[str, None, None]:
         """
@@ -231,6 +245,7 @@ class AnthropicLLM(BaseLLM):
             messages: List of messages
             tools: Optional tool definitions
             system_stable: Stable system prompt for Prompt Caching
+            cache_tools: Whether to cache tool definitions (default: True)
 
         Yields:
             Text chunks from the response
@@ -249,8 +264,8 @@ class AnthropicLLM(BaseLLM):
         # Format messages (skip system messages)
         formatted_messages = self._format_messages(messages)
 
-        # Format tools
-        formatted_tools = self._format_tools(tools)
+        # Format tools with caching
+        formatted_tools = self._format_tools(tools, cache_tools=cache_tools)
 
         # Build request params
         request_params = {

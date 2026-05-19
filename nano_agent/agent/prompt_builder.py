@@ -5,6 +5,7 @@
 1. 从 Excel 配置文件加载模块配置
 2. 按需组装 prompt
 3. Token 预算控制
+4. 动态模块激活（基于意图检测）
 """
 
 import os
@@ -15,6 +16,7 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 
 from .prompt_modules import MODULES, STYLE_PRESETS, PromptModule
+from .intent_detector import IntentDetector
 
 
 @dataclass
@@ -26,6 +28,8 @@ class PromptBuilderConfig:
     include_environment: bool = False
     include_git: bool = False
     custom_modules: dict[str, PromptModule] = field(default_factory=dict)
+    # Dynamic module activation
+    dynamic_module_activation: bool = True  # Enable intent-based module activation
 
 
 class ExcelConfigManager:
@@ -243,6 +247,7 @@ class PromptBuilder:
         self.config = config or PromptBuilderConfig()
         self._modules: dict[str, PromptModule] = {}
         self._dynamic_content: dict[str, str] = {}
+        self._intent_detector = IntentDetector()  # Intent detector for dynamic activation
         self._load_modules()
 
     def _load_modules(self):
@@ -503,6 +508,7 @@ class PromptBuilder:
         skill_prompt: str = "",
         confidence_enabled: bool = False,
         confidence_suffix: str = "",
+        user_input: str | None = None,
     ) -> str:
         """
         构建动态部分（每次可能变化）
@@ -511,6 +517,7 @@ class PromptBuilder:
             skill_prompt: 技能 prompt
             confidence_enabled: 是否启用置信度
             confidence_suffix: 置信度后缀内容
+            user_input: 用户输入（用于意图检测，决定是否激活 git/environment 模块）
 
         Returns:
             动态部分的 system prompt
@@ -539,12 +546,25 @@ class PromptBuilder:
         if confidence_enabled and confidence_suffix:
             parts.append(confidence_suffix)
 
+        # 动态模块激活：基于意图检测决定是否添加 environment/git
+        should_include_env = self.config.include_environment
+        should_include_git = self.config.include_git
+
+        # 如果启用了动态激活且有用户输入，则进行意图检测
+        if self.config.dynamic_module_activation and user_input:
+            detected_intents = self._intent_detector.detect(user_input)
+            # 只有当意图检测到且配置未显式禁用时才激活
+            if "environment" in detected_intents:
+                should_include_env = True
+            if "git_status" in detected_intents:
+                should_include_git = True
+
         # 添加环境信息
-        if self.config.include_environment:
+        if should_include_env:
             parts.append(self._get_environment_content())
 
         # 添加 Git 状态
-        if self.config.include_git:
+        if should_include_git:
             parts.append(self._get_git_content())
 
         return "\n\n".join(parts)
@@ -585,6 +605,21 @@ class PromptBuilder:
             and self._modules[name].enabled
             and not self._modules[name].is_stable
         ]
+
+    def get_intent_detector(self) -> IntentDetector:
+        """获取意图检测器"""
+        return self._intent_detector
+
+    def detect_intents(self, user_input: str) -> set[str]:
+        """检测用户意图
+
+        Args:
+            user_input: 用户输入
+
+        Returns:
+            检测到的意图集合
+        """
+        return self._intent_detector.detect(user_input)
 
 
 # 便捷函数
