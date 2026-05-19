@@ -1851,9 +1851,13 @@ def _show_config(config, agent) -> None:
     print(format_line("Token Budget:", f"{config.prompt.token_budget} tokens"))
     print(format_line("Include Environment:", str(config.prompt.include_environment)))
     print(format_line("Include Git Status:", str(config.prompt.include_git_status)))
+    print(format_line("Enable Caching:", str(config.prompt.enable_caching)))
     if hasattr(agent, '_prompt_builder') and agent._prompt_builder:
         stable_names = agent._prompt_builder.get_stable_module_names()
-        print(format_line("Stable Modules:", ', '.join(stable_names) if stable_names else 'None'))
+        if stable_names:
+            print(format_line("Stable Modules:", ', '.join(stable_names)))
+        else:
+            print(format_line("Stable Modules:", 'None'))
 
     print("\n" + "=" * 50 + "\n")
 

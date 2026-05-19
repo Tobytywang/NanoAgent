@@ -303,6 +303,9 @@ class PromptConfig:
         default_factory=lambda: ["core", "tools", "efficiency", "modification", "language"]
     )
 
+    # Enable prefix caching (Anthropic Prompt Caching, OpenAI Automatic Caching)
+    enable_caching: bool = True
+
 
 @dataclass
 class Config:

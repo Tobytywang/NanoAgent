@@ -235,9 +235,15 @@ class ReActAgent(BaseAgent):
             stable_modules=self.prompt_config.stable_modules,
         )
 
+        # Set stable system prompt to memory for prefix caching (v0.7.7)
+        if self.prompt_config.enable_caching:
+            self.memory.set_stable_system_prompt(self._stable_system_prompt)
+
         if self.verbose:
             stable_names = self._prompt_builder.get_stable_module_names()
             print(f"[Prompt] Stable modules: {stable_names}")
+            if self.prompt_config.enable_caching:
+                print(f"[Prompt] Prefix caching enabled")
 
     def _setup_system_prompt(self) -> None:
         """Set up the system prompt with tool descriptions."""
@@ -508,13 +514,25 @@ class ReActAgent(BaseAgent):
 
         tools_schema = self.tool_registry.get_all_schemas()
 
+        # Prefix caching support (v0.7.7)
+        system_stable = None
+        if self.prompt_config.enable_caching and self._stable_system_prompt:
+            system_stable = self._stable_system_prompt
+            if self.verbose:
+                print(f"[Caching] Using stable system prompt ({len(system_stable)} chars)")
+
         # Call LLM
         llm_start = time.perf_counter()
         response_text, tool_calls, usage = self.llm.chat(
             messages=messages,
-            tools=tools_schema if tools_schema else None
+            tools=tools_schema if tools_schema else None,
+            system_stable=system_stable,
         )
         llm_latency = (time.perf_counter() - llm_start) * 1000
+
+        # Report cache hit if available (Anthropic)
+        if usage.cache_read_tokens > 0 and self.verbose:
+            print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
 
         # Convert tool_calls to dict for reporting
         tool_calls_dict = [tc.to_dict() for tc in tool_calls] if tool_calls else []

@@ -1219,6 +1219,160 @@ class QueryRouter:
 
 ---
 
+### v0.7.6 - 模块化提示词系统 ✅
+
+**目标**: 实现可配置、可组合的提示词系统，支持 Excel 配置和动态组装。
+
+**背景**:
+当前系统提示词硬编码在 `prompts.py` 中，难以灵活调整。不同场景需要不同的提示词组合（简洁模式 vs 详细模式），用户无法自定义提示词内容。
+
+**架构归属**: 执行层 - 提示词管理
+
+**任务列表**:
+
+**1. 提示词模块化 (P0)**:
+- [x] 定义 `PromptModule` 数据类 - 名称、内容、优先级、Token 估算
+- [x] 实现 17 个提示词模块 - 按功能分类（基础、效率、安全、输出、上下文、记忆）
+- [x] 模块优先级排序 - 确保关键模块优先加载
+
+**2. Builder 模式组装 (P0)**:
+- [x] 实现 `PromptBuilder` 类 - Builder 模式组装提示词
+- [x] 支持模块选择 - 按名称/类别启用/禁用模块
+- [x] 风格预设 - concise (~200)、standard (~1000)、detailed (~2000)
+- [x] 缓存机制 - 稳定部分缓存，动态部分按需组装
+
+**3. Excel 配置支持 (P1)**:
+- [x] 创建 `prompts.xlsx` 配置文件 - 便于非程序员编辑
+- [x] 支持从 Excel 加载模块 - 名称、内容、优先级、启用状态
+- [x] 配置热更新 - 修改 Excel 后自动生效
+
+**4. 动态工具支持 (P1)**:
+- [x] 动态添加工具时重建提示词 - `add_tool()` 触发重建
+- [x] 稳定缓存键 - SHA256 替代 Python hash()，跨会话稳定
+
+**新增文件**:
+```
+nano_agent/agent/
+├── prompt_modules.py    # PromptModule, 17 个预定义模块
+├── prompt_builder.py    # PromptBuilder, 缓存机制
+├── prompts.xlsx         # Excel 配置文件
+tests/test_prompt_config.py  # 提示词配置测试
+```
+
+**修改文件**:
+```
+nano_agent/agent/react.py     # 集成 PromptBuilder, add_tool() 重建
+nano_agent/agent/prompts.py   # 保留 legacy 兼容
+nano_agent/config/schema.py   # PromptConfig 配置类
+nano_agent/core/builder.py    # 传递 prompt_config
+```
+
+**模块分类**:
+| 类别 | 模块 | Token 估算 |
+|------|------|-----------|
+| Basic | core, tools | ~50, ~100 |
+| Efficiency | efficiency, modification | ~30, ~20 |
+| Security | constitution, risk_awareness, security_rules | ~40, ~30, ~50 |
+| Output | output_style, language | ~20, ~10 |
+| Context | environment, git_status | ~30, ~20 |
+| Memory | memory_guide | ~40 |
+
+**技术方案**:
+```python
+# nano_agent/agent/prompt_modules.py
+
+@dataclass
+class PromptModule:
+    """提示词模块"""
+    name: str
+    content: str
+    priority: int          # 排序优先级（越小越优先）
+    token_estimate: int    # Token 估算
+    category: str          # 分类：basic/efficiency/security/output/context/memory
+    enabled: bool = True   # 是否启用
+
+# 预定义模块
+CORE_MODULE = PromptModule(
+    name="core",
+    content="你是 {agent_name}，一个 AI 助手...",
+    priority=1,
+    token_estimate=50,
+    category="basic"
+)
+
+# nano_agent/agent/prompt_builder.py
+
+class PromptBuilder:
+    """提示词构建器"""
+
+    def __init__(self, modules: list[PromptModule], config: PromptConfig):
+        self.modules = modules
+        self.config = config
+        self._stable_cache: str | None = None
+        self._cache_key: str | None = None
+
+    def build(self, style: str = "standard", enabled_modules: list[str] = None) -> str:
+        """组装提示词"""
+        # 1. 筛选启用的模块
+        selected = self._select_modules(enabled_modules)
+
+        # 2. 按优先级排序
+        sorted_modules = sorted(selected, key=lambda m: m.priority)
+
+        # 3. 组装内容
+        parts = [m.content for m in sorted_modules]
+        return "\n\n".join(parts)
+
+    def build_stable(self) -> str:
+        """构建稳定部分（不含动态工具）"""
+        cache_key = self._make_cache_key()
+        if self._stable_cache and self._cache_key == cache_key:
+            return self._stable_cache
+
+        self._stable_cache = self.build(exclude_dynamic=True)
+        self._cache_key = cache_key
+        return self._stable_cache
+
+    def _make_cache_key(self) -> str:
+        """生成稳定缓存键（SHA256）"""
+        import hashlib
+        key_data = "".join(m.content for m in self.modules if m.enabled)
+        return hashlib.sha256(key_data.encode()).hexdigest()
+
+    def rebuild_on_tool_add(self, tool_description: str) -> str:
+        """动态添加工具时重建提示词"""
+        # 更新工具模块内容
+        self._update_tools_module(tool_description)
+        # 重建稳定部分
+        self._stable_cache = None
+        return self.build_stable()
+
+# Excel 配置加载
+def load_from_excel(path: str) -> list[PromptModule]:
+    """从 Excel 加载模块配置"""
+    import pandas as pd
+    df = pd.read_excel(path)
+    modules = []
+    for row in df.itertuples():
+        modules.append(PromptModule(
+            name=row.name,
+            content=row.content,
+            priority=row.priority,
+            token_estimate=row.token_estimate,
+            category=row.category,
+            enabled=row.enabled
+        ))
+    return modules
+```
+
+**预期效果**:
+- 提示词可配置：用户可通过 Excel 自定义
+- 提示词可组合：按场景选择不同模块组合
+- Token 可控：风格预设精确控制 Token 消耗
+- 缓存高效：稳定部分缓存减少重复计算
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1590,6 +1744,7 @@ persona:
 | v0.7.3 | Token 消耗进阶优化 ✅ | 工具结果缓存、历史消息压缩、项目文件精简 |
 | v0.7.4 | Token 统计增强 ✅ | Token 分类统计、/stats 子命令增强、工具消耗排名 |
 | v0.7.5 | Token 消耗智能优化 ✅ | 置信度早停、Token 预算、查询路由、SmartOptimizationConfig |
+| v0.7.6 | 模块化提示词系统 ✅ | PromptBuilder、17 个模块、Excel 配置、稳定缓存 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |

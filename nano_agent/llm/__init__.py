@@ -5,10 +5,11 @@ from typing import Literal
 from .base import BaseLLM, LLMUsage
 from .ollama import OllamaLLM
 from .openai_compatible import OpenAICompatibleLLM
+from .anthropic import AnthropicLLM
 from .messages import Message, ToolCall, AssistantMessage, ToolResultMessage, SystemMessage, UserMessage
 
 # Provider type alias
-ProviderType = Literal["ollama", "openai", "deepseek", "moonshot", "openai_compatible"]
+ProviderType = Literal["ollama", "openai", "deepseek", "moonshot", "openai_compatible", "anthropic"]
 
 # Provider-specific default configurations
 PROVIDER_DEFAULTS = {
@@ -31,6 +32,11 @@ PROVIDER_DEFAULTS = {
         "base_url": "https://api.openai.com/v1",
         "api_key_env": "OPENAI_API_KEY",
         "default_model": "gpt-4o",
+    },
+    "anthropic": {
+        "base_url": "https://api.anthropic.com",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "default_model": "claude-sonnet-4-20250514",
     },
 }
 
@@ -69,6 +75,17 @@ def create_llm(
             model=model or "llama3",
             base_url=base_url or "http://localhost:11434",
             timeout=timeout,
+            **kwargs
+        )
+
+    # Anthropic provider (supports Prompt Caching)
+    if provider == "anthropic":
+        return AnthropicLLM(
+            model=model or PROVIDER_DEFAULTS["anthropic"]["default_model"],
+            api_key=api_key,
+            api_key_env=api_key_env or PROVIDER_DEFAULTS["anthropic"]["api_key_env"],
+            timeout=timeout,
+            temperature=temperature,
             **kwargs
         )
 
@@ -127,6 +144,7 @@ __all__ = [
     "LLMUsage",
     "OllamaLLM",
     "OpenAICompatibleLLM",
+    "AnthropicLLM",
     "Message",
     "ToolCall",
     "AssistantMessage",

@@ -31,6 +31,14 @@ class TestAgentBuilder:
         config.tool_merge = None
         config.cache = None
         config.compressor = None
+        config.smart_optimization = None
+        config.prompt = Mock(
+            source="default",
+            style="standard",
+            excel_path=None,
+            stable_modules=["core", "tools"],
+            enable_caching=True,
+        )
         return config
 
     @pytest.fixture

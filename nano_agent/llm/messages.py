@@ -12,10 +12,30 @@ class Message:
     """Base message class."""
     role: Literal["system", "user", "assistant", "tool"]
     content: str = ""
+    cache_control: dict | None = None  # For Anthropic Prompt Caching
 
     def to_dict(self) -> dict:
         """Convert to dictionary for API calls."""
-        return {"role": self.role, "content": self.content}
+        result = {"role": self.role, "content": self.content}
+        if self.cache_control:
+            result["cache_control"] = self.cache_control
+        return result
+
+    @classmethod
+    def with_cache_control(
+        cls, role: Literal["system", "user", "assistant", "tool"], content: str, cache_type: str = "ephemeral"
+    ) -> "Message":
+        """Create a message with cache_control for Anthropic Prompt Caching.
+
+        Args:
+            role: Message role
+            content: Message content
+            cache_type: Cache type, default "ephemeral" for Anthropic
+
+        Returns:
+            Message with cache_control set
+        """
+        return cls(role=role, content=content, cache_control={"type": cache_type})
 
 
 @dataclass

@@ -80,6 +80,18 @@ class HybridMemory(BaseMemory):
         """设置工作内存中的系统提示。"""
         self.working_memory.set_system_prompt(prompt)
 
+    def set_stable_system_prompt(self, prompt: str) -> None:
+        """设置稳定部分 system prompt（用于 prefix caching）。"""
+        self.working_memory.set_stable_system_prompt(prompt)
+
+    def get_stable_system_prompt(self) -> str:
+        """获取稳定部分 system prompt（用于 prefix caching）。"""
+        return self.working_memory.get_stable_system_prompt()
+
+    def get_messages_without_system(self) -> list:
+        """获取不含 system prompt 的消息列表。"""
+        return self.working_memory.get_messages_without_system()
+
     @property
     def system_prompt(self) -> str:
         """从工作内存获取系统提示。"""

@@ -28,3 +28,26 @@ class BaseMemory(ABC):
     def get_context(self, max_items: int | None = None) -> list:
         """获取上下文，可选限制最大条目数"""
         pass
+
+    @abstractmethod
+    def set_system_prompt(self, prompt: str) -> None:
+        """设置系统提示"""
+        pass
+
+    def get_stable_system_prompt(self) -> str:
+        """获取稳定部分 system prompt（用于 prefix caching）
+
+        默认返回完整 system prompt，子类可覆盖以分离 stable/dynamic。
+        """
+        # Default implementation: return the system prompt from first message
+        messages = self.get_all()
+        if messages and messages[0].get("role") == "system":
+            return messages[0].get("content", "")
+        return ""
+
+    def get_messages_without_system(self) -> list:
+        """获取不含 system prompt 的消息列表
+
+        用于 prefix caching 场景，将 system prompt 单独传递。
+        """
+        return [m for m in self.get_all() if m.get("role") != "system"]

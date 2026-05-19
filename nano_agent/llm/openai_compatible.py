@@ -18,6 +18,7 @@ class OpenAICompatibleLLM(BaseLLM):
     """OpenAI-compatible LLM client."""
 
     DEFAULT_BASE_URL = "https://api.openai.com/v1"
+    supports_explicit_caching = False  # OpenAI uses automatic caching
 
     def __init__(
         self,
@@ -63,15 +64,41 @@ class OpenAICompatibleLLM(BaseLLM):
     def _build_payload(
         self,
         messages: list[Message] | list[dict],
-        tools: list[dict] | None = None
+        tools: list[dict] | None = None,
+        system_stable: str | None = None
     ) -> dict:
-        """Build the request payload in OpenAI format."""
+        """Build the request payload in OpenAI format.
+
+        Args:
+            messages: List of messages
+            tools: Optional tool definitions
+            system_stable: Stable system prompt for prefix caching
+                When provided, replaces the original system message to ensure
+                prefix stability for OpenAI's automatic caching.
+
+        Returns:
+            Request payload dict
+        """
         formatted_messages = []
-        for m in messages:
-            if isinstance(m, dict):
-                formatted_messages.append(m)
-            else:
-                formatted_messages.append(m.to_dict())
+
+        if system_stable:
+            # Use stable system prompt for prefix caching
+            formatted_messages.append({"role": "system", "content": system_stable})
+            # Skip original system message, add other messages
+            for m in messages:
+                if isinstance(m, dict):
+                    if m.get("role") != "system":
+                        formatted_messages.append(m)
+                else:
+                    if m.role != "system":
+                        formatted_messages.append(m.to_dict())
+        else:
+            # Normal message formatting
+            for m in messages:
+                if isinstance(m, dict):
+                    formatted_messages.append(m)
+                else:
+                    formatted_messages.append(m.to_dict())
 
         payload = {
             "model": self.model,
@@ -96,6 +123,7 @@ class OpenAICompatibleLLM(BaseLLM):
         self,
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
+        system_stable: str | None = None,
         **kwargs
     ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
@@ -104,11 +132,14 @@ class OpenAICompatibleLLM(BaseLLM):
         Args:
             messages: List of messages
             tools: Optional tool definitions in OpenAI format
+            system_stable: Stable system prompt for prefix caching
+                OpenAI automatically caches prefixes >= 1024 tokens.
+                Providing stable system prompt ensures prefix consistency.
 
         Returns:
             Tuple of (text_response, tool_calls, usage)
         """
-        payload = self._build_payload(messages, tools)
+        payload = self._build_payload(messages, tools, system_stable)
 
         response = requests.post(
             self.api_url,
@@ -151,6 +182,7 @@ class OpenAICompatibleLLM(BaseLLM):
         self,
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
+        system_stable: str | None = None,
         **kwargs
     ) -> Generator[str, None, None]:
         """
@@ -159,11 +191,12 @@ class OpenAICompatibleLLM(BaseLLM):
         Args:
             messages: List of messages
             tools: Optional tool definitions
+            system_stable: Stable system prompt for prefix caching
 
         Yields:
             Text chunks from the response
         """
-        payload = self._build_payload(messages, tools)
+        payload = self._build_payload(messages, tools, system_stable)
         payload["stream"] = True
 
         with requests.post(

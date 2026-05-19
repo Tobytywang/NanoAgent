@@ -14,6 +14,7 @@ class OllamaLLM(BaseLLM):
     """Ollama LLM client."""
 
     DEFAULT_BASE_URL = "http://localhost:11434"
+    supports_explicit_caching = False  # Ollama doesn't support prefix caching
 
     def __init__(
         self,
@@ -96,6 +97,7 @@ class OllamaLLM(BaseLLM):
         self,
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
+        system_stable: str | None = None,
         **kwargs
     ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
@@ -104,6 +106,7 @@ class OllamaLLM(BaseLLM):
         Args:
             messages: List of messages
             tools: Optional tool definitions
+            system_stable: Stable system prompt (ignored for Ollama, no caching support)
 
         Returns:
             Tuple of (text_response, tool_calls, usage)
@@ -154,6 +157,7 @@ class OllamaLLM(BaseLLM):
         self,
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
+        system_stable: str | None = None,
         **kwargs
     ) -> Generator[str, None, None]:
         """
@@ -162,6 +166,7 @@ class OllamaLLM(BaseLLM):
         Args:
             messages: List of messages
             tools: Optional tool definitions
+            system_stable: Stable system prompt (ignored for Ollama)
 
         Yields:
             Text chunks from the response

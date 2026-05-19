@@ -624,6 +624,8 @@ class TestConfigFunctions:
         agent.tool_registry.list_tools.return_value = ["tool1"]
         agent.skill_loader = Mock()
         agent.skill_loader.list_loaded_skills.return_value = []
+        # Mock _prompt_builder to return a list for get_stable_module_names
+        agent._prompt_builder = None  # No prompt builder in this test
 
         # Should not raise
         _show_config(config, agent)
