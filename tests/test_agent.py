@@ -103,7 +103,8 @@ class TestReActAgent:
         registry = ToolRegistry()
 
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
-        result = agent.run("Hi")
+        # Use a non-simple input to avoid being routed to direct answer
+        result = agent.run("Please tell me about Python programming")
 
         assert result.response == "Hello! How can I help?"
         assert result.success is True
@@ -228,8 +229,8 @@ class TestReActAgentStreaming:
 
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
 
-        # Collect streamed chunks
-        chunks = list(agent.run_stream("Hi"))
+        # Use a non-simple input to avoid being routed to direct answer
+        chunks = list(agent.run_stream("Please tell me about Python programming"))
 
         assert len(chunks) == 1
         assert chunks[0] == "Hello! How can I help?"

@@ -9,7 +9,11 @@ import time
 from typing import Generator
 
 from .base import BaseAgent
-from .prompts import REACT_SYSTEM_PROMPT, REACT_SYSTEM_PROMPT_CONCISE, REACT_SYSTEM_PROMPT_STANDARD, TOOL_DESCRIPTION_TEMPLATE
+from .prompts import (
+    REACT_SYSTEM_PROMPT, REACT_SYSTEM_PROMPT_CONCISE, REACT_SYSTEM_PROMPT_STANDARD,
+    REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE, REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE,
+    TOOL_DESCRIPTION_TEMPLATE, CONFIDENCE_SUFFIX
+)
 from .types import ExecutionResult, ThinkResult, AgentEvent
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
@@ -20,12 +24,13 @@ from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from .tool_merger import ToolCallMerger, ToolMergeConfig
 from .cache import ToolResultCache, CacheConfig
 from .compressor import MessageCompressor, CompressorConfig
-from .token_budget import TokenBudget, TokenBudgetConfig, BudgetAction
-from .router import QueryRouter, RouterConfig, QueryComplexity, RoutingDecision
+from .token_budget import TokenBudget, TokenBudgetConfig
+from .router import QueryRouter, QueryComplexity
+from .confidence import ConfidenceParser
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
-from ..config.schema import OutputStyleConfig
+from ..config.schema import OutputStyleConfig, SmartOptimizationConfig
 
 
 def _safe_str(text: str) -> str:
@@ -101,8 +106,7 @@ class ReActAgent(BaseAgent):
         tool_merge_config: ToolMergeConfig | None = None,
         cache_config: CacheConfig | None = None,
         compressor_config: CompressorConfig | None = None,
-        token_budget_config: TokenBudgetConfig | None = None,
-        router_config: RouterConfig | None = None,
+        smart_optimization_config: SmartOptimizationConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -123,8 +127,7 @@ class ReActAgent(BaseAgent):
             tool_merge_config: Tool merging configuration for token efficiency
             cache_config: Tool result caching configuration
             compressor_config: Message compression configuration
-            token_budget_config: Token budget configuration for early stopping
-            router_config: Query routing configuration
+            smart_optimization_config: Smart optimization configuration for v0.7.5
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -145,11 +148,37 @@ class ReActAgent(BaseAgent):
         # Message compressor
         self.compressor = MessageCompressor(compressor_config)
 
-        # Token budget manager
-        self.token_budget = TokenBudget(token_budget_config)
+        # Smart optimization configuration (v0.7.5)
+        self.smart_optimization_config = smart_optimization_config or SmartOptimizationConfig()
+
+        # Token budget management
+        if self.smart_optimization_config.budget_enabled:
+            token_budget_config = TokenBudgetConfig(
+                initial_budget=self.smart_optimization_config.initial_budget,
+                warning_threshold=self.smart_optimization_config.budget_warning_threshold,
+                force_summarize=self.smart_optimization_config.budget_force_summarize,
+            )
+            self.token_budget = TokenBudget(token_budget_config)
+        else:
+            self.token_budget = None
 
         # Query router
-        self.router = QueryRouter(router_config)
+        if self.smart_optimization_config.routing_enabled:
+            self.query_router = QueryRouter(
+                enabled=True,
+                simple_direct=self.smart_optimization_config.routing_simple_direct,
+                moderate_single_tool=self.smart_optimization_config.routing_moderate_single_tool,
+            )
+        else:
+            self.query_router = None
+
+        # Confidence parser
+        if self.smart_optimization_config.confidence_enabled:
+            self.confidence_parser = ConfidenceParser(
+                threshold=self.smart_optimization_config.confidence_threshold
+            )
+        else:
+            self.confidence_parser = None
 
         # Context manager
         self.context_manager = ContextManager(
@@ -168,6 +197,7 @@ class ReActAgent(BaseAgent):
         self._tool_call_records: list[dict] = []
         self._total_tokens: int = 0
         self._session_id: str = ""
+        self._routing_max_tools: int = -1  # Max tools for current query (-1 = unlimited)
 
         self._setup_system_prompt()
 
@@ -176,13 +206,30 @@ class ReActAgent(BaseAgent):
         style = self.output_style_config.style
         tools_desc = self._format_tools_description(style)
 
-        # Select prompt template based on style
+        # Determine if confidence markers should be added
+        use_confidence = (
+            self.smart_optimization_config.confidence_enabled
+            and self.confidence_parser is not None
+        )
+
+        # Select prompt template based on style and confidence
         if style == "concise":
-            template = REACT_SYSTEM_PROMPT_CONCISE
+            template = (
+                REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE
+                if use_confidence
+                else REACT_SYSTEM_PROMPT_CONCISE
+            )
         elif style == "standard":
-            template = REACT_SYSTEM_PROMPT_STANDARD
+            template = (
+                REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE
+                if use_confidence
+                else REACT_SYSTEM_PROMPT_STANDARD
+            )
         else:
+            # Detailed mode: append confidence suffix if enabled
             template = REACT_SYSTEM_PROMPT
+            if use_confidence:
+                template = template + CONFIDENCE_SUFFIX
 
         system_prompt = template.format(tools_description=tools_desc)
 
@@ -246,26 +293,32 @@ class ReActAgent(BaseAgent):
         # Prepare execution
         self._prepare_run(user_input, session_id)
 
-        # Query routing: analyze complexity and decide processing path
-        routing = RoutingDecision.from_analysis(self.router.analyze(user_input))
+        # Query routing (v0.7.5)
+        if self.query_router is not None:
+            routing_result = self.query_router.classify(user_input)
+            self._routing_max_tools = routing_result.suggested_max_tools
 
-        if self.verbose:
-            print(f"[Router] Complexity: {routing.analysis.complexity.value}, "
-                  f"Max iterations: {routing.max_iterations}")
+            if self.verbose:
+                print(f"[Router] Complexity: {routing_result.complexity.value}, "
+                      f"max_tools: {self._routing_max_tools}")
 
-        # SIMPLE complexity: still call LLM but with 0 max iterations (no tool calls)
-        # This allows LLM to generate a natural response
-        if routing.skip_tools:
-            # Call LLM once for natural response
-            think = self._think()
-            self.tracker.end_run(think.response_text)
-            return self._build_result(think.response_text, 1, success=True)
+            # Simple queries: direct answer without LLM
+            if routing_result.complexity == QueryComplexity.SIMPLE:
+                response = self._answer_simple_question(user_input)
+                self.tracker.end_run(response)
+                return self._build_result(response, 0, success=True)
 
-        # Use routed max_iterations for MODERATE complexity
-        effective_max_iterations = min(routing.max_iterations, self.max_iterations) if routing.max_iterations > 0 else self.max_iterations
+        # Pre-check: simple questions can be answered directly (legacy)
+        if self.output_style_config.style == "concise" and _is_simple_question(user_input):
+            # Direct answer for simple questions (skip tool calls)
+            response = self._answer_simple_question(user_input)
+            self.tracker.end_run(response)
+            return self._build_result(response, 0, success=True)
 
         iteration = 0
-        while iteration < effective_max_iterations:
+        tool_calls_in_round = 0  # Track tool calls for routing limits
+
+        while iteration < self.max_iterations:
             iteration += 1
 
             # Budget check
@@ -274,19 +327,33 @@ class ReActAgent(BaseAgent):
             ):
                 break
 
+            # Token budget check (v0.7.5)
+            if self.token_budget is not None:
+                if self.token_budget.should_summarize():
+                    # Budget exhausted, force summarize
+                    response = self._force_summarize()
+                    self.tracker.end_run(response)
+                    return self._build_result(response, iteration, success=True)
+
             self.tracker.start_iteration(iteration)
 
             if self.verbose:
-                print(f"\n[Iteration {iteration}/{effective_max_iterations}]")
+                print(f"\n[Iteration {iteration}/{self.max_iterations}]")
 
             # Think phase
             think = self._think()
 
-            # Check early stopping conditions
-            if self._should_stop_early(think, iteration):
-                self.tracker.end_iteration()
-                self.tracker.end_run(think.response_text)
-                return self._build_result(think.response_text, iteration, success=True)
+            # Confidence-based early stop (v0.7.5)
+            if self.confidence_parser is not None and think.is_final:
+                should_stop, conf_result = self.confidence_parser.should_stop_early(
+                    think.response_text
+                )
+                if should_stop:
+                    if self.verbose:
+                        print(f"[Confidence] Early stop: {conf_result.confidence:.2f}")
+                    self.tracker.end_iteration()
+                    self.tracker.end_run(conf_result.cleaned_response)
+                    return self._build_result(conf_result.cleaned_response, iteration, success=True)
 
             if think.is_final:
                 self.tracker.end_iteration()
@@ -298,8 +365,23 @@ class ReActAgent(BaseAgent):
 
             # Act and Observe phases
             for tool_call in merged_tool_calls:
+                # Check routing limit (v0.7.5)
+                if self._routing_max_tools >= 0:
+                    if tool_calls_in_round >= self._routing_max_tools:
+                        if self.verbose:
+                            print(f"[Router] Reached max tools limit: {self._routing_max_tools}")
+                        # Force summarize with current info
+                        response = self._force_summarize()
+                        self.tracker.end_run(response)
+                        return self._build_result(response, iteration, success=True)
+
                 result = self._act(tool_call, dry_run)
                 self._observe(tool_call, result)
+                tool_calls_in_round += 1
+
+                # Update token budget (v0.7.5)
+                if self.token_budget is not None:
+                    self.token_budget.consume(think.usage.total_tokens)
 
             self.tracker.end_iteration()
 
@@ -395,19 +477,11 @@ class ReActAgent(BaseAgent):
                 tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
-        # Extract confidence from response
-        confidence = self._extract_confidence(response_text)
-
-        # Update token budget
-        self.token_budget.consume(usage.total_tokens, phase="think")
-
         return ThinkResult(
             response_text=response_text,
             tool_calls=tool_calls or [],
             usage=usage,
-            is_final=not tool_calls,
-            confidence=confidence,
-            can_answer=confidence >= 0.8 and not tool_calls,
+            is_final=not tool_calls
         )
 
     def _merge_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolCall]:
@@ -621,78 +695,29 @@ class ReActAgent(BaseAgent):
         # Default: let LLM handle it
         return "请继续说明你的需求。"
 
-    def _should_stop_early(self, think: ThinkResult, iteration: int) -> bool:
+    def _force_summarize(self) -> str:
         """
-        Check if we should stop early based on confidence and budget.
-
-        Early stopping conditions:
-        1. High confidence (>= 0.8) and has final answer
-        2. Token budget near limit
-        3. can_answer flag is True
-
-        Args:
-            think: The think result from current iteration
-            iteration: Current iteration number
+        Force summarize when budget exhausted or routing limit reached.
 
         Returns:
-            True if should stop early
+            Summarized response based on current context
         """
-        # Condition 1: High confidence with final answer
-        if think.confidence >= 0.8 and think.is_final:
-            if self.verbose:
-                print(f"[Early Stop] High confidence ({think.confidence:.2f}), stopping at iteration {iteration}")
-            return True
+        if self.verbose:
+            print("[Budget] Forcing summarize due to budget/routing constraints")
 
-        # Condition 2: can_answer flag
-        if think.can_answer and think.is_final:
-            if self.verbose:
-                print(f"[Early Stop] can_answer=True, stopping at iteration {iteration}")
-            return True
+        # Get current context
+        messages = self.memory.get_all()
 
-        # Condition 3: Token budget near limit
-        if self.token_budget.should_force_summary():
-            if self.verbose:
-                print(f"[Early Stop] Token budget near limit ({self.token_budget.usage_ratio:.1%})")
-            return True
+        # If we have tool results, summarize them
+        if self._tool_call_records:
+            tool_summary = "Based on the information gathered:\n"
+            for record in self._tool_call_records:
+                if record.get("output_preview"):
+                    tool_summary += f"- {record['name']}: {record['output_preview']}\n"
+            return tool_summary
 
-        return False
-
-    def _extract_confidence(self, response_text: str) -> float:
-        """
-        Extract confidence score from LLM response.
-
-        Looks for patterns like:
-        - "confidence: 0.8"
-        - "置信度: 0.8"
-        - "[confidence: 0.8]"
-
-        Args:
-            response_text: The LLM response text
-
-        Returns:
-            Confidence score (0.0-1.0), defaults to 0.5 if not found
-        """
-        import re
-
-        # Try various patterns
-        patterns = [
-            r"confidence:\s*([0-9.]+)",
-            r"置信度:\s*([0-9.]+)",
-            r"\[confidence:\s*([0-9.]+)\]",
-            r"confidence\s*=\s*([0-9.]+)",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, response_text, re.IGNORECASE)
-            if match:
-                try:
-                    confidence = float(match.group(1))
-                    return min(1.0, max(0.0, confidence))  # Clamp to [0, 1]
-                except ValueError:
-                    continue
-
-        # Default confidence
-        return 0.5
+        # Otherwise, return a generic response
+        return "Based on the current context, I need more resources to complete this task. Please try simplifying your request."
 
     def _build_result(
         self,

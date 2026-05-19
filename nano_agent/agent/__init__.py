@@ -18,6 +18,9 @@ from .context import ContextManager, NineSectionSummary
 from .confirmation import ConfirmationManager, ConfirmationConfig
 from .git_manager import GitManager, GitCommit
 from .token_utils import estimate_tokens, estimate_text_tokens
+from .token_budget import TokenBudget, TokenBudgetConfig
+from .router import QueryRouter, QueryComplexity, RoutingResult
+from .confidence import ConfidenceParser, ConfidenceResult
 
 __all__ = [
     # Base
@@ -52,4 +55,14 @@ __all__ = [
     # Token estimation
     "estimate_tokens",
     "estimate_text_tokens",
+    # Token budget (v0.7.5)
+    "TokenBudget",
+    "TokenBudgetConfig",
+    # Query router (v0.7.5)
+    "QueryRouter",
+    "QueryComplexity",
+    "RoutingResult",
+    # Confidence parser (v0.7.5)
+    "ConfidenceParser",
+    "ConfidenceResult",
 ]

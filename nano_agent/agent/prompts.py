@@ -2,6 +2,14 @@
 Agent 提示词模板
 """
 
+# Confidence suffix for smart optimization
+CONFIDENCE_SUFFIX = """
+After your response, indicate your confidence level and whether you have enough information.
+Format: [CONFIDENCE: X.XX] [CAN_ANSWER: yes/no]
+- CONFIDENCE: 0.0-1.0 (how confident you are in your answer)
+- CAN_ANSWER: yes/no (whether you have enough info to answer definitively)
+"""
+
 # Concise mode system prompt (~150 tokens, minimal)
 REACT_SYSTEM_PROMPT_CONCISE = """You are a helpful assistant.
 
@@ -15,6 +23,9 @@ Rules:
 
 Use user's language.
 """
+
+# Concise mode with confidence
+REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE = REACT_SYSTEM_PROMPT_CONCISE + CONFIDENCE_SUFFIX
 
 # Standard mode system prompt (~800 tokens)
 REACT_SYSTEM_PROMPT_STANDARD = """You are an intelligent assistant that can use tools.
@@ -48,6 +59,9 @@ When confident (0.8+), provide your answer directly.
 
 Respond in user's language.
 """
+
+# Standard mode with confidence
+REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE = REACT_SYSTEM_PROMPT_STANDARD + CONFIDENCE_SUFFIX
 
 # Detailed mode system prompt (original, ~1500 tokens)
 REACT_SYSTEM_PROMPT = """You are an intelligent assistant that can use tools to complete tasks.

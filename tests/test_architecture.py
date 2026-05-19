@@ -307,7 +307,7 @@ class TestAgentOrchestrator:
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
 
         orchestrator = AgentOrchestrator(agent)
-        result = orchestrator.run("Hi")
+        result = orchestrator.run("Please analyze this data")  # Non-simple input
 
         assert isinstance(result, ExecutionResult)
         assert result.response == "Hello"
@@ -340,7 +340,7 @@ class TestAgentOrchestrator:
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
         orchestrator = AgentOrchestrator(agent)
 
-        result = orchestrator.run_dry("Test")
+        result = orchestrator.run_dry("Please analyze this data")  # Non-simple input
 
         # In dry-run mode, tool should not be actually executed
         assert result.success is True
@@ -356,8 +356,8 @@ class TestAgentOrchestrator:
         agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
 
         orchestrator = AgentOrchestrator(agent)
-        orchestrator.run("Hi")
-        orchestrator.run("Hello")
+        orchestrator.run("Please analyze this data")  # Non-simple input
+        orchestrator.run("Please analyze that data")  # Non-simple input
 
         assert orchestrator.stats.total_tokens == 30  # 15 * 2
 

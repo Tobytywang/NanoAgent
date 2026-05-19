@@ -1123,42 +1123,43 @@ v0.7.1-v0.7.4 实现了静态优化（输出风格、工具合并、缓存、压
 **1. 置信度评估与早停 (P0)**:
 - [x] 扩展 `ThinkResult` 数据类 - 增加 `confidence` 和 `can_answer` 字段
 - [x] 修改 System Prompt - 要求 LLM 输出置信度评估
-- [x] 实现 `_should_stop_early()` 方法 - 置信度 > 0.8 且可回答时早停
-- [x] 实现 `_extract_confidence()` 方法 - 从响应中提取置信度
-- [x] 测试验证 - 确保早停逻辑正确
+- [x] 实现 `ConfidenceParser` 类 - 解析置信度标记
+- [x] 集成早停逻辑 - 置信度 >= threshold 且可回答时早停
+- [x] 测试验证 - 37 个测试用例
 
 **2. Token 预算管理增强 (P0)**:
-- [x] 实现 `TokenBudget` 类 - 剩余预算追踪、分阶段预算
-- [x] 预算耗尽时强制总结 - 返回最佳尝试答案
-- [x] `BudgetAwareExecutor` - 预算感知执行器
-- [x] 配置支持 - `TokenBudgetConfig` 数据类
+- [x] 实现 `TokenBudget` 类 - 剩余预算追踪
+- [x] 预算耗尽时强制总结 - `_force_summarize()` 方法
+- [x] 配置支持 - `SmartOptimizationConfig` 配置项
 
 **3. 查询复杂度路由 (P1)**:
 - [x] 实现 `QueryRouter` 类 - 分类查询复杂度（SIMPLE/MODERATE/COMPLEX）
-- [x] 实现 `RoutingDecision` 类 - 路由决策封装
-- [x] 中等复杂度处理 - 根据复杂度设置最大迭代次数
-- [x] 配置支持 - `RouterConfig` 数据类
+- [x] 支持中英文问候语识别
+- [x] 中等复杂度处理 - 单次 LLM + 最多 1 次工具
+- [x] 配置支持 - `routing.enabled` 配置项
 
 **4. 工具返回智能摘要增强 (P1)**:
-- [x] 增强 `ToolResultSummarizer` 类 - 添加 python_execute/web_search 摘要
-- [x] 提取 docstrings 和 constants - 代码结构分析增强
-- [x] Token 估算方法 - `estimate_tokens()` 辅助方法
-- [x] 配置支持 - 扩展 `SummarizerConfig`
+- [ ] 实现 `ToolResultProcessor` 类 - 提取-摘要-结构化（暂缓）
+- [ ] 针对每个工具定制处理逻辑（暂缓）
+- [x] 配置支持 - `tool_processor.enabled` 配置项已预留
 
 **新增文件**:
 ```
 nano_agent/agent/
-├── router.py              # QueryRouter, RoutingDecision
-├── token_budget.py        # TokenBudget, TokenBudgetConfig, BudgetAwareExecutor
-└── result_summarizer.py   # ToolResultSummarizer (增强)
+├── router.py              # QueryRouter, QueryComplexity, RoutingResult
+├── token_budget.py        # TokenBudget, TokenBudgetConfig
+├── confidence.py          # ConfidenceParser, ConfidenceResult
+tests/test_smart_optimization.py  # 37 个测试用例
 ```
 
 **修改文件**:
 ```
-nano_agent/agent/types.py          # ThinkResult 扩展 (confidence, can_answer)
-nano_agent/agent/react.py          # 早停逻辑、预算管理集成
-nano_agent/agent/prompts.py        # 置信度评估提示词
-nano_agent/agent/prompt_modules.py # 核心模块增加置信度引导
+nano_agent/agent/types.py      # ThinkResult 扩展 confidence/can_answer
+nano_agent/agent/react.py      # 早停逻辑、预算管理、路由集成
+nano_agent/agent/prompts.py    # CONFIDENCE_SUFFIX 置信度提示词
+nano_agent/agent/__init__.py   # 导出新模块
+nano_agent/config/schema.py    # SmartOptimizationConfig 配置类
+nano_agent/core/builder.py     # 传递 smart_optimization_config
 ```
 
 **技术方案**:
@@ -1170,21 +1171,21 @@ class ThinkResult:
     tool_calls: list[ToolCall]
     usage: LLMUsage
     is_final: bool
-    confidence: float = 1.0      # 新增：当前结论置信度 (0-1)
-    can_answer: bool = True      # 新增：是否已有足够信息回答
+    confidence: float = 1.0      # 当前结论置信度 (0-1)
+    can_answer: bool = True      # 是否已有足够信息回答
 
 # nano_agent/agent/token_budget.py
 class TokenBudget:
-    def __init__(self, initial_budget: int = 2000):
-        self.initial_budget = initial_budget
-        self.remaining = initial_budget
+    def __init__(self, config: TokenBudgetConfig):
+        self.initial_budget = config.initial_budget
+        self.remaining = self.initial_budget
 
     def consume(self, tokens: int) -> None:
         self.remaining = max(0, self.remaining - tokens)
 
     def should_summarize(self) -> bool:
-        """剩余预算 < 20% 时，强制进入总结模式"""
-        return self.remaining < self.initial_budget * 0.2
+        """剩余预算耗尽时，强制进入总结模式"""
+        return self.remaining <= 0 and self.config.force_summarize
 
 # nano_agent/agent/router.py
 class QueryComplexity(Enum):
@@ -1193,193 +1194,17 @@ class QueryComplexity(Enum):
     COMPLEX = "complex"     # 多步推理
 
 class QueryRouter:
-    def classify(self, query: str) -> QueryComplexity:
-        if self._is_greeting(query):
-            return QueryComplexity.SIMPLE
-        if self._is_simple_fact(query):
-            return QueryComplexity.SIMPLE
-        if self._needs_single_tool(query):
-            return QueryComplexity.MODERATE
-        return QueryComplexity.COMPLEX
+    def classify(self, query: str) -> RoutingResult:
+        # 优先检查简单模式（问候、感谢等）
+        # 然后检查复杂模式（分析、实现、重构等）
+        # 最后检查中等模式
+        # 默认返回复杂
 ```
 
 **预期效果**:
 - 置信度早停: 减少 30% 无效迭代
 - Token 预算: 防止无限消耗
 - 查询路由: 减少 50% 简单任务消耗
-- 工具摘要: 减少 40% 工具输出 token
-
----
-
-### v0.7.6 - 前缀缓存感知优化与 Prompt 模块完善
-
-**目标**: 实现前缀缓存感知的消息管理，补充 Claude Code harness 对标的 prompt 模块。
-
-**背景**:
-1. **前缀缓存**: LLM 提供商会对消息前缀进行缓存，相同前缀的后续请求可命中缓存。当前压缩策略会破坏缓存，导致后续请求需要重新计算。
-2. **Prompt 模块**: 通过分析 Claude Code 的 `/context` API 调用记录，发现 NanoAgent 缺少部分 prompt 模块。
-
-**架构归属**: 执行层 - 消息管理 + Prompt 系统
-
-**任务列表**:
-
-**1. 前缀缓存感知优化 (P0)**:
-- [ ] 实现 `PrefixAwareMemory` 类 - 稳定摘要层，保持前缀不变
-- [ ] 延迟压缩策略 - 提高阈值（6000 tokens），减少压缩频率
-- [ ] 稳定摘要位置 - 摘要消息固定在 System Prompt 之后
-- [ ] 缓存命中率追踪 - `CacheStats` 类记录缓存效果
-- [ ] 配置支持 - `PrefixCacheConfig` 数据类
-
-**2. 开发规范模块 (P1)**:
-- [ ] 添加 `development_guidelines` 模块 - 文档更新规则、测试覆盖率检查
-- [ ] 内容包括：提交前验证、文档同步、测试要求
-- [ ] 更新 `prompt_modules.py` 和 `prompts.xlsx`
-
-**3. 记忆类型定义模块 (P1)**:
-- [ ] 扩展 `memory_guide` 模块 - 完整记忆类型定义
-- [ ] 类型包括：user（用户信息）、feedback（用户反馈）、project（项目信息）、reference（外部引用）
-- [ ] 添加记忆存储/访问规则说明
-
-**4. 会话指导模块 (P2)**:
-- [ ] 添加 `session_guidance` 模块 - Agent 使用策略、Skill 调用规则
-- [ ] 内容包括：多 Agent 场景、技能包使用、子任务委托
-
-**5. 项目配置模板 (P3)**:
-- [ ] 创建 `CLAUDE.md` 模板文件 - 项目级配置示例
-- [ ] 包含：项目概述、开发规范、架构说明、常用命令
-
-**新增文件**:
-```
-nano_agent/memory/
-├── prefix_aware.py          # PrefixAwareMemory, CacheStats
-
-nano_agent/agent/
-├── prompt_modules.py        # 新增模块定义（修改）
-```
-
-**修改文件**:
-```
-nano_agent/agent/compressor.py    # 延迟压缩策略
-nano_agent/agent/react.py         # 集成 PrefixAwareMemory
-nano_agent/config/schema.py       # PrefixCacheConfig
-config/prompts.xlsx               # 更新 Excel 配置
-docs/examples/CLAUDE.md           # 项目配置模板
-```
-
-**技术方案**:
-```python
-# nano_agent/memory/prefix_aware.py
-
-class PrefixAwareMemory(ShortTermMemory):
-    """前缀缓存感知的记忆管理"""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._summary_message: dict | None = None  # 稳定的摘要消息
-        self._summary_index: int = 1  # 摘要位置（在 system 之后）
-        self._cache_stats = CacheStats()
-
-    def compress(self, summary: str) -> None:
-        """压缩时生成摘要消息，保持稳定"""
-        if self._summary_message is None:
-            # 首次压缩：在 system 后插入摘要
-            self._summary_message = {
-                "role": "user",
-                "content": f"[历史摘要]\n{summary}"
-            }
-            self._messages.insert(self._summary_index, self._summary_message)
-            # 删除摘要之前的旧消息（保留 system）
-            ...
-        else:
-            # 后续压缩：只更新摘要内容，不改变消息结构
-            self._summary_message["content"] = f"[历史摘要]\n{summary}"
-
-    def get_prefix_tokens(self) -> int:
-        """获取稳定前缀的 token 数（用于缓存命中计算）"""
-        # System + 摘要（如果有）
-        prefix_end = self._summary_index + 1 if self._summary_message else 1
-        return estimate_tokens(self._messages[:prefix_end])
-
-class CacheStats:
-    """追踪前缀缓存效果"""
-
-    def __init__(self):
-        self.total_requests = 0
-        self.cache_hits = 0
-        self.tokens_saved = 0
-
-    def record_hit(self, cached_tokens: int) -> None:
-        self.cache_hits += 1
-        self.tokens_saved += cached_tokens
-
-    @property
-    def hit_rate(self) -> float:
-        return self.cache_hits / self.total_requests if self.total_requests > 0 else 0
-
-# nano_agent/agent/compressor.py - 延迟压缩配置
-
-class CompressorConfig:
-    threshold_tokens: int = 6000      # 提高阈值，减少压缩频率
-    keep_recent: int = 6              # 保留更多最近消息
-    min_compress_interval: int = 3    # 至少间隔 3 次迭代才压缩
-
-# nano_agent/agent/prompt_modules.py - 新增模块
-
-MODULES = {
-    # ... 现有模块 ...
-
-    "development_guidelines": PromptModule(
-        name="development_guidelines",
-        description="开发规范",
-        content="""## Development Guidelines
-
-### Before Committing
-1. Run tests: `pytest tests/ -v`
-2. Check coverage: aim for 75%+
-3. Update documentation if needed
-4. Update ROADMAP.md for new features""",
-        priority=22,
-        always_on=False,
-        token_estimate=80,
-        enabled=True,
-    ),
-
-    "memory_types": PromptModule(
-        name="memory_types",
-        description="记忆类型定义",
-        content="""## Memory Types
-
-### user - User's role, preferences, knowledge level
-### feedback - Guidance on how to approach work
-### project - Ongoing work, goals, deadlines
-### reference - Pointers to external resources""",
-        priority=61,
-        always_on=False,
-        token_estimate=100,
-        enabled=True,
-    ),
-
-    "session_guidance": PromptModule(
-        name="session_guidance",
-        description="会话指导",
-        content="""## Session Guidance
-
-- For shell commands requiring user interaction, suggest `! <command>`
-- Use specialized agents for complex tasks
-- For broad codebase exploration, spawn Explore agent""",
-        priority=70,
-        always_on=False,
-        token_estimate=50,
-        enabled=False,
-    ),
-}
-```
-
-**预期效果**:
-- 前缀缓存优化: 30-50% token 节省（长对话场景）
-- 开发规范模块: 提升代码质量意识
-- 记忆类型模块: 更好的记忆系统使用
-- 会话指导模块: 支持未来多 Agent 场景
 
 ---
 
@@ -1753,8 +1578,7 @@ persona:
 | v0.7.2 | Token 消耗深度优化 ✅ | 智能工具合并、工具结果智能摘要 |
 | v0.7.3 | Token 消耗进阶优化 ✅ | 工具结果缓存、历史消息压缩、项目文件精简 |
 | v0.7.4 | Token 统计增强 ✅ | Token 分类统计、/stats 子命令增强、工具消耗排名 |
-| v0.7.5 | Token 消耗智能优化 | 置信度早停、Token 预算、查询路由、工具摘要增强 |
-| v0.7.6 | Prompt 模块完善 | 开发规范、记忆类型、会话指导、项目配置模板 |
+| v0.7.5 | Token 消耗智能优化 ✅ | 置信度早停、Token 预算、查询路由、SmartOptimizationConfig |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |

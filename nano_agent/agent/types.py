@@ -33,21 +33,14 @@ class ThinkResult:
 
     Represents the output of the _think() method, which calls the LLM
     and returns the response along with any tool calls.
-
-    Fields:
-        response_text: The LLM's response text
-        tool_calls: List of tool calls requested by the LLM
-        usage: Token usage information from the LLM call
-        is_final: True if no tool calls (final answer)
-        confidence: Confidence level (0.0-1.0) for the answer (optional)
-        can_answer: Whether the agent believes it can answer without more tools
     """
     response_text: str
     tool_calls: list[Any]  # List of ToolCall
     usage: Any  # LLMUsage
     is_final: bool  # True if no tool calls (final answer)
-    confidence: float = 0.0  # Confidence level (0.0-1.0)
-    can_answer: bool = False  # Can answer without more tools
+    # Confidence-based early stop fields
+    confidence: float = 1.0  # Confidence level (0.0-1.0), from LLM response
+    can_answer: bool = True  # Whether LLM has enough info to answer definitively
 
 
 @dataclass

@@ -1,285 +1,216 @@
 """
-查询复杂度路由模块
+Query complexity routing for token efficiency.
 
-根据查询复杂度选择不同的处理路径:
-1. 简单查询: 直接回答，无需工具
-2. 中等查询: 使用少量工具迭代
-3. 复杂查询: 完整的 ReAct 循环
+This module provides a QueryRouter class that classifies queries by complexity
+and applies appropriate processing strategies.
 """
 
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Callable
 
 
 class QueryComplexity(Enum):
-    """查询复杂度级别"""
-    SIMPLE = "simple"       # 直接回答，无需工具
-    MODERATE = "moderate"   # 使用少量工具
-    COMPLEX = "complex"     # 完整 ReAct 循环
+    """Query complexity levels."""
+
+    SIMPLE = "simple"       # Greetings, simple questions - direct answer
+    MODERATE = "moderate"   # Single-step reasoning - max 1 tool call
+    COMPLEX = "complex"     # Multi-step reasoning - full ReAct loop
 
 
 @dataclass
-class QueryAnalysis:
-    """查询分析结果"""
+class RoutingResult:
+    """Result of query routing."""
+
     complexity: QueryComplexity
-    confidence: float  # 分析置信度
-    reasoning: str     # 分析理由
-    suggested_tools: list[str]  # 建议使用的工具
-    can_answer_directly: bool   # 是否可以直接回答
-
-
-@dataclass
-class RouterConfig:
-    """路由配置"""
-    # 简单查询特征
-    simple_patterns: tuple[str, ...] = (
-        # 问候
-        "你好", "hello", "hi", "嗨", "早上好", "下午好", "晚上好",
-        # 感谢
-        "谢谢", "thanks", "thank you", "感谢",
-        # 身份询问
-        "你是谁", "who are you", "你的名字", "what is your name",
-        # 能力询问
-        "你能做什么", "what can you do", "你有什么功能",
-        # 确认
-        "好的", "ok", "okay", "明白", "了解", "清楚了",
-    )
-
-    # 中等复杂度特征（需要工具但简单）
-    moderate_patterns: tuple[str, ...] = (
-        "查看", "显示", "读取", "read", "show", "list",
-        "搜索", "查找", "find", "search",
-        "检查", "check", "verify",
-    )
-
-    # 复杂查询特征
-    complex_patterns: tuple[str, ...] = (
-        "修改", "更新", "删除", "modify", "update", "delete",
-        "实现", "创建", "implement", "create",
-        "重构", "优化", "refactor", "optimize",
-        "分析", "设计", "analyze", "design",
-        "调试", "修复", "debug", "fix",
-    )
-
-    # 长度阈值
-    short_query_max_length: int = 20
-    long_query_min_length: int = 100
-
-    # 工具建议
-    file_tools: tuple[str, ...] = ("file_read", "file_write", "file_search")
-    search_tools: tuple[str, ...] = ("file_search", "web_search")
-    execute_tools: tuple[str, ...] = ("shell_execute", "python_execute")
+    reason: str
+    suggested_max_tools: int  # -1 means unlimited
 
 
 class QueryRouter:
     """
-    查询复杂度路由器
+    Query complexity router.
 
-    分析用户查询，决定处理路径。
-
-    Usage:
-        router = QueryRouter()
-        analysis = router.analyze("帮我查看 config.yaml 文件")
-
-        if analysis.complexity == QueryComplexity.SIMPLE:
-            return direct_answer(query)
-        elif analysis.complexity == QueryComplexity.MODERATE:
-            return quick_tool_call(analysis.suggested_tools)
-        else:
-            return full_react_loop()
+    Classifies queries by complexity and suggests processing strategies
+    to optimize token consumption.
     """
 
-    def __init__(self, config: Optional[RouterConfig] = None):
-        self.config = config or RouterConfig()
+    # Simple patterns that can be answered directly
+    SIMPLE_PATTERNS = [
+        # Greetings (support Chinese and English punctuation)
+        r"^(你好|hello|hi|嗨|早上好|下午好|晚上好)[\s!.！？?]*$",
+        # Thanks
+        r"^(谢谢|thanks|thank you|感谢)[\s!.！？?]*$",
+        # Simple identity questions
+        r"^(你是谁|who are you|你的名字)[\s?？]*$",
+        # Simple capability questions
+        r"^(你能做什么|what can you do|你有什么功能)[\s?？]*$",
+        # Confirmations
+        r"^(好的|ok|okay|明白|了解|清楚了)[\s!.！？?]*$",
+    ]
 
-    def analyze(self, query: str) -> QueryAnalysis:
-        """
-        分析查询复杂度
+    # Very short non-Chinese inputs (English words only)
+    SIMPLE_SHORT_PATTERN = r"^[a-zA-Z\s]{1,5}$"
 
-        Args:
-            query: 用户查询
+    # Moderate patterns that need single tool call
+    MODERATE_PATTERNS = [
+        # Single file operations
+        r"^(读取|查看|read|show|cat)\s+\S+$",
+        r"^(搜索|查找|find|search)\s+\S+$",
+        # Simple questions with specific target
+        r"^(什么|what|哪个|which)\s+(是|is)\s+\S+$",
+    ]
 
-        Returns:
-            QueryAnalysis 包含复杂度和建议
-        """
-        import re
-        query_lower = query.lower().strip()
-
-        # 1. 检查简单模式（使用单词边界匹配）
-        for pattern in self.config.simple_patterns:
-            # 使用单词边界匹配，避免 "something" 匹配 "hi"
-            if re.search(r'\b' + re.escape(pattern) + r'\b', query_lower):
-                return QueryAnalysis(
-                    complexity=QueryComplexity.SIMPLE,
-                    confidence=0.9,
-                    reasoning=f"匹配简单模式: {pattern}",
-                    suggested_tools=[],
-                    can_answer_directly=True,
-                )
-
-        # 2. 检查长度
-        if len(query) < self.config.short_query_max_length:
-            # 短查询可能是简单的，但需要更严格的检查
-            # 只有明确的问候/感谢/确认才认为是简单查询
-            simple_indicators = ["你好", "hello", "hi", "嗨", "谢谢", "thanks", "好的", "ok", "明白"]
-            # 使用单词边界匹配
-            for indicator in simple_indicators:
-                if re.search(r'\b' + re.escape(indicator) + r'\b', query_lower):
-                    return QueryAnalysis(
-                        complexity=QueryComplexity.SIMPLE,
-                        confidence=0.7,
-                        reasoning=f"短查询，匹配简单指示词: {indicator}",
-                        suggested_tools=[],
-                        can_answer_directly=True,
-                    )
-            # 其他短查询默认为中等复杂度，让 LLM 决定
-            return QueryAnalysis(
-                complexity=QueryComplexity.MODERATE,
-                confidence=0.5,
-                reasoning="短查询，需要 LLM 判断",
-                suggested_tools=[],
-                can_answer_directly=False,
-            )
-
-        # 3. 检查复杂模式
-        for pattern in self.config.complex_patterns:
-            if pattern in query_lower:
-                return QueryAnalysis(
-                    complexity=QueryComplexity.COMPLEX,
-                    confidence=0.8,
-                    reasoning=f"匹配复杂模式: {pattern}",
-                    suggested_tools=self._suggest_tools(query),
-                    can_answer_directly=False,
-                )
-
-        # 4. 检查中等模式
-        for pattern in self.config.moderate_patterns:
-            if pattern in query_lower:
-                return QueryAnalysis(
-                    complexity=QueryComplexity.MODERATE,
-                    confidence=0.7,
-                    reasoning=f"匹配中等模式: {pattern}",
-                    suggested_tools=self._suggest_tools(query),
-                    can_answer_directly=False,
-                )
-
-        # 5. 长查询默认复杂
-        if len(query) > self.config.long_query_min_length:
-            return QueryAnalysis(
-                complexity=QueryComplexity.COMPLEX,
-                confidence=0.6,
-                reasoning="长查询，可能需要多步处理",
-                suggested_tools=self._suggest_tools(query),
-                can_answer_directly=False,
-            )
-
-        # 6. 默认中等复杂度
-        return QueryAnalysis(
-            complexity=QueryComplexity.MODERATE,
-            confidence=0.5,
-            reasoning="无法确定复杂度，使用中等处理",
-            suggested_tools=self._suggest_tools(query),
-            can_answer_directly=False,
-        )
-
-    def _suggest_tools(self, query: str) -> list[str]:
-        """
-        根据查询内容建议工具
-
-        Args:
-            query: 用户查询
-
-        Returns:
-            建议的工具列表
-        """
-        suggested = []
-        query_lower = query.lower()
-
-        # 文件相关
-        if any(w in query_lower for w in ["文件", "file", "读取", "read", "写入", "write"]):
-            suggested.extend(self.config.file_tools)
-
-        # 搜索相关
-        if any(w in query_lower for w in ["搜索", "search", "查找", "find"]):
-            suggested.extend(self.config.search_tools)
-
-        # 执行相关
-        if any(w in query_lower for w in ["执行", "execute", "运行", "run", "命令", "command"]):
-            suggested.extend(self.config.execute_tools)
-
-        return list(set(suggested))  # 去重
-
-    def get_max_iterations(self, complexity: QueryComplexity) -> int:
-        """
-        根据复杂度获取最大迭代次数
-
-        Args:
-            complexity: 查询复杂度
-
-        Returns:
-            建议的最大迭代次数
-        """
-        iterations_map = {
-            QueryComplexity.SIMPLE: 0,     # 不需要迭代
-            QueryComplexity.MODERATE: 3,   # 少量迭代
-            QueryComplexity.COMPLEX: 10,   # 完整迭代
-        }
-        return iterations_map[complexity]
-
-    def should_skip_tools(self, complexity: QueryComplexity) -> bool:
-        """
-        是否应该跳过工具调用
-
-        Args:
-            complexity: 查询复杂度
-
-        Returns:
-            True 如果应该跳过工具
-        """
-        return complexity == QueryComplexity.SIMPLE
-
-
-class RoutingDecision:
-    """
-    路由决策
-
-    封装路由决策结果，供执行层使用。
-    """
+    # Complex patterns that need full loop
+    COMPLEX_PATTERNS = [
+        # Multi-step tasks
+        r"(分析|analyze|实现|implement|重构|refactor|修复|fix)",
+        r"(然后|then|接着|next|之后|after)",
+        r"(所有|all|多个|multiple|批量|batch)",
+        # Code-related tasks
+        r"(代码|code|函数|function|类|class|模块|module)",
+        # Debug tasks
+        r"(错误|error|bug|问题|issue|调试|debug)",
+    ]
 
     def __init__(
         self,
-        analysis: QueryAnalysis,
-        max_iterations: int,
-        skip_tools: bool,
-        use_streaming: bool = False,
+        enabled: bool = True,
+        simple_direct: bool = True,
+        moderate_single_tool: bool = True,
+        custom_simple_patterns: list[str] | None = None,
+        custom_moderate_patterns: list[str] | None = None,
+        custom_complex_patterns: list[str] | None = None,
     ):
-        self.analysis = analysis
-        self.max_iterations = max_iterations
-        self.skip_tools = skip_tools
-        self.use_streaming = use_streaming
-
-    @classmethod
-    def from_analysis(cls, analysis: QueryAnalysis) -> "RoutingDecision":
         """
-        从分析结果创建决策
+        Initialize query router.
 
         Args:
-            analysis: 查询分析结果
+            enabled: Whether routing is enabled
+            simple_direct: Whether to answer simple queries directly
+            moderate_single_tool: Whether to limit moderate queries to 1 tool
+            custom_simple_patterns: Additional simple patterns
+            custom_moderate_patterns: Additional moderate patterns
+            custom_complex_patterns: Additional complex patterns
+        """
+        self.enabled = enabled
+        self.simple_direct = simple_direct
+        self.moderate_single_tool = moderate_single_tool
+
+        # Compile patterns
+        self._simple_patterns = [
+            re.compile(p, re.IGNORECASE) for p in self.SIMPLE_PATTERNS
+        ]
+        self._simple_short_pattern = re.compile(
+            self.SIMPLE_SHORT_PATTERN, re.IGNORECASE
+        )
+        self._moderate_patterns = [
+            re.compile(p, re.IGNORECASE) for p in self.MODERATE_PATTERNS
+        ]
+        self._complex_patterns = [
+            re.compile(p, re.IGNORECASE) for p in self.COMPLEX_PATTERNS
+        ]
+
+        # Add custom patterns
+        if custom_simple_patterns:
+            self._simple_patterns.extend(
+                re.compile(p, re.IGNORECASE) for p in custom_simple_patterns
+            )
+        if custom_moderate_patterns:
+            self._moderate_patterns.extend(
+                re.compile(p, re.IGNORECASE) for p in custom_moderate_patterns
+            )
+        if custom_complex_patterns:
+            self._complex_patterns.extend(
+                re.compile(p, re.IGNORECASE) for p in custom_complex_patterns
+            )
+
+    def classify(self, query: str) -> RoutingResult:
+        """
+        Classify query complexity.
+
+        Args:
+            query: User's input query
 
         Returns:
-            RoutingDecision 实例
+            RoutingResult with complexity and suggested strategy
         """
-        router = QueryRouter()
-        return cls(
-            analysis=analysis,
-            max_iterations=router.get_max_iterations(analysis.complexity),
-            skip_tools=router.should_skip_tools(analysis.complexity),
+        if not self.enabled:
+            return RoutingResult(
+                complexity=QueryComplexity.COMPLEX,
+                reason="Routing disabled",
+                suggested_max_tools=-1,
+            )
+
+        query_stripped = query.strip()
+
+        # Check simple patterns first
+        if self.simple_direct:
+            for pattern in self._simple_patterns:
+                if pattern.search(query_stripped):
+                    return RoutingResult(
+                        complexity=QueryComplexity.SIMPLE,
+                        reason=f"Matched simple pattern: {pattern.pattern}",
+                        suggested_max_tools=0,
+                    )
+
+            # Check very short English-only inputs
+            if self._simple_short_pattern.match(query_stripped):
+                return RoutingResult(
+                    complexity=QueryComplexity.SIMPLE,
+                    reason=f"Matched short pattern: {self._simple_short_pattern.pattern}",
+                    suggested_max_tools=0,
+                )
+
+        # Check complex patterns (prioritize over moderate)
+        for pattern in self._complex_patterns:
+            if pattern.search(query_stripped):
+                return RoutingResult(
+                    complexity=QueryComplexity.COMPLEX,
+                    reason=f"Matched complex pattern: {pattern.pattern}",
+                    suggested_max_tools=-1,
+                )
+
+        # Check moderate patterns
+        if self.moderate_single_tool:
+            for pattern in self._moderate_patterns:
+                if pattern.search(query_stripped):
+                    return RoutingResult(
+                        complexity=QueryComplexity.MODERATE,
+                        reason=f"Matched moderate pattern: {pattern.pattern}",
+                        suggested_max_tools=1,
+                    )
+
+        # Default to complex for unknown queries
+        return RoutingResult(
+            complexity=QueryComplexity.COMPLEX,
+            reason="No specific pattern matched, defaulting to complex",
+            suggested_max_tools=-1,
         )
 
-    def __repr__(self) -> str:
-        return (
-            f"RoutingDecision(complexity={self.analysis.complexity.value}, "
-            f"max_iter={self.max_iterations}, skip_tools={self.skip_tools})"
-        )
+    def is_simple(self, query: str) -> bool:
+        """
+        Quick check if query is simple.
+
+        Args:
+            query: User's input query
+
+        Returns:
+            True if query is classified as simple
+        """
+        result = self.classify(query)
+        return result.complexity == QueryComplexity.SIMPLE
+
+    def get_max_tools(self, query: str) -> int:
+        """
+        Get suggested max tool calls for a query.
+
+        Args:
+            query: User's input query
+
+        Returns:
+            Max tool calls (-1 for unlimited)
+        """
+        result = self.classify(query)
+        return result.suggested_max_tools
