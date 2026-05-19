@@ -43,6 +43,8 @@ class ExcelConfigManager:
         ("always_on", "始终启用"),
         ("enabled", "当前启用"),
         ("token_estimate", "预估Tokens"),
+        ("is_stable", "是否稳定"),
+        ("category", "模块分类"),
         ("content", "内容模板"),
     ]
 
@@ -93,7 +95,9 @@ class ExcelConfigManager:
                     always_on=bool(row[3]) if row[3] else False,
                     enabled=bool(row[4]) if row[4] else True,
                     token_estimate=int(row[5]) if row[5] else 0,
-                    content=row[6] or "",
+                    is_stable=bool(row[6]) if row[6] else True,
+                    category=row[7] or "core" if len(row) > 7 else "core",
+                    content=row[8] or "" if len(row) > 8 else (row[6] or ""),
                 )
 
         return modules
@@ -158,7 +162,9 @@ class ExcelConfigManager:
             ws_modules.cell(row=row_idx, column=4, value=module.always_on)
             ws_modules.cell(row=row_idx, column=5, value=module.enabled)
             ws_modules.cell(row=row_idx, column=6, value=module.token_estimate)
-            ws_modules.cell(row=row_idx, column=7, value=module.content)
+            ws_modules.cell(row=row_idx, column=7, value=module.is_stable)
+            ws_modules.cell(row=row_idx, column=8, value=module.category)
+            ws_modules.cell(row=row_idx, column=9, value=module.content)
 
         # 创建 Style 配置表
         ws_styles = wb.create_sheet("Styles")
@@ -184,6 +190,8 @@ class ExcelConfigManager:
             ["- always_on: 是否始终启用(不可关闭)"],
             ["- enabled: 当前是否启用"],
             ["- token_estimate: 预估 token 数量"],
+            ["- is_stable: 是否属于稳定部分(适合缓存)"],
+            ["- category: 模块分类(core/efficiency/security/output/context/memory)"],
             ["- content: 模块内容模板"],
             [""],
             ["Styles 表:"],
@@ -444,8 +452,138 @@ class PromptBuilder:
                 "priority": m.priority,
                 "enabled": m.enabled,
                 "tokens": m.token_estimate,
+                "is_stable": m.is_stable,
+                "category": m.category,
             }
             for m in sorted(self._modules.values(), key=lambda x: x.priority)
+        ]
+
+    def build_stable(
+        self, tools_description: str = "", stable_modules: list[str] | None = None
+    ) -> str:
+        """
+        构建稳定部分（不频繁变化，适合 LLM API 缓存）
+
+        Args:
+            tools_description: 工具描述
+            stable_modules: 稳定模块列表，默认使用配置中的 stable_modules
+
+        Returns:
+            稳定部分的 system prompt
+        """
+        if stable_modules is None:
+            stable_modules = self.config.modules
+
+        # 筛选稳定模块
+        stable_module_names = [
+            name
+            for name in stable_modules
+            if name in self._modules
+            and self._modules[name].enabled
+            and self._modules[name].is_stable
+        ]
+
+        # 按优先级排序
+        stable_modules_list = [
+            self._modules[name] for name in stable_module_names
+        ]
+        stable_modules_list.sort(key=lambda m: m.priority)
+
+        parts = []
+        for module in stable_modules_list:
+            content = module.content
+            if "{tools_description}" in content:
+                content = content.replace("{tools_description}", tools_description)
+            parts.append(content)
+
+        return "\n\n".join(parts)
+
+    def build_dynamic(
+        self,
+        skill_prompt: str = "",
+        confidence_enabled: bool = False,
+        confidence_suffix: str = "",
+    ) -> str:
+        """
+        构建动态部分（每次可能变化）
+
+        Args:
+            skill_prompt: 技能 prompt
+            confidence_enabled: 是否启用置信度
+            confidence_suffix: 置信度后缀内容
+
+        Returns:
+            动态部分的 system prompt
+        """
+        parts = []
+
+        # 添加动态模块（is_stable=False）
+        dynamic_modules = [
+            self._modules[name]
+            for name in self.config.modules
+            if name in self._modules
+            and self._modules[name].enabled
+            and not self._modules[name].is_stable
+        ]
+        dynamic_modules.sort(key=lambda m: m.priority)
+
+        for module in dynamic_modules:
+            if module.content:
+                parts.append(module.content)
+
+        # 添加技能 prompt
+        if skill_prompt:
+            parts.append(f"## Skills\n\n{skill_prompt}")
+
+        # 添加置信度后缀
+        if confidence_enabled and confidence_suffix:
+            parts.append(confidence_suffix)
+
+        # 添加环境信息
+        if self.config.include_environment:
+            parts.append(self._get_environment_content())
+
+        # 添加 Git 状态
+        if self.config.include_git:
+            parts.append(self._get_git_content())
+
+        return "\n\n".join(parts)
+
+    def get_cache_key(self, tools_description: str = "") -> str:
+        """
+        获取稳定部分的缓存键（用于 LLM API 缓存优化）
+
+        Args:
+            tools_description: 工具描述
+
+        Returns:
+            缓存键字符串
+        """
+        import hashlib
+
+        stable_prompt = self.build_stable(tools_description)
+        # Use SHA256 for stable cache keys across sessions
+        hash_bytes = hashlib.sha256(stable_prompt.encode()).digest()
+        return f"prompt_{hash_bytes[:4].hex()}"
+
+    def get_stable_module_names(self) -> list[str]:
+        """获取稳定模块名称列表"""
+        return [
+            name
+            for name in self.config.modules
+            if name in self._modules
+            and self._modules[name].enabled
+            and self._modules[name].is_stable
+        ]
+
+    def get_dynamic_module_names(self) -> list[str]:
+        """获取动态模块名称列表"""
+        return [
+            name
+            for name in self.config.modules
+            if name in self._modules
+            and self._modules[name].enabled
+            and not self._modules[name].is_stable
         ]
 
 

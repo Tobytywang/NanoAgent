@@ -201,6 +201,7 @@ class AgentBuilder:
             cache_config=self.config.cache if hasattr(self.config, 'cache') else None,
             compressor_config=self.config.compressor if hasattr(self.config, 'compressor') else None,
             smart_optimization_config=self.config.smart_optimization if hasattr(self.config, 'smart_optimization') else None,
+            prompt_config=self.config.prompt if hasattr(self.config, 'prompt') else None,
         )
 
         # Create orchestrator
