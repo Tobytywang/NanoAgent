@@ -269,6 +269,42 @@ class SmartOptimizationConfig:
 
 
 @dataclass
+class PromptConfig:
+    """Prompt configuration for modular prompt system.
+
+    Supports:
+    1. Configurable prompt via Excel or code
+    2. Composable prompt modules
+    3. Stable prefix for LLM API caching
+    """
+
+    # Configuration source: "default" uses built-in modules, "excel" loads from file
+    source: Literal["default", "excel", "custom"] = "default"
+
+    # Excel configuration path (used when source="excel")
+    excel_path: str | None = None
+
+    # Style preset: "concise", "standard", "detailed", or "custom"
+    style: str = "standard"
+
+    # Custom module list (used when style="custom")
+    modules: list[str] = field(default_factory=list)
+
+    # Token budget for prompt
+    token_budget: int = 2000
+
+    # Dynamic content options
+    include_environment: bool = False
+    include_git_status: bool = False
+
+    # Stable modules for LLM API caching optimization
+    # These modules are built once and cached, reducing API costs
+    stable_modules: list[str] = field(
+        default_factory=lambda: ["core", "tools", "efficiency", "modification", "language"]
+    )
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -288,3 +324,4 @@ class Config:
     compressor: CompressorConfig = field(default_factory=CompressorConfig)
     project_file: ProjectFileConfig = field(default_factory=ProjectFileConfig)
     smart_optimization: SmartOptimizationConfig = field(default_factory=SmartOptimizationConfig)
+    prompt: PromptConfig = field(default_factory=PromptConfig)

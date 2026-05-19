@@ -8,6 +8,8 @@ Prompt 模块定义
 - priority: 优先级（数值越小越靠前）
 - always_on: 是否始终启用
 - token_estimate: 预估 token 数
+- is_stable: 是否属于稳定部分（用于 LLM API 缓存优化）
+- category: 模块分类（core/efficiency/security/output/context/memory）
 """
 
 from dataclasses import dataclass
@@ -24,6 +26,8 @@ class PromptModule:
     always_on: bool = False
     token_estimate: int = 0
     enabled: bool = True
+    is_stable: bool = True  # 是否属于稳定部分（适合缓存）
+    category: str = "core"  # 模块分类
 
 
 # 预定义模块
@@ -49,6 +53,8 @@ When confident (0.8+), provide your answer directly.""",
         always_on=True,
         token_estimate=80,
         enabled=True,
+        is_stable=True,
+        category="core",
     ),
 
     "tools": PromptModule(
@@ -59,6 +65,8 @@ When confident (0.8+), provide your answer directly.""",
         always_on=True,
         token_estimate=0,  # 动态计算
         enabled=True,
+        is_stable=True,
+        category="core",
     ),
 
     # ============ 效率模块 (priority 20-29) ============
@@ -74,6 +82,8 @@ When confident (0.8+), provide your answer directly.""",
         always_on=False,
         token_estimate=50,
         enabled=True,
+        is_stable=True,
+        category="efficiency",
     ),
 
     "modification": PromptModule(
@@ -88,6 +98,8 @@ When confident (0.8+), provide your answer directly.""",
         always_on=False,
         token_estimate=40,
         enabled=True,
+        is_stable=True,
+        category="efficiency",
     ),
 
     # ============ 安全模块 (priority 30-39) ============
@@ -102,6 +114,8 @@ When confident (0.8+), provide your answer directly.""",
         always_on=False,
         token_estimate=50,
         enabled=True,
+        is_stable=True,
+        category="security",
     ),
 
     "risk_awareness": PromptModule(
@@ -119,6 +133,8 @@ Safe: read, test, edit local files""",
         always_on=False,
         token_estimate=60,
         enabled=True,
+        is_stable=True,
+        category="security",
     ),
 
     "security_rules": PromptModule(
@@ -135,6 +151,8 @@ Prevent vulnerabilities:
         always_on=False,
         token_estimate=50,
         enabled=True,
+        is_stable=True,
+        category="security",
     ),
 
     # ============ 输出模块 (priority 40-49) ============
@@ -150,6 +168,8 @@ Prevent vulnerabilities:
         always_on=False,
         token_estimate=30,
         enabled=True,
+        is_stable=True,
+        category="output",
     ),
 
     "language": PromptModule(
@@ -160,6 +180,8 @@ Prevent vulnerabilities:
         always_on=True,
         token_estimate=10,
         enabled=True,
+        is_stable=True,
+        category="output",
     ),
 
     # ============ 上下文模块 (priority 50-59) ============
@@ -171,6 +193,8 @@ Prevent vulnerabilities:
         always_on=False,
         token_estimate=50,
         enabled=False,
+        is_stable=False,  # 动态内容，不适合缓存
+        category="context",
     ),
 
     "git_status": PromptModule(
@@ -181,6 +205,8 @@ Prevent vulnerabilities:
         always_on=False,
         token_estimate=80,
         enabled=False,
+        is_stable=False,  # 动态内容，不适合缓存
+        category="context",
     ),
 
     # ============ 记忆模块 (priority 60-69) ============
@@ -198,6 +224,8 @@ Use `recall` tool to retrieve stored memories.""",
         always_on=False,
         token_estimate=50,
         enabled=True,
+        is_stable=True,
+        category="memory",
     ),
 }
 

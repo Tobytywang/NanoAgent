@@ -27,10 +27,11 @@ from .compressor import MessageCompressor, CompressorConfig
 from .token_budget import TokenBudget, TokenBudgetConfig
 from .router import QueryRouter, QueryComplexity
 from .confidence import ConfidenceParser
+from .prompt_builder import PromptBuilder
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker
-from ..config.schema import OutputStyleConfig, SmartOptimizationConfig
+from ..config.schema import OutputStyleConfig, SmartOptimizationConfig, PromptConfig
 
 
 def _safe_str(text: str) -> str:
@@ -107,6 +108,7 @@ class ReActAgent(BaseAgent):
         cache_config: CacheConfig | None = None,
         compressor_config: CompressorConfig | None = None,
         smart_optimization_config: SmartOptimizationConfig | None = None,
+        prompt_config: PromptConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -128,6 +130,7 @@ class ReActAgent(BaseAgent):
             cache_config: Tool result caching configuration
             compressor_config: Message compression configuration
             smart_optimization_config: Smart optimization configuration for v0.7.5
+            prompt_config: Prompt configuration for v0.7.6
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -150,6 +153,9 @@ class ReActAgent(BaseAgent):
 
         # Smart optimization configuration (v0.7.5)
         self.smart_optimization_config = smart_optimization_config or SmartOptimizationConfig()
+
+        # Prompt configuration (v0.7.6)
+        self.prompt_config = prompt_config or PromptConfig()
 
         # Token budget management
         if self.smart_optimization_config.budget_enabled:
@@ -199,10 +205,72 @@ class ReActAgent(BaseAgent):
         self._session_id: str = ""
         self._routing_max_tools: int = -1  # Max tools for current query (-1 = unlimited)
 
+        # Prompt builder (v0.7.6)
+        self._prompt_builder: PromptBuilder | None = None
+        self._stable_system_prompt: str = ""
+
+        self._setup_prompt_builder()
         self._setup_system_prompt()
+
+    def _setup_prompt_builder(self) -> None:
+        """Initialize PromptBuilder and build stable portion (v0.7.6)."""
+        if self.prompt_config.source == "excel" and self.prompt_config.excel_path:
+            try:
+                self._prompt_builder = PromptBuilder.from_excel(self.prompt_config.excel_path)
+            except Exception as e:
+                if self.verbose:
+                    print(f"[Prompt] Failed to load Excel config: {e}, using default")
+                self._prompt_builder = PromptBuilder()
+        else:
+            self._prompt_builder = PromptBuilder()
+
+        # Set style
+        style = self.prompt_config.style or self.output_style_config.style
+        self._prompt_builder.set_style(style)
+
+        # Build stable portion (only once)
+        tools_desc = self._format_tools_description(style)
+        self._stable_system_prompt = self._prompt_builder.build_stable(
+            tools_description=tools_desc,
+            stable_modules=self.prompt_config.stable_modules,
+        )
+
+        if self.verbose:
+            stable_names = self._prompt_builder.get_stable_module_names()
+            print(f"[Prompt] Stable modules: {stable_names}")
 
     def _setup_system_prompt(self) -> None:
         """Set up the system prompt with tool descriptions."""
+        # If using modular prompt system (v0.7.6)
+        if self._prompt_builder is not None and self._stable_system_prompt:
+            # Build dynamic portion
+            dynamic_parts = []
+
+            # Add skill prompt if available
+            if self.skill_prompt:
+                dynamic_parts.append(f"## Skills\n\n{self.skill_prompt}")
+
+            # Add confidence suffix if enabled
+            if self.smart_optimization_config.confidence_enabled and self.confidence_parser is not None:
+                dynamic_parts.append(CONFIDENCE_SUFFIX)
+
+            # Build dynamic portion from prompt builder
+            dynamic_content = self._prompt_builder.build_dynamic(
+                skill_prompt="",  # Already added above
+                confidence_enabled=False,  # Already added above
+            )
+            if dynamic_content:
+                dynamic_parts.append(dynamic_content)
+
+            # Combine stable + dynamic
+            full_prompt = self._stable_system_prompt
+            if dynamic_parts:
+                full_prompt += "\n\n" + "\n\n".join(dynamic_parts)
+
+            self.memory.set_system_prompt(full_prompt)
+            return
+
+        # Fallback to legacy prompt system
         style = self.output_style_config.style
         tools_desc = self._format_tools_description(style)
 

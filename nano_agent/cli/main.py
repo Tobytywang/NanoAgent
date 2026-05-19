@@ -1844,6 +1844,17 @@ def _show_config(config, agent) -> None:
     print(format_line("Style:", config.output_style.style))
     print(format_line("Max Tool Output:", f"{config.output_style.tool_output_max_tokens} tokens"))
 
+    # Prompt 配置 (v0.7.6)
+    print("\n## Prompt Settings")
+    print(format_line("Source:", config.prompt.source))
+    print(format_line("Style:", config.prompt.style))
+    print(format_line("Token Budget:", f"{config.prompt.token_budget} tokens"))
+    print(format_line("Include Environment:", str(config.prompt.include_environment)))
+    print(format_line("Include Git Status:", str(config.prompt.include_git_status)))
+    if hasattr(agent, '_prompt_builder') and agent._prompt_builder:
+        stable_names = agent._prompt_builder.get_stable_module_names()
+        print(format_line("Stable Modules:", ', '.join(stable_names) if stable_names else 'None'))
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -2383,6 +2394,17 @@ def _init_config_file(config, force: bool = False) -> None:
             "level": config.logging.level,
             "console": config.logging.console,
             "file": config.logging.file or ".nano_agent/debug.log",
+        },
+        "output_style": {
+            "style": config.output_style.style,
+            "tool_output_max_tokens": config.output_style.tool_output_max_tokens,
+        },
+        "prompt": {
+            "source": config.prompt.source,
+            "style": config.prompt.style,
+            "token_budget": config.prompt.token_budget,
+            "include_environment": config.prompt.include_environment,
+            "include_git_status": config.prompt.include_git_status,
         },
     }
 
