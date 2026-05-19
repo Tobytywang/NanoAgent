@@ -1373,6 +1373,127 @@ def load_from_excel(path: str) -> list[PromptModule]:
 
 ---
 
+### v0.7.7 - Prefix Caching 优化 ✅
+
+**目标**: 实现 LLM API 的 prefix caching，减少重复发送稳定部分的 token 消耗。
+
+**背景**:
+v0.7.6 实现了模块化提示词系统，已有 `build_stable()` 和 `build_dynamic()` 方法。但这些方法的结果只是字符串拼接，没有真正利用 LLM API 的 caching 能力。Anthropic Claude 支持 Prompt Caching，OpenAI 支持自动缓存。
+
+**架构归属**: LLM 层 + Memory 层
+
+**任务列表**:
+
+**1. Message 类扩展 (P0)**:
+- [x] 添加 `cache_control` 字段 - 支持 Anthropic API
+- [x] 添加 `with_cache_control()` 工厂方法
+
+**2. LLM 接口扩展 (P0)**:
+- [x] `LLMUsage` 添加 `cache_read_tokens` 和 `cache_write_tokens` 字段
+- [x] `BaseLLM` 添加 `supports_explicit_caching` 属性
+- [x] `BaseLLM.chat()` 添加 `system_stable` 参数
+
+**3. AnthropicLLM 客户端 (P0)**:
+- [x] 创建 `nano_agent/llm/anthropic.py`
+- [x] 支持 `cache_control: {"type": "ephemeral"}` 参数
+- [x] 解析缓存命中信息
+
+**4. OpenAICompatibleLLM 优化 (P1)**:
+- [x] 支持 `system_stable` 参数
+- [x] 保证消息前缀稳定性（触发自动缓存）
+
+**5. Memory 层扩展 (P1)**:
+- [x] `ShortTermMemory` 添加 `stable_system_prompt` 字段
+- [x] 添加 `set_stable_system_prompt()` 方法
+- [x] 添加 `get_stable_system_prompt()` 方法
+- [x] 添加 `get_messages_without_system()` 方法
+- [x] `HybridMemory` 同步支持
+
+**6. 配置支持 (P2)**:
+- [x] `PromptConfig` 添加 `enable_caching` 字段
+
+**7. Agent 层集成 (P1)**:
+- [x] `_setup_prompt_builder()` 设置 stable prompt 到 memory
+- [x] `_think()` 传递 `system_stable` 给 LLM
+
+**新增文件**:
+```
+nano_agent/llm/anthropic.py      # AnthropicLLM 客户端
+tests/test_prefix_caching.py     # 21 个测试用例
+```
+
+**修改文件**:
+```
+nano_agent/llm/messages.py       # cache_control 字段
+nano_agent/llm/base.py           # LLMUsage 缓存字段, supports_explicit_caching
+nano_agent/llm/openai_compatible.py  # system_stable 参数
+nano_agent/llm/ollama.py         # system_stable 参数（忽略）
+nano_agent/llm/__init__.py       # 导出 AnthropicLLM
+nano_agent/memory/base.py        # get_stable_system_prompt()
+nano_agent/memory/short_term.py  # stable_system_prompt 字段
+nano_agent/memory/hybrid.py      # 同步支持
+nano_agent/agent/react.py        # _think() 集成 caching
+nano_agent/config/schema.py      # enable_caching 配置
+nano_agent/cli/main.py           # /config 显示 enable_caching
+```
+
+**技术方案**:
+```python
+# nano_agent/llm/messages.py
+@dataclass
+class Message:
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str = ""
+    cache_control: dict | None = None  # 用于 Anthropic Prompt Caching
+
+    @classmethod
+    def with_cache_control(cls, role, content, cache_type="ephemeral"):
+        return cls(role=role, content=content, cache_control={"type": cache_type})
+
+# nano_agent/llm/anthropic.py
+class AnthropicLLM(BaseLLM):
+    supports_explicit_caching = True
+
+    def chat(self, messages, tools=None, system_stable=None):
+        if system_stable:
+            system_content = [{
+                "type": "text",
+                "text": system_stable,
+                "cache_control": {"type": "ephemeral"}
+            }]
+        # ... 调用 Anthropic API
+
+# nano_agent/agent/react.py
+def _think(self):
+    system_stable = None
+    if self.prompt_config.enable_caching and self._stable_system_prompt:
+        system_stable = self._stable_system_prompt
+
+    response, tool_calls, usage = self.llm.chat(
+        messages=messages,
+        tools=tools_schema,
+        system_stable=system_stable,
+    )
+
+    if usage.cache_read_tokens > 0:
+        print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
+```
+
+**各 API Caching 机制**:
+| API | 机制 | 参数 | 缓存条件 |
+|-----|------|------|----------|
+| Anthropic Claude | Prompt Caching | `cache_control: {"type": "ephemeral"}` | 显式标记 |
+| OpenAI | Automatic Caching | 无需参数 | >= 1024 tokens |
+| DeepSeek | Context Caching | 无需参数 | 类似 OpenAI |
+| Ollama | 不支持 | - | - |
+
+**预期效果**:
+- Anthropic: 显式 caching，可看到 `cache_read_input_tokens`
+- OpenAI: 自动 caching，通过 prompt_tokens 减少体现
+- 第二轮请求节省 ~50% input tokens
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1745,6 +1866,7 @@ persona:
 | v0.7.4 | Token 统计增强 ✅ | Token 分类统计、/stats 子命令增强、工具消耗排名 |
 | v0.7.5 | Token 消耗智能优化 ✅ | 置信度早停、Token 预算、查询路由、SmartOptimizationConfig |
 | v0.7.6 | 模块化提示词系统 ✅ | PromptBuilder、17 个模块、Excel 配置、稳定缓存 |
+| v0.7.7 | Prefix Caching 优化 ✅ | AnthropicLLM、cache_control、稳定/动态分离、enable_caching |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
