@@ -1494,6 +1494,110 @@ def _think(self):
 
 ---
 
+### v0.7.8 - Token 优化增强 ✅
+
+**目标**: 进一步优化 Token 消耗，实现 Tool Caching、动态模块激活和 Token Budget 集成。
+
+**背景**:
+v0.7.7 实现了 system prompt 的 Prefix Caching，但 tool definitions 仍未缓存。同时，environment/git_status 模块始终携带或始终禁用，无法按需激活。Token Budget 也缺乏与实际 LLMUsage 的反馈闭环。
+
+**架构归属**: LLM 层 + Prompt 层 + Token 管理
+
+**任务列表**:
+
+**1. Tool Definitions Caching (P1)**:
+- [x] 修改 `AnthropicLLM._format_tools()` - 添加 `cache_control` 参数
+- [x] 在最后一个 tool definition 上添加 `cache_control: {"type": "ephemeral"}`
+- [x] 添加 `cache_tools` 参数到 `chat()` 和 `chat_stream()`
+- [x] 测试验证 - 10 个测试用例
+
+**2. Dynamic Module Activation (P2)**:
+- [x] 创建 `IntentDetector` 类 - 关键词匹配意图检测
+- [x] 定义 git_status 和 environment 关键词列表
+- [x] 修改 `PromptBuilder.build_dynamic()` - 支持 `user_input` 参数
+- [x] 基于意图检测动态激活 git/environment 模块
+- [x] 测试验证 - 22 个测试用例
+
+**3. Token Budget 与 LLMUsage 集成 (P3)**:
+- [x] 扩展 `TokenBudget` - 添加 `_usage_history` 和 `_calibration_factor`
+- [x] 实现 `consume_usage()` 方法 - 记录 LLMUsage 并更新校准
+- [x] 实现动态校准算法 - 基于历史 usage 计算校准系数
+- [x] 扩展 `TokenBudgetConfig` - 添加校准相关配置
+- [x] 测试验证 - 26 个测试用例
+
+**新增文件**:
+```
+nano_agent/agent/intent_detector.py  # IntentDetector 类
+tests/test_tool_caching.py           # Tool Caching 测试
+tests/test_intent_detector.py        # 意图检测测试
+tests/test_token_budget_integration.py  # Budget 集成测试
+```
+
+**修改文件**:
+```
+nano_agent/llm/anthropic.py          # Tool caching
+nano_agent/agent/prompt_builder.py   # Dynamic module activation
+nano_agent/agent/token_budget.py     # LLMUsage 集成
+```
+
+**技术方案**:
+```python
+# nano_agent/llm/anthropic.py
+
+def _format_tools(self, tools, cache_tools=True):
+    """Format tools with optional cache_control."""
+    formatted = []
+    for i, tool in enumerate(tools):
+        tool_def = {
+            "name": tool["function"]["name"],
+            "description": tool["function"]["description"],
+            "input_schema": tool["function"]["parameters"]
+        }
+        # Add cache_control to last tool
+        if cache_tools and i == len(tools) - 1:
+            tool_def["cache_control"] = {"type": "ephemeral"}
+        formatted.append(tool_def)
+    return formatted
+
+# nano_agent/agent/intent_detector.py
+
+class IntentDetector:
+    KEYWORDS = {
+        "git_status": ["提交", "commit", "push", "pull", "merge", "分支", "branch"],
+        "environment": ["环境变量", "env", "配置文件", "config", ".env"],
+    }
+
+    def detect(self, user_input: str) -> set[str]:
+        detected = set()
+        for intent, keywords in self.KEYWORDS.items():
+            if any(kw in user_input.lower() for kw in keywords):
+                detected.add(intent)
+        return detected
+
+# nano_agent/agent/token_budget.py
+
+class TokenBudget:
+    def consume_usage(self, usage: LLMUsage) -> None:
+        """Consume tokens and record for calibration."""
+        self._usage_history.append(usage)
+        self.consume(usage.total_tokens)
+        self._update_calibration()
+
+    def _update_calibration(self) -> None:
+        """Update calibration factor based on usage history."""
+        if len(self._usage_history) >= self.config.min_calibration_samples:
+            avg_actual = sum(u.total_tokens for u in self._usage_history) / len(self._usage_history)
+            expected_per_call = self.initial_budget / 10
+            self._calibration_factor = avg_actual / expected_per_call
+```
+
+**预期效果**:
+- Tool Caching: 10 轮对话节省 90% tools tokens
+- Dynamic Module: 纯问答场景节省 100% git/environment tokens
+- Budget 集成: 预算基于实际使用校准，减少过早耗尽
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1867,6 +1971,7 @@ persona:
 | v0.7.5 | Token 消耗智能优化 ✅ | 置信度早停、Token 预算、查询路由、SmartOptimizationConfig |
 | v0.7.6 | 模块化提示词系统 ✅ | PromptBuilder、17 个模块、Excel 配置、稳定缓存 |
 | v0.7.7 | Prefix Caching 优化 ✅ | AnthropicLLM、cache_control、稳定/动态分离、enable_caching |
+| v0.7.8 | Token 优化增强 ✅ | Tool Caching、Dynamic Module、Budget 与 LLMUsage 集成 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
