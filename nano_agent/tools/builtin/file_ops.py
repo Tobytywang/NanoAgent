@@ -268,7 +268,7 @@ class FileSearchTool(BaseTool):
 
         Args:
             directory: Directory to search
-            pattern: Glob pattern
+            pattern: Glob pattern (supports | separator for multiple patterns)
             recursive: Whether to search subdirectories
 
         Returns:
@@ -291,28 +291,36 @@ class FileSearchTool(BaseTool):
                     error=f"Path is not a directory: {base_path}"
                 )
 
-            matches = list(
-                base_path.rglob(pattern) if recursive else base_path.glob(pattern)
-            )
+            # Support pipe separator for multiple patterns
+            patterns = pattern.split("|") if "|" in pattern else [pattern]
 
-            if not matches:
+            # Collect matches from all patterns
+            all_matches = set()
+            for p in patterns:
+                p = p.strip()
+                if p:
+                    matches = base_path.rglob(p) if recursive else base_path.glob(p)
+                    all_matches.update(matches)
+
+            if not all_matches:
                 return ToolResult(
                     success=True,
                     output=f"No files matching '{pattern}' found"
                 )
 
-            # Limit results
+            # Sort and limit results
+            sorted_matches = sorted(all_matches, key=lambda m: str(m))
             max_results = 100
             result_str = "\n".join(
-                str(m.relative_to(base_path)) for m in matches[:max_results]
+                str(m.relative_to(base_path)) for m in sorted_matches[:max_results]
             )
 
-            if len(matches) > max_results:
-                result_str += f"\n... and {len(matches) - max_results} more results"
+            if len(sorted_matches) > max_results:
+                result_str += f"\n... and {len(sorted_matches) - max_results} more results"
 
             return ToolResult(
                 success=True,
-                output=f"Found {len(matches)} matches:\n{result_str}"
+                output=f"Found {len(sorted_matches)} matches:\n{result_str}"
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

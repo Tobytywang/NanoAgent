@@ -302,6 +302,45 @@ class TestPersistentMemory:
         messages = memory.get_all()
         assert messages[0]["role"] == "system"  # System message preserved
 
+    def test_set_stable_system_prompt(self, temp_storage):
+        """Test setting stable system prompt for prefix caching."""
+        memory = PersistentMemory(storage=temp_storage, max_messages=50)
+
+        memory.set_stable_system_prompt("Stable prompt for caching")
+        assert memory.stable_system_prompt == "Stable prompt for caching"
+        # Full system prompt unchanged
+        assert memory.system_prompt == "You are a helpful AI assistant."
+
+    def test_get_stable_system_prompt(self, temp_storage):
+        """Test getting stable system prompt."""
+        memory = PersistentMemory(storage=temp_storage, max_messages=50)
+
+        # Without stable, returns full system prompt
+        assert memory.get_stable_system_prompt() == "You are a helpful AI assistant."
+
+        # With stable, returns stable
+        memory.set_stable_system_prompt("Stable prompt")
+        assert memory.get_stable_system_prompt() == "Stable prompt"
+
+    def test_stable_system_prompt_persists_across_sessions(self, temp_storage):
+        """Test that stable system prompt is an in-memory attribute only."""
+        memory = PersistentMemory(
+            storage=temp_storage,
+            session_id="test_session",
+            max_messages=50
+        )
+        memory.set_stable_system_prompt("Stable prompt")
+        memory.add_user_message("Hello")
+
+        # Create new instance with same session
+        memory2 = PersistentMemory(
+            storage=temp_storage,
+            session_id="test_session",
+            max_messages=50
+        )
+        # stable_system_prompt is NOT persisted (it's regenerated each session)
+        assert memory2.stable_system_prompt == ""
+
 
 class TestMemoryConfig:
     """Tests for memory configuration."""

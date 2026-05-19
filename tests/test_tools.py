@@ -414,6 +414,34 @@ class TestFileSearchTool:
             assert "test2.txt" in result.output
             assert "other.py" not in result.output
 
+    def test_search_with_pipe_separator(self):
+        """Test searching with pipe separator for multiple patterns."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create some files
+            Path(tmpdir, "test1.txt").touch()
+            Path(tmpdir, "test2.md").touch()
+            Path(tmpdir, "plan.md").touch()
+            Path(tmpdir, "other.py").touch()
+
+            tool = FileSearchTool()
+            # Use pipe separator to search for multiple patterns
+            result = tool.execute(directory=tmpdir, pattern="*plan*|*.txt")
+            assert result.success is True
+            assert "test1.txt" in result.output
+            assert "plan.md" in result.output
+            assert "test2.md" not in result.output  # Not matching either pattern
+            assert "other.py" not in result.output
+
+    def test_search_with_pipe_separator_no_matches(self):
+        """Test pipe separator when no files match."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Path(tmpdir, "test.txt").touch()
+
+            tool = FileSearchTool()
+            result = tool.execute(directory=tmpdir, pattern="*.py|*.md")
+            assert result.success is True
+            assert "No files matching" in result.output
+
 
 class TestShellTool:
     """Test ShellTool."""

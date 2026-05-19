@@ -3,6 +3,8 @@
 > **定位**: 开发者日常工作手册 - 快速参考与操作规范
 >
 > **战略规划**: 详见 [ROADMAP.md](ROADMAP.md) - 版本规划、测试系统、架构演进
+>
+> **BUG 复盘**: 详见 [BUGLIST.md](BUGLIST.md) - BUG 记录与经验教训
 
 ## Project Overview
 
@@ -103,6 +105,7 @@ output_style:
 - Write tests in `tests/` directory (not `python -c` ad-hoc)
 - Check coverage after bug fixes or feature changes
 - Run tests after resolving merge conflicts
+- **发现 BUG 后必须补充测试** - 防止回归，参见 [BUGLIST.md](BUGLIST.md)
 
 > **详细测试规划**: 参见 [ROADMAP.md - 测试系统规划](ROADMAP.md#测试系统规划与功能版本并行)
 
@@ -120,6 +123,16 @@ output_style:
 - 配置添加了但忘记在 `_show_config()` 显示
 - 核心模块实现了但忘记在 `create_agent()` 调用
 - 只有单元测试，缺少端到端验证
+- **给基类/接口添加方法时，遗漏了某个子类** - 参见 [BUGLIST.md BUG-001](BUGLIST.md#bug-001-persistentmemory-缺失-stable_system_prompt-方法)
+
+### 接口扩展检查清单
+
+当给基类（如 `BaseMemory`、`BaseTool`、`BaseLLM`）添加新方法时：
+
+1. **列出所有子类** - `grep -r "class.*BaseX" nano_agent/`
+2. **逐个检查实现** - 确保每个子类都实现了新方法
+3. **添加接口一致性测试** - 参考 `tests/test_memory_interface.py`
+4. **测试所有组合场景** - 如 `HybridMemory` 可使用不同的 working memory 类型
 
 ### Documentation
 

@@ -97,6 +97,9 @@ class ToolCallMerger:
 
         Strategy: Combine patterns into glob alternatives.
         Example: "*.py" + "*.ts" -> "*.{py,ts}"
+        Example: "*plan*" + "*.md" -> "*plan*|*.md" (pipe separator)
+
+        Note: file_search tool supports pipe separator for multiple patterns.
         """
         if len(calls) <= 1:
             return calls
@@ -131,7 +134,12 @@ class ToolCallMerger:
         return [merged_call]
 
     def _combine_patterns(self, patterns: list[str]) -> str:
-        """Combine multiple glob patterns into one."""
+        """
+        Combine multiple glob patterns into one.
+
+        Uses pipe separator for complex patterns (file_search supports it).
+        Uses {ext1,ext2} syntax for simple extension patterns.
+        """
         # Check if all are simple extension patterns (*.ext)
         extensions = []
         for p in patterns:
@@ -140,6 +148,7 @@ class ToolCallMerger:
                 extensions.append(match.group(1))
             else:
                 # Not a simple extension pattern, use pipe separator
+                # file_search tool supports pipe separator for multiple patterns
                 return "|".join(patterns)
 
         # All are simple extension patterns, use {ext1,ext2} syntax
