@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> **定位**: 开发者日常工作手册 - 快速参考与操作规范
+>
+> **战略规划**: 详见 [ROADMAP.md](ROADMAP.md) - 版本规划、测试系统、架构演进
 
 ## Project Overview
 
@@ -85,33 +87,28 @@ output_style:
 - `memorize`/`recall`/`list_memories`/`forget`: Long-term memory tools
 - `get_stats`: Get execution statistics
 
+---
+
 ## Development Guidelines
 
 ### Before Committing
 
-Always verify the following before committing code changes:
-
-1. **Tests**: Run `pytest tests/ -v` to ensure all tests pass
-2. **Test Coverage**: If fixing a bug or adding/modifying features, add test cases if coverage is missing
-3. **Documentation**: Update relevant documentation (help text, docs/api.md, docs/tutorial.md)
-4. **Roadmap**: Check if ROADMAP.md needs updates for new/changed features
+1. **Tests**: `pytest tests/ -v` - all tests must pass
+2. **Coverage**: Check coverage when fixing bugs or adding features
+3. **Documentation**: Update help text, `docs/api.md`, `docs/tutorial.md`
+4. **Roadmap**: Update ROADMAP.md if adding/changing features
 
 ### Testing
 
-- Write formal test cases in `tests/` directory instead of using `python -c` for ad-hoc testing
-- **Always check test coverage** when fixing bugs or adding/modifying features. Add tests if missing.
-- **Run tests after resolving merge conflicts** to verify no syntax errors or broken functionality
+- Write tests in `tests/` directory (not `python -c` ad-hoc)
+- Check coverage after bug fixes or feature changes
+- Run tests after resolving merge conflicts
 
-### Documentation
+> **详细测试规划**: 参见 [ROADMAP.md - 测试系统规划](ROADMAP.md#测试系统规划与功能版本并行)
 
-When adding or modifying features, always update the relevant documentation:
-- **Interactive help**: Update `_show_help()` in `nano_agent/cli/main.py`
-- **API documentation**: Update `docs/api.md`
-- **Tutorial**: Update `docs/tutorial.md` if it affects user workflow
+### 新增功能完整链路
 
-### 新增功能的完整链路
-
-实现新功能时，需确保以下环节全部连通：
+实现新功能时，确保以下环节全部连通：
 
 1. **配置定义** → `config/schema.py` 添加配置项
 2. **配置显示** → `_show_config()` 中显示
@@ -119,37 +116,35 @@ When adding or modifying features, always update the relevant documentation:
 4. **CLI 集成** → `create_agent()` 中使用新配置
 5. **测试验证** → 单元测试 + 端到端验证
 
-常见遗漏：
+**常见遗漏**:
 - 配置添加了但忘记在 `_show_config()` 显示
 - 核心模块实现了但忘记在 `create_agent()` 调用
 - 只有单元测试，缺少端到端验证
 
-### Roadmap
+### Documentation
 
-When adding or modifying features, always check `ROADMAP.md`:
-- If the feature is described in ROADMAP.md, ensure the implementation matches the description
-- If the feature is NOT described, add it to the appropriate version section
-- Periodically review git commit history to update ROADMAP.md with important feature details
+When adding or modifying features, always update:
+- **Interactive help**: `_show_help()` in `nano_agent/cli/main.py`
+- **API documentation**: `docs/api.md`
+- **Tutorial**: `docs/tutorial.md` if it affects user workflow
 
 ### Bash Commands
 
-When executing Bash commands, always provide a clear purpose explaining:
-- What the command does
-- Why it's needed
-- What output is expected
+Always provide a clear purpose explaining what, why, and expected output:
 
-Example:
 ```bash
-# Purpose: Verify the session management feature works correctly
+# Purpose: Verify session management feature works correctly
 # by testing the --list-sessions CLI option
 python -m nano_agent.cli.main --list-sessions
 ```
+
+---
 
 ## Design Philosophy
 
 ### User Intervention Control
 
-NanoAgent follows a "critical decision confirmation" model for balancing user control and LLM automation:
+NanoAgent follows a "critical decision confirmation" model:
 
 **The Problem**: Users want final authority without micromanaging execution details.
 
