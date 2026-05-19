@@ -1,6 +1,17 @@
 # NanoAgent Roadmap
 
+> **定位**: 项目战略规划文档 - 版本规划、测试系统、架构演进
+>
+> **日常工作**: 详见 [CLAUDE.md](CLAUDE.md) - 命令参考、操作规范、设计哲学
+
 本文档记录 NanoAgent 的开发路线图和增强计划。
+
+## 文档定位
+
+| 文档 | 定位 | 内容 | 目标读者 |
+|------|------|------|---------|
+| **CLAUDE.md** | 开发者日常工作手册 | 命令参考、架构概览、操作规范、设计哲学 | 每日开发者 |
+| **ROADMAP.md** | 项目战略规划文档 | 版本规划、测试系统、架构演进、技术方案 | 规划者、贡献者 |
 
 ## 项目定位
 
@@ -1648,6 +1659,25 @@ persona:
 ## 测试系统规划（与功能版本并行）
 
 > **说明**: 测试计划与功能版本并行推进，不使用功能版本号。测试阶段以 T（Test）为前缀标识。
+>
+> **日常测试规范**: 参见 [CLAUDE.md - Testing](CLAUDE.md#testing) - 提交前检查、覆盖率要求、merge conflict 后验证
+
+### 已完成的测试文件
+
+> 以下测试文件在各版本功能开发时同步完成，详见各版本规划章节。
+
+| 测试文件 | 关联版本 | 测试用例数 | 状态 |
+|----------|---------|-----------|------|
+| `tests/test_plan.py` | v0.6.2 | 20+ | ✅ |
+| `tests/test_confirmation.py` | v0.6.4 | 22 | ✅ |
+| `tests/test_git_manager.py` | v0.6.5 | 26 | ✅ |
+| `tests/test_output_style.py` | v0.7.1 | - | ✅ |
+| `tests/test_tool_merger.py` | v0.7.2 | - | ✅ |
+| `tests/test_cache.py` | v0.7.3 | - | ✅ |
+| `tests/test_compressor.py` | v0.7.3 | - | ✅ |
+| `tests/test_token_analyzer.py` | v0.7.4 | - | ✅ |
+
+---
 
 ### 测试覆盖率现状
 
