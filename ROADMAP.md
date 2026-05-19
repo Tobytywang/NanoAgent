@@ -2351,6 +2351,18 @@ persona:
 >
 > **日常测试规范**: 参见 [CLAUDE.md - Testing](CLAUDE.md#testing) - 提交前检查、覆盖率要求、merge conflict 后验证
 
+### 测试现状总览 (2026-05-19 更新)
+
+| 指标 | 当前值 | 目标值 | 状态 |
+|------|--------|--------|------|
+| 总测试数 | 795 | 1000+ | 🟡 |
+| 总覆盖率 | 71.64% | 75% | 🟡 |
+| CI 门禁阈值 | 54% | 60% | 🟡 |
+| 测试文件数 | 30 | 35+ | 🟡 |
+| Mock 重复定义 | 8 处 | 0 处 | 🔴 |
+
+---
+
 ### 已完成的测试文件
 
 > 以下测试文件在各版本功能开发时同步完成，详见各版本规划章节。
@@ -2360,32 +2372,126 @@ persona:
 | `tests/test_plan.py` | v0.6.2 | 20+ | ✅ |
 | `tests/test_confirmation.py` | v0.6.4 | 22 | ✅ |
 | `tests/test_git_manager.py` | v0.6.5 | 26 | ✅ |
-| `tests/test_output_style.py` | v0.7.1 | - | ✅ |
-| `tests/test_tool_merger.py` | v0.7.2 | - | ✅ |
-| `tests/test_cache.py` | v0.7.3 | - | ✅ |
-| `tests/test_compressor.py` | v0.7.3 | - | ✅ |
-| `tests/test_token_analyzer.py` | v0.7.4 | - | ✅ |
+| `tests/test_output_style.py` | v0.7.1 | 31 | ✅ |
+| `tests/test_tool_merger.py` | v0.7.2 | 14 | ✅ |
+| `tests/test_cache.py` | v0.7.3 | 13 | ✅ |
+| `tests/test_compressor.py` | v0.7.3 | 11 | ✅ |
+| `tests/test_token_analyzer.py` | v0.7.4 | 15 | ✅ |
+| `tests/test_smart_optimization.py` | v0.7.5 | 37 | ✅ |
+| `tests/test_prompt_config.py` | v0.7.6 | 32 | ✅ |
+| `tests/test_prefix_caching.py` | v0.7.7 | 21 | ✅ |
+| `tests/test_intent_detector.py` | v0.7.8 | 22 | ✅ |
+| `tests/test_token_budget_integration.py` | v0.7.8 | 26 | ✅ |
+| `tests/test_tool_caching.py` | v0.7.8 | 10 | ✅ |
 
 ---
 
-### 测试覆盖率现状
+### 测试覆盖率现状 (2026-05-19 更新)
 
-| 模块 | 当前覆盖率 | 目标覆盖率 | 优先级 |
-|------|-----------|-----------|--------|
-| cli/main.py | 9% | 70% | P0 |
-| memory/migration.py | 0% | 90% | P1 |
-| tools/plugin.py | 17% | 80% | P1 |
-| tools/web_search.py | 20% | 75% | P2 |
-| monitoring/reporter.py | 24% | 80% | P2 |
-| cli/scanner.py | 12% | 70% | P2 |
-| llm/ollama.py | 30% | 70% | P2 |
-| **总体** | **50%** | **75%** | - |
+#### 高覆盖率模块 (≥70%)
+
+| 模块 | 覆盖率 | 状态 |
+|------|--------|------|
+| agent/types.py | 100% | ✅ |
+| agent/budget.py | 100% | ✅ |
+| agent/cache.py | 100% | ✅ |
+| agent/compressor.py | 100% | ✅ |
+| agent/token_budget.py | 100% | ✅ |
+| agent/token_utils.py | 100% | ✅ |
+| agent/prompt_modules.py | 100% | ✅ |
+| core/builder.py | 100% | ✅ |
+| skills/base.py | 86% | ✅ |
+| tools/builtin/file_ops.py | 86% | ✅ |
+| skills/loader.py | 76% | ✅ |
+
+#### 低覆盖率模块 (<60%) - 需优先补充
+
+| 模块 | 当前覆盖率 | 目标覆盖率 | 优先级 | 缺失测试类型 |
+|------|-----------|-----------|--------|-------------|
+| `__main__.py` | 5-8% | 70% | P0 | 入口点、CLI 启动 |
+| `cli/constants.py` | 8-54% | 80% | P1 | 常量定义验证 |
+| `utils/strings.py` | 20-21% | 90% | P1 | 字符串工具函数 |
+| `tools/builtin/monitoring_tools.py` | 34-81% | 80% | P1 | get_stats 工具执行 |
+| `config/loader.py` | 35% | 80% | P1 | 配置加载、合并、保存 |
+| `memory/base.py` | 43-46% | 90% | P1 | 抽象方法、Protocol |
+| `agent/events.py` | 45% | 90% | P1 | EventEmitter 完整流程 |
+| `agent/base.py` | 47% | 80% | P1 | BaseAgent 抽象类 |
+
+#### 中等覆盖率模块 (60-70%) - 需补充边界测试
+
+| 模块 | 当前覆盖率 | 目标覆盖率 | 备注 |
+|------|-----------|-----------|------|
+| `tools/builtin/web_search.py` | 23% | 75% | 需要 HTTP mock |
+| `monitoring/reporter.py` | 24% | 80% | 报告生成测试 |
+| `cli/scanner.py` | 60% | 70% | 项目扫描测试 |
+| `llm/ollama.py` | 60% | 70% | LLM 调用测试 |
+| `monitoring/tracker.py` | 66% | 80% | 统计追踪测试 |
 
 **历史记录**:
 - 2026-05-11: 在 `tests/run_tests.py` 中设置 CI 门禁阈值 **54%** (`--cov-fail-under=54`)
   - 背景：v0.6.x 新增模块（Architecture、Confirmation、Context、GitManager、Plan、Session、Undo）测试覆盖完成
   - 测试用例从 147 增至 359 个
   - 54% 为当前实际执行的最低阈值，ROADMAP 中的 75% 为最终目标
+- 2026-05-19: 测试用例增至 **795 个**，覆盖率提升至 **71.64%**
+
+---
+
+### T0 阶段 - 测试代码质量优化 ✅ (2026-05-19)
+
+**目标**: 优化现有测试代码质量，消除重复，提升可维护性。
+
+**发现的问题**:
+
+#### 问题 1: Mock 类重复定义 🔴
+- **现状**: `MockTool` 类在 8 个文件中重复定义
+  - `tests/conftest.py`
+  - `tests/test_agent.py`
+  - `tests/factories.py`
+  - `tests/test_confirmation.py`
+  - `tests/test_middleware.py`
+  - `tests/test_skills.py`
+  - `tests/test_tools_plugin.py`
+- **影响**: 维护困难，行为不一致风险
+- **解决方案**: 统一使用 `factories.py` 中的 `create_mock_tool()`
+
+#### 问题 2: pytest markers 使用不一致 🟡
+- **现状**: 大多数文件使用 `pytestmark = pytest.mark.unit`
+- **问题**: `test_e2e.py` 使用 `@pytest.mark.e2e`，`test_cli_scanner.py` 混用 `@pytest.mark.integration`
+- **解决方案**: 在 `pyproject.toml` 或 `pytest.ini` 中统一定义 markers
+
+#### 问题 3: E2E 测试依赖 Mock 🟡
+- **现状**: `test_e2e.py` 名为端到端测试，但使用 Mock LLM
+- **影响**: 测试分类不清晰，无法验证真实 LLM 交互
+- **解决方案**:
+  - 重命名为 `test_integration.py`
+  - 添加真正的 E2E 测试（使用 `@pytest.mark.skipif` 控制真实 LLM）
+
+#### 问题 4: 缺少参数化测试 🟡
+- **现状**: 多个测试文件有重复的测试结构
+- **影响**: 测试代码冗余，维护成本高
+- **解决方案**: 使用 `@pytest.mark.parametrize` 简化
+
+#### 问题 5: 缺少性能测试 🟡
+- **现状**: 无性能测试
+- **影响**: 无法验证大量消息、长时间运行、并发场景
+- **解决方案**: 添加性能测试套件
+
+**任务列表**:
+
+**代码质量优化 (P0)**:
+- [x] 分析测试代码现状 - 完成 2026-05-19
+- [ ] 统一 Mock 类到 factories.py - 预估 2-3 小时
+- [ ] 统一 pytest markers 配置 - 预估 30 分钟
+- [ ] 重命名 test_e2e.py 为 test_integration.py - 预估 1-2 小时
+
+**测试增强 (P1)**:
+- [ ] 添加参数化测试 - 预估 2-3 小时
+- [ ] 补充低覆盖率模块测试 - 预估 4-6 小时
+- [ ] 添加性能测试 - 预估 3-4 小时
+
+**基础设施优化 (P2)**:
+- [ ] 增强 run_tests.py (--quick, --watch, 并行测试) - 预估 1-2 小时
+- [ ] 添加更多 fixture (mock_llm_with_tool_calls, sample_conversation) - 预估 1 小时
 
 ---
 
@@ -2733,10 +2839,40 @@ def test_message_roles(role, expected):
 
 ### 测试覆盖率目标时间线
 
-| 测试阶段 | 目标覆盖率 | 关键里程碑 | 关联功能版本 |
-|------|-----------|-----------|--------|
-| T0 | **54%** ✅ | CI 门禁阈值设置，v0.6.x 新模块测试完成 | v0.6.5 |
-| T1 | 60% | CLI、Migration、Plugin 测试完成 | v0.6.0 |
-| T2 | 70% | 可测试性重构完成 | v0.7.0, v0.8.0 |
-| T3 | 75% | CI 门禁建立，全模块测试完成 | v0.9.0 |
-| T4+ | 80% | 持续维护，新增功能同步测试 | v0.10.0+ |
+| 测试阶段 | 目标覆盖率 | 关键里程碑 | 关联功能版本 | 状态 |
+|------|-----------|-----------|--------|------|
+| T0 | **72%** | 测试代码质量优化，Mock 统一 | v0.7.8 | 🟡 进行中 |
+| T1 | 75% | CLI、Migration、Plugin 测试完成 | v0.8.0 | 待开始 |
+| T2 | 80% | 可测试性重构完成 | v0.9.0 | 待开始 |
+| T3 | 85% | CI 门禁建立，全模块测试完成 | v0.10.0 | 待开始 |
+| T4+ | 90% | 持续维护，新增功能同步测试 | v0.11.0+ | 待开始 |
+
+---
+
+### 测试优化任务清单
+
+#### 立即执行 (本周)
+
+| 任务 | 优先级 | 预估时间 | 状态 |
+|------|--------|----------|------|
+| 统一 Mock 类到 factories.py | P0 | 2-3h | 待开始 |
+| 统一 pytest markers 配置 | P0 | 30min | 待开始 |
+| 补充 `__main__.py` 入口点测试 | P0 | 1h | 待开始 |
+
+#### 短期执行 (本月)
+
+| 任务 | 优先级 | 预估时间 | 状态 |
+|------|--------|----------|------|
+| 重命名 test_e2e.py → test_integration.py | P1 | 1-2h | 待开始 |
+| 补充 utils/strings.py 测试 | P1 | 1h | 待开始 |
+| 补充 config/loader.py 测试 | P1 | 2h | 待开始 |
+| 添加参数化测试 | P1 | 2-3h | 待开始 |
+
+#### 中期执行 (下月)
+
+| 任务 | 优先级 | 预估时间 | 状态 |
+|------|--------|----------|------|
+| 补充 agent/events.py 测试 | P1 | 1h | 待开始 |
+| 补充 agent/base.py 测试 | P1 | 2h | 待开始 |
+| 添加性能测试套件 | P2 | 3-4h | 待开始 |
+| 增强 run_tests.py | P2 | 1-2h | 待开始 |
