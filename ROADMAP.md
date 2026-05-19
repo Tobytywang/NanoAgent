@@ -1598,6 +1598,312 @@ class TokenBudget:
 
 ---
 
+### v0.7.9 - Token 效率深度优化
+
+**目标**: 实现更深层次的 Token 优化，包括预判机制、激进输出精简、工具输出标准化等。
+
+**背景**:
+v0.7.1-v0.7.8 实现了多层 Token 优化，但在以下场景仍有优化空间：
+1. 简单问题（问候、感谢）仍需完整 LLM 调用流程
+2. LLM 输出格式自由，包含冗余格式（表格、emoji、列表）
+3. 工具输出是自由格式字符串，LLM 需要额外解析
+4. 多轮对话缓存仅限单次工具调用，未实现跨轮次复用
+
+**架构归属**: 执行层 + 工具层 + 输出层
+
+**任务列表**:
+
+**1. 预判机制 (P0)**:
+- [ ] 实现 `QueryPrejudgment` 类 - 预判问题复杂度
+- [ ] 定义极简预判提示词 - ~50 tokens
+- [ ] 实现简单问题直接回答 - 不走 ReAct 循环
+- [ ] 实现中等复杂度限制 - 最多 1 次工具调用
+- [ ] 与现有 QueryRouter 协同 - 规则优先，LLM 补充
+- [ ] 配置支持 - `prejudgment.enabled`、`prejudgment.simple_prompt`
+
+**2. 激进输出精简 (P1)**:
+- [ ] 定义 `AggressiveOutputConfig` 配置 - mild/aggressive/extreme 三级
+- [ ] 实现输出格式约束提示词 - 一句话、无表格、无列表、无 emoji
+- [ ] 实现 `OutputSimplifier` 类 - 后处理强制精简
+- [ ] 实现 emoji/Markdown 过滤 - 正则清理
+- [ ] 实现长度截断策略 - 按字数限制
+- [ ] 配置支持 - `aggressive_output.enabled`、`aggressive_output.level`
+
+**3. 工具输出格式标准化 (P1)**:
+- [ ] 定义 `StandardToolOutput` 数据类 - 统一输出结构
+- [ ] 定义 `OutputFormat` 枚举 - structure/list/status/content/error
+- [ ] 重构 `file_read` 工具 - 输出 imports/classes/functions 结构
+- [ ] 重构 `shell_execute` 工具 - 解析 ls/git 等常见命令输出
+- [ ] 重构 `file_search` 工具 - 输出分组统计结果
+- [ ] 实现 `to_llm_message()` 方法 - 转换为精简 LLM 消息
+- [ ] 配置支持 - `standardized_output.enabled`、`standardized_output.detailed`
+
+**4. 多轮对话增量缓存 (P2)**:
+- [ ] 扩展 `ToolResultCache` - 支持跨轮次缓存
+- [ ] 实现缓存持久化 - 会话结束时保存到磁盘
+- [ ] 实现缓存预热 - 会话恢复时加载历史缓存
+- [ ] 实现缓存失效策略 - 基于文件修改时间
+- [ ] 配置支持 - `cache.persist`、`cache.warmup`
+
+**5. 语义压缩 (P3)**:
+- [ ] 实现 `SemanticCompressor` 类 - 合并相似历史消息
+- [ ] 集成 embedding 模型 - 计算消息相似度
+- [ ] 实现相似消息合并策略 - 保留关键信息
+- [ ] 配置支持 - `semantic_compression.enabled`、`semantic_compression.similarity_threshold`
+
+**新增文件**:
+```
+nano_agent/agent/
+├── prejudgment.py           # QueryPrejudgment 类
+├── output_simplifier.py     # OutputSimplifier 类
+├── semantic_compressor.py   # SemanticCompressor 类
+nano_agent/tools/
+├── standard_output.py       # StandardToolOutput, OutputFormat
+tests/
+├── test_prejudgment.py      # 预判机制测试
+├── test_output_simplifier.py # 输出精简测试
+├── test_standard_output.py  # 标准化输出测试
+```
+
+**修改文件**:
+```
+nano_agent/config/schema.py          # 新增配置类
+nano_agent/agent/react.py            # 集成预判机制
+nano_agent/tools/builtin/file_ops.py # 标准化输出
+nano_agent/tools/builtin/shell.py    # 标准化输出
+nano_agent/agent/cache.py            # 跨轮次缓存
+```
+
+**技术方案**:
+
+```python
+# 1. 预判机制
+# nano_agent/agent/prejudgment.py
+
+class QueryPrejudgment:
+    """查询预判器 - 在完整流程前判断复杂度"""
+
+    PREJUDGMENT_PROMPT = """判断问题复杂度:
+- simple: 问候、感谢、简单问答
+- moderate: 需要单次查询或操作
+- complex: 需要多步推理或多个工具
+
+问题: {query}
+复杂度:"""
+
+    SIMPLE_PROMPT = """简洁回答用户问题。
+用户: {query}
+回答:"""
+
+    def prejudge(self, query: str) -> str:
+        """预判问题复杂度（轻量级 LLM 调用）"""
+        response = self.llm.chat_simple(
+            prompt=self.PREJUDGMENT_PROMPT.format(query=query),
+            max_tokens=10
+        )
+        return response.strip().lower()
+
+    def handle_simple(self, query: str) -> str:
+        """直接回答简单问题（不走 ReAct 循环）"""
+        return self.llm.chat_simple(
+            prompt=self.SIMPLE_PROMPT.format(query=query),
+            max_tokens=100
+        )
+
+# 集成到 ReAct 流程
+def run(self, user_input: str) -> ExecutionResult:
+    if self.prejudgment_enabled:
+        complexity = self.prejudgment.prejudge(user_input)
+
+        if complexity == "simple":
+            return self.prejudgment.handle_simple(user_input)
+        elif complexity == "moderate":
+            self.max_tool_calls = 1  # 限制工具调用次数
+
+    return self._run_react_loop(user_input)
+
+# 2. 激进输出精简
+# nano_agent/agent/output_simplifier.py
+
+@dataclass
+class AggressiveOutputConfig:
+    enabled: bool = False
+    level: Literal["mild", "aggressive", "extreme"] = "aggressive"
+    max_answer_length: int = 50
+    max_key_points: int = 2
+    no_table: bool = True
+    no_list: bool = True
+    no_emoji: bool = True
+    no_markdown: bool = True
+
+class OutputSimplifier:
+    AGGRESSIVE_SUFFIX = """
+【输出规则 - 必须严格遵守】
+1. 一句话回答，不超过 50 字
+2. 禁止使用表格、列表、分点
+3. 禁止使用 emoji 和表情符号
+4. 禁止使用 Markdown 格式
+5. 只陈述事实，不说废话
+"""
+
+    def simplify(self, response: str, level: str) -> str:
+        if level == "extreme":
+            return self._to_one_sentence(response)
+        elif level == "aggressive":
+            return self._to_compact_format(response)
+        return self._remove_formatting(response)
+
+    def _to_one_sentence(self, text: str) -> str:
+        text = text.replace("\n", " ")
+        text = self._remove_emoji(text)
+        text = re.sub(r"\*\*|\*|__|_|`", "", text)
+        if len(text) > self.config.max_answer_length:
+            text = text[:self.config.max_answer_length] + "。"
+        return text
+
+# 3. 工具输出格式标准化
+# nano_agent/tools/standard_output.py
+
+class OutputFormat(Enum):
+    STRUCTURE = "structure"    # 结构信息（文件、类、函数）
+    LIST = "list"              # 列表信息（文件列表、搜索结果）
+    STATUS = "status"          # 状态信息（成功/失败、计数）
+    CONTENT = "content"        # 内容信息（代码片段、文本）
+    ERROR = "error"            # 错误信息
+
+@dataclass
+class StandardToolOutput:
+    format: OutputFormat
+    summary: str              # 一句话摘要（<50字）
+    success: bool
+    data: dict[str, Any] | None = None
+    key_info: list[str] | None = None  # 最多 5 条
+    errors: list[str] | None = None
+    stats: dict[str, int] | None = None
+
+    def to_llm_message(self) -> str:
+        """转换为给 LLM 的精简消息"""
+        lines = [f"[{self.format.value}] {self.summary}"]
+        if self.key_info:
+            lines.append("关键信息: " + ", ".join(self.key_info[:3]))
+        if self.errors:
+            lines.append("错误: " + "; ".join(self.errors[:2]))
+        return "\n".join(lines)
+
+# file_read 标准化输出示例
+{
+    "format": "structure",
+    "summary": "DataProcessor 类，提供验证、转换、清洗功能",
+    "success": true,
+    "data": {
+        "imports": ["os", "sys", "json", "logging"],
+        "classes": [{"name": "DataProcessor", "methods": ["process", "validate"]}],
+        "functions": []
+    },
+    "key_info": ["主类: DataProcessor", "方法: process, validate"],
+    "stats": {"class_count": 1, "method_count": 2}
+}
+
+# 4. 多轮对话增量缓存
+# 扩展 nano_agent/agent/cache.py
+
+class ToolResultCache:
+    def __init__(self, config: CacheConfig):
+        self._cache: dict[str, tuple[ToolResult, float]] = {}
+        self._persistent_path = config.persistent_path  # 新增：持久化路径
+
+    def save_to_disk(self) -> None:
+        """保存缓存到磁盘"""
+        import json
+        with open(self._persistent_path, 'w') as f:
+            json.dump(self._cache, f)
+
+    def load_from_disk(self) -> None:
+        """从磁盘加载缓存"""
+        import json
+        if os.path.exists(self._persistent_path):
+            with open(self._persistent_path, 'r') as f:
+                self._cache = json.load(f)
+
+    def invalidate_by_mtime(self, path: str, mtime: float) -> None:
+        """基于文件修改时间失效缓存"""
+        for key in list(self._cache.keys()):
+            if path in key:
+                del self._cache[key]
+
+# 5. 语义压缩
+# nano_agent/agent/semantic_compressor.py
+
+class SemanticCompressor:
+    """语义压缩 - 合并相似历史消息"""
+
+    def __init__(self, embedding_model: str = "text-embedding-3-small"):
+        self.embedding_model = embedding_model
+        self._embeddings_cache: dict[str, list[float]] = {}
+
+    def compress(self, messages: list[dict], threshold: float = 0.85) -> list[dict]:
+        """合并相似消息"""
+        if len(messages) < 5:
+            return messages
+
+        # 计算消息 embedding
+        embeddings = [self._get_embedding(m.get("content", "")) for m in messages]
+
+        # 找出相似消息组
+        groups = self._find_similar_groups(embeddings, threshold)
+
+        # 合并每组为一条摘要消息
+        compressed = []
+        for group in groups:
+            if len(group) > 1:
+                merged = self._merge_messages([messages[i] for i in group])
+                compressed.append(merged)
+            else:
+                compressed.append(messages[group[0]])
+
+        return compressed
+
+    def _get_embedding(self, text: str) -> list[float]:
+        """获取文本 embedding"""
+        if text in self._embeddings_cache:
+            return self._embeddings_cache[text]
+        # 调用 embedding API
+        ...
+
+    def _find_similar_groups(self, embeddings: list, threshold: float) -> list[list[int]]:
+        """找出相似消息组"""
+        groups = []
+        used = set()
+        for i, emb1 in enumerate(embeddings):
+            if i in used:
+                continue
+            group = [i]
+            for j, emb2 in enumerate(embeddings[i+1:], i+1):
+                if j not in used and self._cosine_similarity(emb1, emb2) > threshold:
+                    group.append(j)
+                    used.add(j)
+            groups.append(group)
+        return groups
+```
+
+**预期效果**:
+
+| 优化项 | 场景 | Token 节省 |
+|--------|------|-----------|
+| 预判机制 | 简单问题（问候、感谢） | ~90% |
+| 激进输出精简 | 快速查询、状态确认 | ~80% |
+| 工具输出标准化 | file_read/shell_execute | ~70-90% |
+| 多轮对话缓存 | 重复工具调用 | ~30% |
+| 语义压缩 | 长对话历史 | ~20% |
+
+**实现优先级**:
+- P0: 预判机制 - 简单问题场景收益最高
+- P1: 激进输出精简、工具输出标准化 - 适用范围广
+- P2: 多轮对话缓存 - 需要持久化支持
+- P3: 语义压缩 - 需要 embedding API，依赖较重
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -1972,6 +2278,7 @@ persona:
 | v0.7.6 | 模块化提示词系统 ✅ | PromptBuilder、17 个模块、Excel 配置、稳定缓存 |
 | v0.7.7 | Prefix Caching 优化 ✅ | AnthropicLLM、cache_control、稳定/动态分离、enable_caching |
 | v0.7.8 | Token 优化增强 ✅ | Tool Caching、Dynamic Module、Budget 与 LLMUsage 集成 |
+| v0.7.9 | Token 效率深度优化 | 预判机制、激进输出精简、工具输出标准化、多轮缓存、语义压缩 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
