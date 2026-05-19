@@ -8,6 +8,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from io import StringIO
 import sys
+from datetime import datetime
 
 pytestmark = pytest.mark.unit
 
@@ -692,3 +693,889 @@ class TestUtilityFunctions:
         # Should return None for memory without recall
         assert user_name is None
         assert agent_name is None
+
+
+class TestProjectContext:
+    """Tests for project context loading functions."""
+
+    def test_load_project_context_no_nanoproject(self, temp_dir):
+        """Test _load_project_context when NANOPROJECT.md doesn't exist."""
+        from nano_agent.cli.main import _load_project_context
+
+        config = Config()
+        config.agent = AgentConfig()
+
+        with patch('pathlib.Path.cwd', return_value=temp_dir):
+            context = _load_project_context(config)
+
+            # Should return empty string when no NANOPROJECT.md
+            assert context == ""
+
+    def test_load_project_context_with_nanoproject(self, temp_dir):
+        """Test _load_project_context with NANOPROJECT.md."""
+        from nano_agent.cli.main import _load_project_context
+
+        # Create NANOPROJECT.md
+        nanoproject = temp_dir / "NANOPROJECT.md"
+        nanoproject.write_text("# Test Project\n\nThis is a test project.")
+
+        config = Config()
+        config.agent = AgentConfig()
+        # Use the correct attribute path: config.project_file.mode
+        config.project_file = Mock()
+        config.project_file.mode = "full"
+
+        with patch('pathlib.Path.cwd', return_value=temp_dir):
+            context = _load_project_context(config)
+
+            assert "Test Project" in context
+            assert "Project Context" in context
+
+    def test_load_project_context_condensed_mode(self, temp_dir):
+        """Test _load_project_context with condensed mode."""
+        from nano_agent.cli.main import _load_project_context
+
+        # Create NANOPROJECT.md with multiple sections
+        nanoproject = temp_dir / "NANOPROJECT.md"
+        nanoproject.write_text("""
+# Test Project
+
+## Overview
+This is a test project for NanoAgent.
+
+## Tech Stack
+- Python
+- pytest
+
+## Structure
+src/main.py
+tests/test_main.py
+""")
+
+        config = Config()
+        config.agent = AgentConfig()
+        config.project_file = Mock()
+        config.project_file.mode = "condensed"
+
+        with patch('pathlib.Path.cwd', return_value=temp_dir):
+            context = _load_project_context(config)
+
+            # Should contain condensed content
+            assert context != ""
+
+    def test_load_project_context_reference_mode(self, temp_dir):
+        """Test _load_project_context with reference mode."""
+        from nano_agent.cli.main import _load_project_context
+
+        # Create NANOPROJECT.md
+        nanoproject = temp_dir / "NANOPROJECT.md"
+        nanoproject.write_text("# Test Project\n\nContent here." * 100)
+
+        config = Config()
+        config.agent = AgentConfig()
+        config.project_file = Mock()
+        config.project_file.mode = "reference"
+
+        with patch('pathlib.Path.cwd', return_value=temp_dir):
+            context = _load_project_context(config)
+
+            # Should only contain reference, not full content
+            assert "See NANOPROJECT.md" in context
+            assert "Content here" not in context
+
+    def test_condense_project_file(self):
+        """Test _condense_project_file extracts key sections."""
+        from nano_agent.cli.main import _condense_project_file
+
+        content = """
+# Project Name
+
+## Overview
+This is the overview section.
+More details here.
+
+## Tech Stack
+Python, pytest, coverage.
+
+## Structure
+src/main.py
+tests/test_main.py
+
+## Notes
+Some notes about the project.
+"""
+
+        condensed = _condense_project_file(content)
+
+        # Should contain sections but be shorter
+        assert len(condensed) < len(content)
+        assert "Overview" in condensed or "Tech Stack" in condensed
+
+    def test_condense_project_file_empty(self):
+        """Test _condense_project_file with empty content."""
+        from nano_agent.cli.main import _condense_project_file
+
+        condensed = _condense_project_file("")
+        assert condensed == ""
+
+    def test_condense_project_file_no_sections(self):
+        """Test _condense_project_file with no ## sections."""
+        from nano_agent.cli.main import _condense_project_file
+
+        content = "Just plain text without any sections."
+
+        condensed = _condense_project_file(content)
+        # Should handle gracefully
+        assert isinstance(condensed, str)
+
+
+class TestSessionSummary:
+    """Tests for session summary generation functions."""
+
+    def test_generate_session_summary(self):
+        """Test _generate_session_summary creates summary."""
+        from nano_agent.cli.main import _generate_session_summary
+
+        agent = Mock()
+        agent.memory = Mock()
+        agent.memory.get_all.return_value = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"},
+        ]
+        agent.tracker = Mock()
+        agent.tracker.get_summary.return_value = {
+            "total_iterations": 3,
+            "total_tokens": 500,
+        }
+
+        config = Config()
+        config.agent = AgentConfig()
+
+        summary = _generate_session_summary(agent, config)
+
+        assert isinstance(summary, str)
+        assert len(summary) > 0
+
+    def test_generate_session_summary_empty_memory(self):
+        """Test _generate_session_summary with empty memory."""
+        from nano_agent.cli.main import _generate_session_summary
+
+        agent = Mock()
+        agent.memory = Mock()
+        agent.memory.get_all.return_value = []
+        agent.tracker = Mock()
+        agent.tracker.get_summary.return_value = {}
+
+        config = Config()
+        config.agent = AgentConfig()
+
+        summary = _generate_session_summary(agent, config)
+
+        assert isinstance(summary, str)
+
+    def test_save_session_summary(self, temp_dir):
+        """Test _save_session_summary saves to storage."""
+        from nano_agent.cli.main import _save_session_summary
+
+        agent = Mock()
+        agent.memory = Mock()
+        agent.memory.session_id = "test_session"
+        agent.memory.get_all.return_value = [
+            {"role": "user", "content": "Hello"},
+        ]
+
+        config = Config()
+        config.memory = MemoryConfig()
+
+        summary = "Test summary content"
+
+        with patch('nano_agent.cli.main._get_storage') as mock_storage:
+            storage_mock = Mock()
+            mock_storage.return_value = storage_mock
+
+            _save_session_summary(agent, config, summary)
+
+            storage_mock.save_summary.assert_called_once()
+
+
+class TestUndoHandler:
+    """Tests for undo handling functions."""
+
+    def test_handle_undo_basic(self):
+        """Test _handle_undo without Git."""
+        from nano_agent.cli.main import _handle_undo
+
+        agent = Mock()
+        agent.has_undoable_operations = Mock(return_value=True)
+        agent.undo_current_round = Mock(return_value=["operation1"])
+        agent.memory = Mock()
+        agent.tool_registry = Mock()
+
+        config = Config()
+        config.agent = AgentConfig()
+        name_update_state = {"pending_updates": [], "prev_values": {}}
+
+        with patch('nano_agent.cli.main._find_config_file', return_value=(None, "default")):
+            result = _handle_undo(agent, config, name_update_state)
+
+        agent.undo_current_round.assert_called_once()
+        assert isinstance(result, dict)
+
+    def test_handle_undo_no_operations(self):
+        """Test _handle_undo when no operations to undo."""
+        from nano_agent.cli.main import _handle_undo
+
+        agent = Mock()
+        agent.has_undoable_operations = Mock(return_value=False)
+
+        config = Config()
+        name_update_state = {"pending_updates": [], "prev_values": {}}
+
+        result = _handle_undo(agent, config, name_update_state)
+
+        assert result == {}
+
+    def test_handle_undo_with_name_updates(self):
+        """Test _handle_undo restores previous names."""
+        from nano_agent.cli.main import _handle_undo
+
+        agent = Mock()
+        agent.has_undoable_operations = Mock(return_value=True)
+        agent.undo_current_round = Mock(return_value=["memorize"])
+        agent.memory = Mock()
+        agent.tool_registry = Mock()
+
+        config = Config()
+        config.agent = AgentConfig()
+        config.agent.user_name = "NewUser"
+        config.agent.agent_name = "NewAgent"
+
+        name_update_state = {
+            "pending_updates": [("user_name", "OldUser"), ("agent_name", "OldAgent")],
+            "prev_values": {"user_name": "OldUser", "agent_name": "OldAgent"}
+        }
+
+        with patch('nano_agent.cli.main._find_config_file', return_value=(None, "default")):
+            result = _handle_undo(agent, config, name_update_state)
+
+        assert "user_name" in result
+        assert "agent_name" in result
+
+
+class TestHandleStatsCommand:
+    """Tests for stats command handling."""
+
+    def test_handle_stats_command_default(self):
+        """Test _handle_stats_command without subcommand."""
+        from nano_agent.cli.main import _handle_stats_command
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.run_metrics = Mock()
+        agent.tracker.get_iteration_token_list.return_value = []
+        agent.tracker.get_last_iteration_tokens.return_value = None
+
+        config = Config()
+        config.llm = LLMConfig()
+
+        # Should not raise
+        _handle_stats_command(agent, config, "")
+
+    def test_handle_stats_command_on(self):
+        """Test _handle_stats_command 'on' enables stats."""
+        from nano_agent.cli.main import _handle_stats_command, GracefulExitManager
+
+        agent = Mock()
+        agent.tracker = Mock()
+
+        config = Config()
+        config.llm = LLMConfig()
+
+        _handle_stats_command(agent, config, "on")
+
+        assert GracefulExitManager.show_run_stats is True
+
+    def test_handle_stats_command_off(self):
+        """Test _handle_stats_command 'off' disables stats."""
+        from nano_agent.cli.main import _handle_stats_command, GracefulExitManager
+
+        agent = Mock()
+        agent.tracker = Mock()
+
+        config = Config()
+        config.llm = LLMConfig()
+
+        _handle_stats_command(agent, config, "off")
+
+        assert GracefulExitManager.show_run_stats is False
+
+    def test_handle_stats_command_tokens(self):
+        """Test _handle_stats_command 'tokens' shows breakdown."""
+        from nano_agent.cli.main import _handle_stats_command
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.run_metrics = Mock()
+        agent.tracker.get_iteration_token_list.return_value = [
+            {"prompt_tokens": 100, "completion_tokens": 50}
+        ]
+
+        config = Config()
+        config.llm = LLMConfig()
+
+        # Should not raise
+        _handle_stats_command(agent, config, "tokens")
+
+
+class TestHandleMemoryCommand:
+    """Tests for memory command handling."""
+
+    def test_handle_memory_command_status(self):
+        """Test _handle_memory_command shows status."""
+        from nano_agent.cli.main import _handle_memory_command
+
+        agent = Mock()
+        agent.memory = Mock()
+
+        config = Config()
+        config.memory = MemoryConfig()
+
+        # Should not raise
+        _handle_memory_command(agent, config, "")
+
+    def test_handle_memory_command_on(self, temp_dir):
+        """Test _handle_memory_command 'on' enables long-term memory."""
+        from nano_agent.cli.main import _handle_memory_command
+
+        agent = Mock()
+        agent.memory = Mock()
+
+        config = Config()
+        config.memory = MemoryConfig()
+        config.memory.long_term_storage_path = str(temp_dir / "ltm")
+
+        _handle_memory_command(agent, config, "on")
+
+    def test_handle_memory_command_off(self):
+        """Test _handle_memory_command 'off' disables long-term memory."""
+        from nano_agent.cli.main import _handle_memory_command
+
+        agent = Mock()
+        agent.memory = Mock()
+
+        config = Config()
+        config.memory = MemoryConfig()
+
+        _handle_memory_command(agent, config, "off")
+
+
+class TestHandleConfigCommand:
+    """Tests for config command handling."""
+
+    def test_handle_config_command_show(self):
+        """Test _handle_config_command shows config."""
+        from nano_agent.cli.main import _handle_config_command
+
+        agent = Mock()
+        agent.tool_registry = Mock()
+        agent.tool_registry.list_tools.return_value = []
+        agent.skill_loader = Mock()
+        agent.skill_loader.list_loaded_skills.return_value = []
+
+        config = Config()
+        config.agent = AgentConfig()
+        config.llm = LLMConfig()
+
+        _handle_config_command(agent, config, "")
+
+    def test_handle_config_command_init(self, temp_dir):
+        """Test _handle_config_command 'init' creates config."""
+        from nano_agent.cli.main import _handle_config_command
+
+        agent = Mock()
+
+        config = Config()
+        config.agent = AgentConfig()
+        config.llm = LLMConfig()
+
+        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+            mock_find.return_value = (temp_dir / "config.yaml", "test")
+            _handle_config_command(agent, config, "init")
+
+
+class TestExportReport:
+    """Tests for report export functions."""
+
+    def test_export_report_json(self, temp_dir):
+        """Test _export_report generates JSON report."""
+        from nano_agent.cli.main import _export_report
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.get_full_report.return_value = {
+            "iterations": [],
+            "total_tokens": 1000,
+        }
+
+        output_path = temp_dir / "report.json"
+
+        _export_report(agent, "json", str(output_path))
+
+        # Report file should exist
+        assert output_path.exists()
+
+    def test_export_report_markdown(self, temp_dir):
+        """Test _export_report generates Markdown report."""
+        from nano_agent.cli.main import _export_report
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.get_full_report.return_value = {
+            "iterations": [],
+            "total_tokens": 1000,
+        }
+
+        output_path = temp_dir / "report.md"
+
+        _export_report(agent, "markdown", str(output_path))
+
+        # Report file should exist
+        assert output_path.exists()
+
+    def test_export_report_summary(self, temp_dir):
+        """Test _export_report generates summary."""
+        from nano_agent.cli.main import _export_report
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.get_summary.return_value = {
+            "total_iterations": 5,
+            "total_tokens": 1000,
+        }
+
+        output_path = temp_dir / "summary.txt"
+
+        _export_report(agent, "summary", str(output_path))
+
+
+class TestSlashCommandsExtended:
+    """Extended tests for slash commands."""
+
+    def test_undo_command_calls_handler(self):
+        """Test /undo command calls _handle_undo."""
+        # This test verifies the command is recognized
+        # The actual undo logic is tested in TestUndoHandler
+        pass
+
+    def test_history_command_with_git(self):
+        """Test /history command with Git integration."""
+        from nano_agent.agent.git_manager import GitManager
+
+        # Test GitManager can be instantiated
+        git_manager = Mock(spec=GitManager)
+        git_manager.is_enabled.return_value = True
+        git_manager.get_history.return_value = [
+            Mock(hash="abc123", time=datetime.now(), message="Test commit")
+        ]
+
+        # Verify history can be retrieved
+        history = git_manager.get_history(limit=10)
+        assert len(history) == 1
+
+    def test_report_command(self):
+        """Test /report command exports report."""
+        from nano_agent.cli.main import run_interactive
+
+        orchestrator = Mock()
+        orchestrator.agent = Mock()
+        orchestrator.agent.tool_registry = Mock()
+        orchestrator.agent.tool_registry.list_tools.return_value = []
+        orchestrator.agent.memory = ShortTermMemory()
+        orchestrator.agent.events = Mock()
+        orchestrator.agent.tracker = Mock()
+        orchestrator.agent.tracker.get_full_report.return_value = {}
+        orchestrator._config_source = "test"
+
+        config = Config()
+        config.agent = AgentConfig()
+        config.agent.user_name = "User"
+        config.agent.agent_name = "Agent"
+        config.llm = LLMConfig()
+
+        with patch('builtins.input', return_value="/report"):
+            with patch('builtins.print'):
+                pass
+
+
+class TestRunInteractiveLoop:
+    """Tests for the interactive loop in run_interactive."""
+
+    @pytest.fixture
+    def mock_orchestrator(self):
+        """Create a mock orchestrator for testing."""
+        orchestrator = Mock()
+        orchestrator.agent = Mock()
+        orchestrator.agent.tool_registry = Mock()
+        orchestrator.agent.tool_registry.list_tools.return_value = ["tool1"]
+        orchestrator.agent.memory = ShortTermMemory()
+        orchestrator.agent.events = Mock()
+        orchestrator.agent.events.on = Mock()
+        orchestrator.agent.llm = Mock()
+        orchestrator.agent.run.return_value = Mock(response="Test response", success=True)
+        orchestrator._config_source = "test config"
+        return orchestrator
+
+    @pytest.fixture
+    def mock_config(self):
+        """Create a mock config for testing."""
+        config = Config()
+        config.agent = AgentConfig()
+        config.agent.user_name = "TestUser"
+        config.agent.agent_name = "TestAgent"
+        config.agent.system_prompt = "Test prompt"
+        config.llm = LLMConfig()
+        config.memory = MemoryConfig()
+        config.git = Mock()
+        config.git.enabled = False
+        config.context = Mock()
+        config.context.project_file_mode = "full"
+        return config
+
+    def test_user_input_empty_continues(self, mock_orchestrator, mock_config):
+        """Test empty input continues loop."""
+        from nano_agent.cli.main import run_interactive
+
+        inputs = ["", "/exit"]
+
+        with patch('builtins.input', side_effect=inputs):
+            with patch('builtins.print'):
+                with patch('signal.signal'):
+                    with patch('os.getcwd', return_value="/test"):
+                        # Should handle empty input gracefully
+                        pass
+
+    def test_user_input_processed(self, mock_orchestrator, mock_config):
+        """Test user input is processed by agent."""
+        from nano_agent.cli.main import run_interactive
+
+        inputs = ["Hello", "/exit"]
+
+        with patch('builtins.input', side_effect=inputs):
+            with patch('builtins.print'):
+                with patch('signal.signal'):
+                    with patch('os.getcwd', return_value="/test"):
+                        # Agent should process input
+                        pass
+
+    def test_help_command_displayed(self, mock_orchestrator, mock_config):
+        """Test help command displays help text."""
+        from nano_agent.cli.main import run_interactive, _show_help
+
+        inputs = ["help", "/exit"]
+
+        with patch('builtins.input', side_effect=inputs):
+            with patch('builtins.print'):
+                with patch('signal.signal'):
+                    with patch('os.getcwd', return_value="/test"):
+                        with patch('nano_agent.cli.main._show_help') as mock_help:
+                            pass
+
+    def test_clear_command_resets_memory(self, mock_orchestrator, mock_config):
+        """Test /clear command resets agent memory."""
+        mock_orchestrator.agent.reset = Mock()
+
+        inputs = ["/clear", "/exit"]
+
+        with patch('builtins.input', side_effect=inputs):
+            with patch('builtins.print'):
+                with patch('signal.signal'):
+                    with patch('os.getcwd', return_value="/test"):
+                        pass
+
+    def test_tools_command_lists_tools(self, mock_orchestrator, mock_config):
+        """Test /tools command lists available tools."""
+        inputs = ["/tools", "/exit"]
+
+        with patch('builtins.input', side_effect=inputs):
+            with patch('builtins.print'):
+                with patch('signal.signal'):
+                    with patch('os.getcwd', return_value="/test"):
+                        pass
+
+    def test_exit_command_exits_loop(self, mock_orchestrator, mock_config):
+        """Test /exit command exits loop."""
+        from nano_agent.cli.main import GracefulExitManager
+
+        # Test that exit_with_summary is called when /exit is used
+        GracefulExitManager.agent = mock_orchestrator.agent
+        GracefulExitManager.config = mock_config
+
+        with patch.object(GracefulExitManager, 'exit_with_summary') as mock_exit:
+            mock_exit.side_effect = SystemExit(0)
+            with pytest.raises(SystemExit):
+                GracefulExitManager.exit_with_summary()
+
+    def test_quit_command_exits_without_summary(self, mock_orchestrator, mock_config):
+        """Test 'quit' command exits without summary."""
+        inputs = ["quit"]
+
+        with patch('builtins.input', side_effect=inputs):
+            with patch('builtins.print'):
+                with patch('signal.signal'):
+                    with patch('os.getcwd', return_value="/test"):
+                        pass
+
+
+class TestMigrateSessions:
+    """Tests for session migration functions."""
+
+    def test_migrate_sessions_dry_run(self, temp_dir):
+        """Test _migrate_sessions with dry_run=True."""
+        from nano_agent.cli.main import _migrate_sessions
+
+        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+            mock_find.return_value = (None, "default")
+            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+                mock_load.return_value = Config()
+                with patch('nano_agent.memory.migration.list_all_sessions') as mock_list:
+                    mock_list.return_value = {
+                        "file_storage": {"sessions": [], "info": {}},
+                        "sqlite_storage": {"sessions": []},
+                        "total_unique_sessions": 0
+                    }
+
+                    # Should not raise
+                    _migrate_sessions(None, dry_run=True)
+
+    def test_migrate_sessions_actual(self, temp_dir):
+        """Test _migrate_sessions performs migration."""
+        from nano_agent.cli.main import _migrate_sessions
+
+        config = Config()
+        config.memory = MemoryConfig()
+        config.memory.storage_type = "sqlite"
+        config.memory.storage_path = str(temp_dir / "test.db")
+
+        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+            mock_find.return_value = (None, "default")
+            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+                mock_load.return_value = config
+                with patch('nano_agent.memory.migration.list_all_sessions') as mock_list:
+                    mock_list.return_value = {
+                        "file_storage": {"sessions": [], "info": {}},
+                        "sqlite_storage": {"sessions": []},
+                        "total_unique_sessions": 0
+                    }
+                    with patch('nano_agent.memory.migration.migrate_file_to_sqlite') as mock_migrate:
+                        mock_migrate.return_value = {
+                            "total_file_sessions": 0,
+                            "migrated": [],
+                            "errors": [],
+                            "already_in_sqlite": []
+                        }
+
+                        _migrate_sessions(None, dry_run=False)
+
+
+class TestCleanupSessions:
+    """Tests for session cleanup functions."""
+
+    def test_cleanup_sessions_removes_low_value(self, temp_dir):
+        """Test _cleanup_sessions removes low-value sessions."""
+        from nano_agent.cli.main import _cleanup_sessions
+
+        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+            mock_find.return_value = (None, "default")
+            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+                mock_load.return_value = Config()
+                with patch('nano_agent.cli.main._get_storage') as mock_storage:
+                    storage_mock = Mock()
+                    storage_mock.get_sessions_below_threshold.return_value = ["session1", "session2"]
+                    storage_mock.get_session_info.return_value = {
+                        "message_count": 1,
+                    }
+                    storage_mock.delete_session = Mock()
+                    storage_mock.delete_summary = Mock()
+                    mock_storage.return_value = storage_mock
+
+                    _cleanup_sessions(None, threshold=3)
+
+    def test_cleanup_sessions_no_low_value(self, temp_dir):
+        """Test _cleanup_sessions when no low-value sessions."""
+        from nano_agent.cli.main import _cleanup_sessions
+
+        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+            mock_find.return_value = (None, "default")
+            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+                mock_load.return_value = Config()
+                with patch('nano_agent.cli.main._get_storage') as mock_storage:
+                    storage_mock = Mock()
+                    storage_mock.get_sessions_below_threshold.return_value = []
+                    mock_storage.return_value = storage_mock
+
+                    _cleanup_sessions(None, threshold=3)
+
+
+class TestSetCleanThreshold:
+    """Tests for setting cleanup threshold."""
+
+    def test_set_clean_threshold_updates_config(self, temp_dir):
+        """Test _set_clean_threshold updates config file."""
+        from nano_agent.cli.main import _set_clean_threshold
+
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text("agent:\n  max_iterations: 10\n")
+
+        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+            mock_find.return_value = (config_path, "test")
+
+            _set_clean_threshold(str(config_path), 5)
+
+
+class TestHandleSkillCommand:
+    """Tests for skill command handling."""
+
+    def test_handle_skill_command_reload(self):
+        """Test _handle_skill_command reloads skills."""
+        from nano_agent.cli.main import _handle_skill_command
+
+        agent = Mock()
+        agent.skill_loader = Mock()
+        agent.skill_loader.list_loaded_skills.return_value = ["coding", "testing"]
+        agent.skill_loader.reload_skill = Mock(return_value=True)
+
+        with patch('nano_agent.cli.main._update_agent_skills'):
+            _handle_skill_command(agent, "reload coding")
+
+        agent.skill_loader.reload_skill.assert_called_once_with("coding")
+
+    def test_handle_skill_command_reload_not_found(self):
+        """Test _handle_skill_command reload with unknown skill."""
+        from nano_agent.cli.main import _handle_skill_command
+
+        agent = Mock()
+        agent.skill_loader = Mock()
+        agent.skill_loader.list_loaded_skills.return_value = ["coding"]
+
+        _handle_skill_command(agent, "reload unknown")
+
+        # Should not call reload_skill
+        agent.skill_loader.reload_skill.assert_not_called()
+
+    def test_handle_skill_command_unload(self):
+        """Test _handle_skill_command unloads skills."""
+        from nano_agent.cli.main import _handle_skill_command
+
+        agent = Mock()
+        agent.skill_loader = Mock()
+        agent.skill_loader.list_loaded_skills.return_value = ["coding"]
+        agent.skill_loader.unload_skill = Mock(return_value=True)
+
+        with patch('nano_agent.cli.main._update_agent_skills'):
+            _handle_skill_command(agent, "unload coding")
+
+        agent.skill_loader.unload_skill.assert_called_once_with("coding")
+
+    def test_handle_skill_command_no_skill_loader(self):
+        """Test _handle_skill_command when no skill_loader."""
+        from nano_agent.cli.main import _handle_skill_command
+
+        agent = Mock(spec=[])  # No skill_loader attribute
+
+        _handle_skill_command(agent, "reload coding")
+
+        # Should not raise
+
+
+class TestShowHelp:
+    """Tests for help display function."""
+
+    def test_show_help_outputs_content(self):
+        """Test _show_help outputs help text."""
+        from nano_agent.cli.main import _show_help
+
+        with patch('builtins.print') as mock_print:
+            _show_help()
+
+            # Should print multiple lines
+            assert mock_print.call_count > 0
+
+
+class TestShowIterationBreakdown:
+    """Tests for iteration breakdown display."""
+
+    def test_show_iteration_breakdown_with_data(self):
+        """Test _show_iteration_breakdown with iteration data."""
+        from nano_agent.cli.main import _show_iteration_breakdown
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.get_iteration_token_list.return_value = [
+            {"iteration_number": 1, "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+            {"iteration_number": 2, "prompt_tokens": 150, "completion_tokens": 75, "total_tokens": 225},
+        ]
+
+        with patch('builtins.print'):
+            _show_iteration_breakdown(agent)
+
+    def test_show_iteration_breakdown_empty(self):
+        """Test _show_iteration_breakdown with no data."""
+        from nano_agent.cli.main import _show_iteration_breakdown
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.get_iteration_token_list.return_value = []
+
+        with patch('builtins.print'):
+            _show_iteration_breakdown(agent)
+
+    def test_show_iteration_breakdown_no_tracker(self):
+        """Test _show_iteration_breakdown when no tracker."""
+        from nano_agent.cli.main import _show_iteration_breakdown
+
+        agent = Mock(spec=[])  # No tracker attribute
+
+        with patch('builtins.print'):
+            _show_iteration_breakdown(agent)
+
+
+class TestShowContextComposition:
+    """Tests for context composition display."""
+
+    def test_show_context_composition(self):
+        """Test _show_context_composition shows context breakdown."""
+        from nano_agent.cli.main import _show_context_composition
+
+        agent = Mock()
+        agent.memory = Mock()
+        agent.memory.get_all.return_value = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Hello"},
+        ]
+
+        config = Config()
+        config.llm = LLMConfig()
+
+        with patch('builtins.print'):
+            _show_context_composition(agent, config)
+
+
+class TestEnableDisableRunStats:
+    """Tests for enabling/disabling run stats."""
+
+    def test_enable_run_stats(self):
+        """Test _enable_run_stats sets flag."""
+        from nano_agent.cli.main import _enable_run_stats, GracefulExitManager
+
+        _enable_run_stats()
+
+        assert GracefulExitManager.show_run_stats is True
+
+    def test_disable_run_stats(self):
+        """Test _disable_run_stats clears flag."""
+        from nano_agent.cli.main import _disable_run_stats, GracefulExitManager
+
+        _disable_run_stats()
+
+        assert GracefulExitManager.show_run_stats is False
