@@ -205,6 +205,24 @@ class TestMemoryStableSystemPrompt:
         memory.set_stable_system_prompt("Stable prompt")
         assert memory.get_stable_system_prompt() == "Stable prompt"
 
+    def test_hybrid_memory_with_persistent_memory_stable_system_prompt(self):
+        """HybridMemory with PersistentMemory as working memory supports stable system prompt."""
+        from nano_agent.memory.long_term import LongTermMemory
+        from nano_agent.memory.persistent import PersistentMemory
+        from nano_agent.memory.storage.file_storage import FileStorage
+        import tempfile
+
+        # Create temporary storage
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = FileStorage(base_dir=tmpdir)
+            long_term = LongTermMemory()
+            working = PersistentMemory(storage=storage, max_messages=50)
+            memory = HybridMemory(working_memory=working, long_term_memory=long_term)
+
+            # This was the bug: PersistentMemory was missing set_stable_system_prompt
+            memory.set_stable_system_prompt("Stable prompt for PersistentMemory")
+            assert memory.get_stable_system_prompt() == "Stable prompt for PersistentMemory"
+
 
 class TestPromptConfigCaching:
     """Tests for PromptConfig enable_caching field."""

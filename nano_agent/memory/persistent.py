@@ -18,6 +18,7 @@ class PersistentMemory(BaseMemory):
     session_id: str | None = None
     max_messages: int = 50
     system_prompt: str = "You are a helpful AI assistant."
+    stable_system_prompt: str = ""  # 稳定部分（用于 prefix caching）
     _messages: list = field(default_factory=list)
     _loaded: bool = False
 
@@ -134,6 +135,14 @@ class PersistentMemory(BaseMemory):
             self._messages[0]["content"] = prompt
         else:
             self._messages.insert(0, {"role": "system", "content": prompt})
+
+    def set_stable_system_prompt(self, prompt: str) -> None:
+        """设置稳定部分 system prompt（用于 prefix caching）。"""
+        self.stable_system_prompt = prompt
+
+    def get_stable_system_prompt(self) -> str:
+        """获取稳定部分 system prompt（用于 prefix caching）。"""
+        return self.stable_system_prompt or self.system_prompt
 
     def new_session(self) -> str:
         """开始新会话。"""
