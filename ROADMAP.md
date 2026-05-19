@@ -1662,6 +1662,23 @@ persona:
 >
 > **日常测试规范**: 参见 [CLAUDE.md - Testing](CLAUDE.md#testing) - 提交前检查、覆盖率要求、merge conflict 后验证
 
+### 已完成的测试文件
+
+> 以下测试文件在各版本功能开发时同步完成，详见各版本规划章节。
+
+| 测试文件 | 关联版本 | 测试用例数 | 状态 |
+|----------|---------|-----------|------|
+| `tests/test_plan.py` | v0.6.2 | 20+ | ✅ |
+| `tests/test_confirmation.py` | v0.6.4 | 22 | ✅ |
+| `tests/test_git_manager.py` | v0.6.5 | 26 | ✅ |
+| `tests/test_output_style.py` | v0.7.1 | - | ✅ |
+| `tests/test_tool_merger.py` | v0.7.2 | - | ✅ |
+| `tests/test_cache.py` | v0.7.3 | - | ✅ |
+| `tests/test_compressor.py` | v0.7.3 | - | ✅ |
+| `tests/test_token_analyzer.py` | v0.7.4 | - | ✅ |
+
+---
+
 ### 测试覆盖率现状
 
 | 模块 | 当前覆盖率 | 目标覆盖率 | 优先级 |
