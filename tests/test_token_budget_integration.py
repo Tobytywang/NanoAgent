@@ -15,8 +15,11 @@ class TestTokenBudgetConfig:
         """Test default configuration values."""
         config = TokenBudgetConfig()
         assert config.initial_budget == 20000  # Updated from 2000 for multi-turn conversations
-        assert config.warning_threshold == 0.2
+        assert config.warning_thresholds == [0.5, 0.3, 0.2, 0.1]  # Multi-level thresholds (v0.7.8)
+        assert config.warning_mode == "console"
+        assert config.warning_interval == 1
         assert config.force_summarize is True
+        assert config.llm_summary_enabled is True  # LLM summary enabled by default (v0.7.8)
         assert config.calibration_enabled is True
         assert config.calibration_window == 5
         assert config.min_calibration_samples == 3
@@ -25,13 +28,19 @@ class TestTokenBudgetConfig:
         """Test custom configuration values."""
         config = TokenBudgetConfig(
             initial_budget=5000,
-            warning_threshold=0.1,
+            warning_thresholds=[0.4, 0.2],
+            warning_mode="silent",
+            warning_interval=2,
             force_summarize=False,
+            llm_summary_enabled=False,
             calibration_enabled=False,
         )
         assert config.initial_budget == 5000
-        assert config.warning_threshold == 0.1
+        assert config.warning_thresholds == [0.4, 0.2]
+        assert config.warning_mode == "silent"
+        assert config.warning_interval == 2
         assert config.force_summarize is False
+        assert config.llm_summary_enabled is False
         assert config.calibration_enabled is False
 
 
@@ -57,8 +66,8 @@ class TestTokenBudgetBasic:
         assert budget.remaining == 0  # Should not go negative
 
     def test_should_warn(self):
-        """Test warning threshold."""
-        config = TokenBudgetConfig(initial_budget=1000, warning_threshold=0.2)
+        """Test warning threshold (backward compatible with new thresholds)."""
+        config = TokenBudgetConfig(initial_budget=1000, warning_thresholds=[0.2])
         budget = TokenBudget(config)
         assert not budget.should_warn()  # 1000 remaining, 20% threshold = 200
         budget.consume(800)  # 200 remaining
@@ -270,3 +279,158 @@ class TestTokenBudgetEdgeCases:
         history = budget.get_usage_history()
         assert history[0].cache_read_tokens == 50
         assert history[0].cache_write_tokens == 20
+
+
+class TestTokenBudgetProgressiveWarnings:
+    """Test progressive warning functionality (v0.7.8)."""
+
+    def test_check_warning_no_warning_initially(self):
+        """Test no warning at full budget."""
+        config = TokenBudgetConfig(initial_budget=1000)
+        budget = TokenBudget(config)
+
+        warning = budget.check_warning(current_iteration=1)
+        assert warning is None
+
+    def test_check_warning_at_50_percent(self):
+        """Test warning at 50% threshold."""
+        config = TokenBudgetConfig(
+            initial_budget=1000,
+            warning_thresholds=[0.5, 0.3, 0.2, 0.1]
+        )
+        budget = TokenBudget(config)
+
+        budget.consume(500)  # 50% remaining
+        warning = budget.check_warning(current_iteration=1)
+
+        assert warning is not None
+        assert warning["level"] == 0
+        assert warning["threshold"] == 0.5
+        assert 0.49 <= warning["remaining_ratio"] <= 0.51
+
+    def test_check_warning_progressive_levels(self):
+        """Test progressive warning levels."""
+        config = TokenBudgetConfig(
+            initial_budget=1000,
+            warning_thresholds=[0.5, 0.3, 0.2, 0.1]
+        )
+        budget = TokenBudget(config)
+
+        # Level 0: 50%
+        budget.consume(500)
+        warning = budget.check_warning(current_iteration=1)
+        assert warning["level"] == 0
+
+        # Level 1: 30%
+        budget.consume(200)  # 300 remaining = 30%
+        warning = budget.check_warning(current_iteration=2)
+        assert warning["level"] == 1
+
+        # Level 2: 20%
+        budget.consume(100)  # 200 remaining = 20%
+        warning = budget.check_warning(current_iteration=3)
+        assert warning["level"] == 2
+
+        # Level 3: 10%
+        budget.consume(100)  # 100 remaining = 10%
+        warning = budget.check_warning(current_iteration=4)
+        assert warning["level"] == 3
+
+    def test_check_warning_no_duplicate(self):
+        """Test no duplicate warnings at same level."""
+        config = TokenBudgetConfig(
+            initial_budget=1000,
+            warning_thresholds=[0.5]
+        )
+        budget = TokenBudget(config)
+
+        budget.consume(500)  # 50% remaining
+        warning1 = budget.check_warning(current_iteration=1)
+        assert warning1 is not None
+
+        # Same level, no new warning
+        warning2 = budget.check_warning(current_iteration=2)
+        assert warning2 is None
+
+    def test_check_warning_interval(self):
+        """Test warning interval prevents spam."""
+        config = TokenBudgetConfig(
+            initial_budget=1000,
+            warning_thresholds=[0.5, 0.3],
+            warning_interval=2  # Need 2 iterations between warnings
+        )
+        budget = TokenBudget(config)
+
+        budget.consume(500)  # 50%
+        # First warning at iteration 2 (since 2 - 0 >= 2)
+        warning = budget.check_warning(current_iteration=2)
+        assert warning is not None
+        assert warning["level"] == 0
+
+        budget.consume(200)  # 30%
+        # Same iteration, should be blocked by interval
+        warning = budget.check_warning(current_iteration=2)
+        assert warning is None
+
+        # Next iteration, still blocked (3 - 2 = 1 < 2)
+        warning = budget.check_warning(current_iteration=3)
+        assert warning is None
+
+        # Fourth iteration, interval passed (4 - 2 = 2 >= 2)
+        warning = budget.check_warning(current_iteration=4)
+        assert warning is not None
+        assert warning["level"] == 1
+
+    def test_warning_message_format(self):
+        """Test warning message formatting."""
+        config = TokenBudgetConfig(initial_budget=1000)
+        budget = TokenBudget(config)
+
+        budget.consume(500)  # 50%
+        warning = budget.check_warning(current_iteration=1)
+
+        assert "50%" in warning["message"]
+        assert "⚠️" in warning["message"] or "⚡" in warning["message"]
+
+    def test_silent_mode(self):
+        """Test silent warning mode."""
+        config = TokenBudgetConfig(
+            initial_budget=1000,
+            warning_mode="silent"
+        )
+        budget = TokenBudget(config)
+
+        budget.consume(500)
+        warning = budget.check_warning(current_iteration=1)
+
+        # Warning still returned, but mode is silent
+        assert warning is not None
+        assert budget.config.warning_mode == "silent"
+
+    def test_reset_clears_warning_state(self):
+        """Test reset clears warning state."""
+        config = TokenBudgetConfig(initial_budget=1000)
+        budget = TokenBudget(config)
+
+        budget.consume(500)
+        budget.check_warning(current_iteration=1)
+        assert budget._warnings_issued == 1
+
+        budget.reset()
+        assert budget._last_warning_level == -1
+        assert budget._warnings_issued == 0
+        assert budget._last_warning_iteration == 0
+
+    def test_get_status_includes_warning_state(self):
+        """Test get_status includes warning state."""
+        config = TokenBudgetConfig(initial_budget=1000)
+        budget = TokenBudget(config)
+
+        budget.consume(500)
+        budget.check_warning(current_iteration=1)
+
+        status = budget.get_status()
+        assert "warnings_issued" in status
+        assert "last_warning_level" in status
+        assert status["warnings_issued"] == 1
+        assert status["last_warning_level"] == 0

@@ -254,8 +254,19 @@ class SmartOptimizationConfig:
     # === Token Budget Management ===
     budget_enabled: bool = True  # Enable token budget tracking
     initial_budget: int = 20000  # Initial token budget per session (increased from 2000)
-    budget_warning_threshold: float = 0.2  # Warn when budget < 20%
+
+    # Multi-level warning thresholds (v0.7.8)
+    budget_warning_thresholds: list[float] = field(
+        default_factory=lambda: [0.5, 0.3, 0.2, 0.1]
+    )
+    budget_warning_mode: Literal["silent", "console", "event"] = "console"
+    budget_warning_interval: int = 1  # Minimum iterations between warnings
+
     budget_force_summarize: bool = True  # Force summarize when budget exhausted
+
+    # LLM-based summary generation (v0.7.8)
+    budget_llm_summary_enabled: bool = True  # Use LLM to generate structured summary
+    budget_llm_summary_max_tokens: int = 500  # Max tokens for LLM summary
 
     # === Query Complexity Routing ===
     routing_enabled: bool = True  # Enable query complexity routing

@@ -161,8 +161,12 @@ class ReActAgent(BaseAgent):
         if self.smart_optimization_config.budget_enabled:
             token_budget_config = TokenBudgetConfig(
                 initial_budget=self.smart_optimization_config.initial_budget,
-                warning_threshold=self.smart_optimization_config.budget_warning_threshold,
+                warning_thresholds=self.smart_optimization_config.budget_warning_thresholds,
+                warning_mode=self.smart_optimization_config.budget_warning_mode,
+                warning_interval=self.smart_optimization_config.budget_warning_interval,
                 force_summarize=self.smart_optimization_config.budget_force_summarize,
+                llm_summary_enabled=self.smart_optimization_config.budget_llm_summary_enabled,
+                llm_summary_max_tokens=self.smart_optimization_config.budget_llm_summary_max_tokens,
             )
             self.token_budget = TokenBudget(token_budget_config)
         else:
@@ -401,10 +405,15 @@ class ReActAgent(BaseAgent):
             ):
                 break
 
-            # Token budget check (v0.7.5)
+            # Token budget check with progressive warnings (v0.7.8)
             if self.token_budget is not None:
+                # Check for progressive warnings
+                warning = self.token_budget.check_warning(iteration)
+                if warning:
+                    self._handle_budget_warning(warning)
+
+                # Check for force summarize
                 if self.token_budget.should_summarize():
-                    # Budget exhausted, force summarize
                     response = self._force_summarize()
                     self.tracker.end_run(response)
                     return self._build_result(response, iteration, success=True)
@@ -781,29 +790,135 @@ class ReActAgent(BaseAgent):
         # Default: let LLM handle it
         return "请继续说明你的需求。"
 
+    def _handle_budget_warning(self, warning: dict) -> None:
+        """
+        Handle budget warning based on configured mode.
+
+        Args:
+            warning: Warning information dict from check_warning()
+        """
+        if self.token_budget is None:
+            return
+
+        mode = self.token_budget.config.warning_mode
+
+        if mode == "silent":
+            # No output, just tracking
+            pass
+
+        elif mode == "console":
+            if self.verbose:
+                print(warning["message"])
+                status = self.token_budget.get_status()
+                print(f"   剩余: {status['remaining']}/{status['initial']} tokens")
+
+        elif mode == "event":
+            # Emit event for external handlers
+            if hasattr(self, "events"):
+                self.events.emit("budget_warning", warning)
+
     def _force_summarize(self) -> str:
         """
         Force summarize when budget exhausted or routing limit reached.
 
+        Uses LLM to generate a structured summary of gathered information
+        instead of simple concatenation of tool result previews.
+
         Returns:
-            Summarized response based on current context
+            Structured summary response
         """
         if self.verbose:
-            print("[Budget] Forcing summarize due to budget/routing constraints")
+            print("[Budget] 预算耗尽，正在生成结构化摘要...")
 
-        # Get current context
+        # Check if LLM summary is enabled and we have tool results
+        if self.token_budget and self.token_budget.config.llm_summary_enabled and self._tool_call_records:
+            return self._generate_llm_summary()
+
+        # Fallback: simple summary (existing behavior)
+        return self._generate_simple_summary()
+
+    def _generate_llm_summary(self) -> str:
+        """
+        Use LLM to generate a structured summary of gathered information.
+
+        Returns:
+            LLM-generated structured summary
+        """
+        # Get user's original request (first user message)
         messages = self.memory.get_all()
+        user_request = ""
+        for msg in messages:
+            if msg.get("role") == "user":
+                user_request = msg.get("content", "")
+                break
 
-        # If we have tool results, summarize them
+        # Format tool results
+        tool_summary_parts = []
+        for record in self._tool_call_records:
+            tool_name = record.get("name", "unknown")
+            output_preview = record.get("output_preview", "")
+            success = record.get("success", False)
+            status = "成功" if success else "失败"
+            tool_summary_parts.append(f"- {tool_name} ({status}): {output_preview[:200]}")
+
+        tool_summary = "\n".join(tool_summary_parts)
+
+        # Build summary prompt
+        prompt = f"""请基于以下收集的信息，生成一个结构化的摘要回答。
+
+用户原始请求:
+{user_request[:500]}
+
+已执行的工具调用:
+{tool_summary}
+
+请按以下格式输出摘要:
+---
+## 信息收集情况
+[简要说明已收集了哪些信息]
+
+## 主要发现
+[列出关键发现和结果]
+
+## 当前结论
+[基于已有信息能得出的结论]
+
+## 需要补充
+[还需要什么信息才能完整回答]
+---
+
+注意:
+1. 如果信息足够回答用户问题，直接给出结论
+2. 如果信息不足，说明缺少什么
+3. 保持简洁，不超过10行"""
+
+        try:
+            response, _, _ = self.llm.chat(
+                messages=[{"role": "user", "content": prompt}],
+                tools=None
+            )
+            return response
+        except Exception as e:
+            if self.verbose:
+                print(f"[Budget] LLM 摘要生成失败: {e}, 使用简单摘要")
+            return self._generate_simple_summary()
+
+    def _generate_simple_summary(self) -> str:
+        """
+        Generate simple summary as fallback.
+
+        Returns:
+            Simple concatenated summary
+        """
         if self._tool_call_records:
-            tool_summary = "Based on the information gathered:\n"
+            tool_summary = "基于已收集的信息:\n"
             for record in self._tool_call_records:
                 if record.get("output_preview"):
                     tool_summary += f"- {record['name']}: {record['output_preview']}\n"
+            tool_summary += "\n由于 Token 预算耗尽，无法继续收集更多信息。"
             return tool_summary
 
-        # Otherwise, return a generic response
-        return "Based on the current context, I need more resources to complete this task. Please try simplifying your request."
+        return "由于 Token 预算耗尽，无法完成任务。请尝试简化请求或增加预算。"
 
     def _build_result(
         self,

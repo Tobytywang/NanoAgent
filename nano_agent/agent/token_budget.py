@@ -8,10 +8,16 @@ Features:
 - LLMUsage history tracking for calibration
 - Dynamic budget adjustment based on actual usage patterns
 - Calibration factor for more accurate budget estimation
+
+NEW in v0.7.8:
+- Multi-level warning thresholds (50%, 30%, 20%, 10%)
+- Configurable warning modes (silent/console/event)
+- Warning interval to prevent spam
+- LLM-based summary generation option
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from nano_agent.llm.base import LLMUsage
@@ -22,8 +28,22 @@ class TokenBudgetConfig:
     """Configuration for token budget management."""
 
     initial_budget: int = 20000  # Initial token budget (increased for multi-turn conversations)
-    warning_threshold: float = 0.2  # Warn when remaining < 20%
+
+    # Multi-level warning thresholds (relative to initial budget)
+    # Warnings issued when remaining ratio <= each threshold
+    warning_thresholds: list[float] = field(
+        default_factory=lambda: [0.5, 0.3, 0.2, 0.1]
+    )
+    # Warning behavior
+    warning_mode: Literal["silent", "console", "event"] = "console"
+    warning_interval: int = 1  # Minimum iterations between warnings (prevent spam)
+
     force_summarize: bool = True  # Force summarize when exhausted
+
+    # LLM-based summary generation
+    llm_summary_enabled: bool = True  # Use LLM to generate structured summary
+    llm_summary_max_tokens: int = 500  # Max tokens for LLM summary
+
     # Calibration settings
     calibration_enabled: bool = True  # Enable dynamic calibration
     calibration_window: int = 5  # Number of calls to consider for calibration
@@ -38,6 +58,10 @@ class TokenBudget:
     summarization should be triggered.
 
     Supports dynamic calibration based on actual LLM usage patterns.
+
+    NEW in v0.7.8:
+    - Progressive warnings at multiple thresholds
+    - Warning state tracking to prevent duplicate warnings
     """
 
     def __init__(self, config: TokenBudgetConfig | None = None):
@@ -55,6 +79,11 @@ class TokenBudget:
         # Calibration support
         self._usage_history: list["LLMUsage"] = []
         self._calibration_factor: float = 1.0
+
+        # Warning state tracking (v0.7.8)
+        self._last_warning_level: int = -1  # Track last warning level (0=50%, 1=30%, 2=20%, 3=10%)
+        self._warnings_issued: int = 0  # Total warnings issued
+        self._last_warning_iteration: int = 0  # Iteration counter for interval control
 
     def consume(self, tokens: int) -> None:
         """
@@ -138,18 +167,85 @@ class TokenBudget:
         """
         return self._usage_history.copy()
 
+    def check_warning(self, current_iteration: int) -> dict | None:
+        """
+        Check if a warning should be issued based on current budget.
+
+        This is the main entry point for progressive warnings in v0.7.8.
+        Unlike should_warn() which only checks a single threshold,
+        this method tracks multiple warning levels and prevents duplicates.
+
+        Args:
+            current_iteration: Current iteration number for interval control
+
+        Returns:
+            Warning dict if warning should be issued, None otherwise.
+            Dict contains: level, threshold, remaining_ratio, remaining_tokens,
+                          initial_budget, message
+        """
+        if self.initial_budget == 0:
+            return None
+
+        ratio = self.remaining / self.initial_budget
+
+        # Find appropriate warning level
+        for level_idx, threshold in enumerate(self.config.warning_thresholds):
+            if ratio <= threshold and level_idx > self._last_warning_level:
+                # Check interval to prevent spam
+                if current_iteration - self._last_warning_iteration >= self.config.warning_interval:
+                    self._last_warning_level = level_idx
+                    self._last_warning_iteration = current_iteration
+                    self._warnings_issued += 1
+
+                    return {
+                        "level": level_idx,
+                        "threshold": threshold,
+                        "remaining_ratio": ratio,
+                        "remaining_tokens": self.remaining,
+                        "initial_budget": self.initial_budget,
+                        "message": self._format_warning_message(level_idx, ratio),
+                    }
+
+        return None
+
+    def _format_warning_message(self, level: int, ratio: float) -> str:
+        """
+        Format user-friendly warning message.
+
+        Args:
+            level: Warning level (0=50%, 1=30%, 2=20%, 3=10%)
+            ratio: Current remaining ratio
+
+        Returns:
+            Formatted warning message
+        """
+        percentage = ratio * 100
+        icons = ["⚠️", "⚡", "🔴", "🚨"]  # Progressive urgency
+        icon = icons[min(level, len(icons) - 1)]
+
+        messages = [
+            f"{icon} Token budget at {percentage:.0f}% - consider simplifying request",
+            f"{icon} Token budget at {percentage:.0f}% - approaching limit",
+            f"{icon} Token budget at {percentage:.0f}% - will summarize soon",
+            f"{icon} Token budget at {percentage:.0f}% - final warning before summarization",
+        ]
+
+        return messages[min(level, len(messages) - 1)]
+
     def should_warn(self) -> bool:
         """
         Check if budget is running low.
+
+        DEPRECATED: Use check_warning() for progressive warnings.
 
         Returns:
             True if remaining budget is below warning threshold
         """
         if self.initial_budget == 0:
             return False
+        # Use the last threshold for backward compatibility
         ratio = self.remaining / self.initial_budget
-        # Warn when ratio <= threshold (not <)
-        return ratio <= self.config.warning_threshold
+        return ratio <= self.config.warning_thresholds[-1]
 
     def should_summarize(self) -> bool:
         """
@@ -184,6 +280,10 @@ class TokenBudget:
         self._total_consumed = 0
         self._usage_history = []
         self._calibration_factor = 1.0
+        # Reset warning state (v0.7.8)
+        self._last_warning_level = -1
+        self._warnings_issued = 0
+        self._last_warning_iteration = 0
 
     def get_status(self) -> dict:
         """
@@ -204,4 +304,7 @@ class TokenBudget:
             "calibration_factor": self._calibration_factor,
             "average_usage": self.get_average_usage(),
             "samples_collected": len(self._usage_history),
+            # Warning state (v0.7.8)
+            "warnings_issued": self._warnings_issued,
+            "last_warning_level": self._last_warning_level,
         }
