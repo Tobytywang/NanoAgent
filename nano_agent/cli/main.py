@@ -2017,15 +2017,18 @@ def _handle_stats_command(agent, config, command: str) -> None:
         # 显示当前上下文组成
         _show_context_composition(agent, config)
     elif parts[0].lower() == "breakdown":
-        # 显示各轮 Token 消耗趋势
+        # 显示迭代 Token 消耗趋势
         _show_iteration_breakdown(agent)
+    elif parts[0].lower() == "budget":
+        # 显示上下文预算分析
+        _show_context_budget(agent, config)
     elif parts[0].lower() == "on":
         _enable_run_stats()
     elif parts[0].lower() == "off":
         _disable_run_stats()
     else:
         Console.print(f"Unknown subcommand: {parts[0]}", style="error")
-        Console.print("Available: status, context, breakdown, on, off", style="info")
+        Console.print("Available: status, context, breakdown, budget, on, off", style="info")
 
 
 def _show_stats_status(agent, config) -> None:
@@ -2040,23 +2043,24 @@ def _show_stats_status(agent, config) -> None:
     # 显示会话统计
     if hasattr(agent, 'tracker'):
         session_summary = agent.tracker.get_session_summary()
-        iteration_list = agent.tracker.get_iteration_token_list()
 
         if session_summary:
             # 消耗概览
             print("\n## 消耗概览")
             total_tokens = session_summary.get('total_tokens', 0)
             total_llm_calls = session_summary.get('total_llm_calls', 0)
+            total_iterations = session_summary.get('total_iterations', 0)
+            total_runs = session_summary.get('total_runs', 0)
 
             print(format_line("总 Token:", str(total_tokens)))
             print(format_line("总 LLM 调用:", str(total_llm_calls)))
+            print(format_line("总迭代次数:", str(total_iterations)))
+            print(format_line("总轮次:", str(total_runs)))
 
-            # 当前 run 的轮次（更直观）
-            current_run_iterations = len(iteration_list)
-            if current_run_iterations > 0:
-                print(format_line("本轮迭代:", str(current_run_iterations)))
-                avg_per_iteration = total_tokens / current_run_iterations
-                print(format_line("平均每轮:", f"{avg_per_iteration:.0f} tokens"))
+            # 当前轮次
+            print("\n## 当前轮次")
+            current_iterations = agent.tracker.get_current_run_iterations()
+            print(format_line("迭代次数:", str(current_iterations)))
 
             # 上下文状态（使用最后一轮的 prompt_tokens）
             print("\n## 上下文状态")
@@ -2085,11 +2089,12 @@ def _show_stats_status(agent, config) -> None:
 
     # 命令说明
     print("\n## 命令")
-    print("  /stats          - 显示完整统计")
-    print("  /stats context  - 显示当前上下文组成")
-    print("  /stats breakdown - 显示各轮消耗趋势")
-    print("  /stats on       - 启用每次对话后自动显示")
-    print("  /stats off      - 禁用自动显示")
+    print("  /stats           - 显示会话统计")
+    print("  /stats context   - 显示上下文组成")
+    print("  /stats breakdown - 显示迭代消耗趋势")
+    print("  /stats budget    - 显示上下文预算分析")
+    print("  /stats on        - 启用每次对话后自动显示")
+    print("  /stats off       - 禁用自动显示")
 
     print("\n" + "=" * 50 + "\n")
 
@@ -2142,7 +2147,7 @@ def _show_context_composition(agent, config) -> None:
         rounds.append(current_round)
 
     # 显示按轮次分组的统计
-    print(f"\n  共 {len(rounds)} 轮对话，{len(messages)} 条消息")
+    print(f"\n  共 {len(rounds)} 轮次，{len(messages)} 条消息")
     print("─" * 70)
 
     total_chars = 0
@@ -2193,7 +2198,7 @@ def _show_context_composition(agent, config) -> None:
 
 
 def _show_iteration_breakdown(agent) -> None:
-    """显示各轮 Token 消耗趋势"""
+    """显示各迭代 Token 消耗趋势（当前轮次）"""
     if not hasattr(agent, 'tracker'):
         Console.print("Tracker not available", style="warning")
         return
@@ -2204,17 +2209,17 @@ def _show_iteration_breakdown(agent) -> None:
         Console.print("No iteration data yet. Run a query first.", style="info")
         return
 
-    print("\n📊 各轮 Token 消耗趋势:")
+    print("\n📊 迭代 Token 消耗趋势 (当前轮次):")
     print("─" * 60)
 
     # 找出最大值用于趋势条
     max_total = max(i['total_tokens'] for i in iterations) if iterations else 1
 
     # 表头
-    print(f"  {'轮次':<6} {'输入':<8} {'输出':<8} {'总计':<8} 趋势")
+    print(f"  {'迭代':<6} {'输入':<8} {'输出':<8} {'总计':<8} 趋势")
     print("─" * 60)
 
-    # 各轮数据
+    # 各迭代数据
     for iter_data in iterations:
         i = iter_data['iteration_number']
         prompt = iter_data['prompt_tokens']
@@ -2235,9 +2240,110 @@ def _show_iteration_breakdown(agent) -> None:
     max_iter = max(iterations, key=lambda x: x['total_tokens'])
     min_iter = min(iterations, key=lambda x: x['total_tokens'])
 
-    print(f"  平均每轮: {avg:.0f} tokens")
-    print(f"  最大: {max_iter['total_tokens']} (轮次 {max_iter['iteration_number']})")
-    print(f"  最小: {min_iter['total_tokens']} (轮次 {min_iter['iteration_number']})")
+    print(f"  平均每迭代: {avg:.0f} tokens")
+    print(f"  最大: {max_iter['total_tokens']} (迭代 {max_iter['iteration_number']})")
+    print(f"  最小: {min_iter['total_tokens']} (迭代 {min_iter['iteration_number']})")
+    print()
+
+
+def _show_context_budget(agent, config) -> None:
+    """显示上下文预算分析"""
+    if not hasattr(agent, 'memory'):
+        Console.print("Memory not available", style="warning")
+        return
+
+    messages = agent.memory.get_all()
+    if not messages:
+        Console.print("No messages in memory", style="info")
+        return
+
+    print("\n📊 上下文预算分析")
+    print("=" * 60)
+
+    # 分析上下文组成
+    # 1. 系统提示（固定）
+    system_msg = next((m for m in messages if m.get("role") == "system"), None)
+    system_content = system_msg.get("content", "") if system_msg else ""
+    system_tokens = estimate_text_tokens(system_content) if system_content else 0
+
+    # 2. 历史轮次（动态）
+    history_tokens = 0
+    history_breakdown = []
+    for msg in messages:
+        role = msg.get("role")
+        if role != "system":
+            content = msg.get("content", "")
+            tokens = estimate_text_tokens(content) if content else 0
+            history_tokens += tokens
+            history_breakdown.append({
+                "role": role,
+                "tokens": tokens,
+                "preview": (content[:30] + "...") if content and len(content) > 30 else (content or "")
+            })
+
+    total_tokens = system_tokens + history_tokens
+
+    # 获取上下文限制
+    context_limit = 8192
+    if config and hasattr(config, 'llm'):
+        context_limit = config.llm.get_context_length()
+
+    # 显示上下文组成
+    print("\n## 上下文组成")
+    print("─" * 60)
+    print(f"  {'组成部分':<25} {'Token':<10} {'占比':<10}")
+    print("─" * 60)
+
+    # 系统提示（固定）
+    if system_tokens > 0:
+        pct = (system_tokens / total_tokens * 100) if total_tokens > 0 else 0
+        bar_len = int(system_tokens / context_limit * 20) if context_limit > 0 else 0
+        bar = "█" * bar_len + "░" * (20 - bar_len)
+        print(f"  {'系统提示 (固定)':<25} {system_tokens:<10} {pct:.1f}%  {bar}")
+
+    # 历史轮次（动态）
+    if history_tokens > 0:
+        pct = (history_tokens / total_tokens * 100) if total_tokens > 0 else 0
+        bar_len = int(history_tokens / context_limit * 20) if context_limit > 0 else 0
+        bar = "█" * bar_len + "░" * (20 - bar_len)
+        print(f"  {'历史轮次 (动态)':<25} {history_tokens:<10} {pct:.1f}%  {bar}")
+
+    print("─" * 60)
+    print(f"  {'总计':<25} {total_tokens:<10}")
+
+    # 预算状态
+    used = total_tokens
+    available = context_limit - used
+    usage_pct = (used / context_limit * 100) if context_limit > 0 else 0
+
+    print("\n## 预算状态")
+    print(f"  已使用:       {used} tokens ({usage_pct:.1f}%)")
+    print(f"  可用预算:     {available} tokens ({100 - usage_pct:.1f}%)")
+    print(f"  上下文限制:   {context_limit} tokens")
+
+    # 预算预测
+    print("\n## 预算预测")
+    if len(history_breakdown) > 0:
+        # 基于历史平均预估下一轮
+        avg_per_msg = history_tokens / len(history_breakdown)
+        estimated_new = int(avg_per_msg * 2)  # 假设下一轮约 2 条消息
+        remaining = available - estimated_new
+
+        print(f"  如果继续一轮对话:")
+        print(f"    - 预估新增:   ~{estimated_new} tokens (基于历史平均)")
+        print(f"    - 剩余预算:   ~{remaining} tokens")
+
+        # 建议
+        print("\n  建议:")
+        if usage_pct < 50:
+            print("    - 当前上下文使用率较低，可继续对话")
+        elif usage_pct < 80:
+            print("    - 当前上下文使用率适中，建议关注剩余预算")
+        else:
+            print("    - 当前上下文使用率较高，建议使用 /clear 清空历史")
+    else:
+        print("  暂无历史数据，无法预测")
+
     print()
 
 
@@ -2294,8 +2400,9 @@ def _show_help() -> None:
     print("  /memory off       禁用长期记忆")
     print("  /stats on         启用统计自动显示")
     print("  /stats off        禁用统计自动显示")
-    print("  /stats context    显示当前上下文组成")
-    print("  /stats breakdown  显示各轮消耗趋势")
+    print("  /stats context    显示上下文组成")
+    print("  /stats breakdown  显示迭代消耗趋势")
+    print("  /stats budget     显示上下文预算分析")
 
     print("\n## 规划模式")
     print("  /plan <任务>      进入规划模式，制定分阶段计划")

@@ -35,6 +35,7 @@ class MetricsTracker:
         # Accumulated session statistics
         self._session_total_tokens: int = 0
         self._session_total_iterations: int = 0
+        self._session_total_runs: int = 0  # 轮次计数（用户交互次数）
         self._session_total_llm_calls: int = 0  # LLM API 调用次数
         self._session_total_tool_calls: int = 0
         self._session_successful_tool_calls: int = 0
@@ -85,6 +86,7 @@ class MetricsTracker:
         # Accumulate session statistics
         self._session_total_tokens += self.run_metrics.total_tokens
         self._session_total_iterations += len(self.run_metrics.iterations)
+        self._session_total_runs += 1  # 增加轮次计数
         for iteration in self.run_metrics.iterations:
             for tool in iteration.tool_executions:
                 self._session_total_tool_calls += 1
@@ -235,11 +237,32 @@ class MetricsTracker:
             "session_duration_ms": round(session_duration, 2),
             "total_tokens": self._session_total_tokens,
             "total_iterations": self._session_total_iterations,
+            "total_runs": self._session_total_runs,
             "total_llm_calls": self._session_total_llm_calls,
             "total_tool_calls": self._session_total_tool_calls,
             "successful_tool_calls": self._session_successful_tool_calls,
             "failed_tool_calls": self._session_failed_tool_calls,
         }
+
+    def get_run_count(self) -> int:
+        """
+        Get the total number of runs (rounds) in this session.
+
+        Returns:
+            Total run count
+        """
+        return self._session_total_runs
+
+    def get_current_run_iterations(self) -> int:
+        """
+        Get the number of iterations in the current run.
+
+        Returns:
+            Iteration count in current run, 0 if no run active
+        """
+        if self.run_metrics:
+            return len(self.run_metrics.iterations)
+        return 0
 
     def get_last_iteration_tokens(self) -> dict[str, int]:
         """
