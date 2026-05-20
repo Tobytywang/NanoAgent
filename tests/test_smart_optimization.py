@@ -24,8 +24,8 @@ class TestTokenBudget:
     def test_initial_state(self):
         """Test initial budget state."""
         budget = TokenBudget()
-        assert budget.remaining == 2000
-        assert budget.initial_budget == 2000
+        assert budget.remaining == 20000  # Updated from 2000 to support multi-turn conversations
+        assert budget.initial_budget == 20000
         assert budget._total_consumed == 0
 
     def test_custom_initial_budget(self):
@@ -39,15 +39,15 @@ class TestTokenBudget:
         """Test token consumption."""
         budget = TokenBudget()
         budget.consume(500)
-        assert budget.remaining == 1500
+        assert budget.remaining == 19500  # 20000 - 500
         assert budget._total_consumed == 500
 
     def test_consume_exceeds_budget(self):
         """Test consumption that exceeds budget."""
         budget = TokenBudget()
-        budget.consume(3000)  # More than initial
+        budget.consume(25000)  # More than initial (20000)
         assert budget.remaining == 0  # Clamped to 0
-        assert budget._total_consumed == 3000
+        assert budget._total_consumed == 25000
 
     def test_should_warn(self):
         """Test warning threshold."""
@@ -87,36 +87,36 @@ class TestTokenBudget:
         budget = TokenBudget()
         assert not budget.is_exhausted()
 
-        budget.consume(2000)
+        budget.consume(20000)  # Exhaust full budget
         assert budget.is_exhausted()
 
     def test_reset(self):
         """Test budget reset."""
         budget = TokenBudget()
-        budget.consume(1500)
+        budget.consume(15000)
 
         budget.reset()
-        assert budget.remaining == 2000
+        assert budget.remaining == 20000  # Reset to initial budget
         assert budget._total_consumed == 0
 
     def test_reset_with_new_budget(self):
         """Test reset with new budget."""
         budget = TokenBudget()
-        budget.consume(1500)
+        budget.consume(15000)
 
-        budget.reset(5000)
-        assert budget.remaining == 5000
-        assert budget.initial_budget == 5000
+        budget.reset(50000)
+        assert budget.remaining == 50000
+        assert budget.initial_budget == 50000
 
     def test_get_status(self):
         """Test status retrieval."""
         budget = TokenBudget()
-        budget.consume(500)
+        budget.consume(5000)
 
         status = budget.get_status()
-        assert status["initial"] == 2000
-        assert status["remaining"] == 1500
-        assert status["consumed"] == 500
+        assert status["initial"] == 20000
+        assert status["remaining"] == 15000
+        assert status["consumed"] == 5000
         assert status["percentage_remaining"] == 75.0
 
 

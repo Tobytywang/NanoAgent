@@ -286,6 +286,71 @@ cleaned = "\n".join(cleaned_lines).strip()
 
 ---
 
+## BUG-005: TokenBudgetConfig 默认值未同步更新
+
+**发现日期**: 2026-05-20
+
+**严重程度**: 高（导致 Agent 无法完成正常任务）
+
+**影响范围**: 所有使用默认 `TokenBudgetConfig` 的用户，Agent 会提前终止并返回工具摘要而非回答
+
+### 问题描述
+
+用户在 TYNote 项目测试"请帮我查看当前项目的plan"，Agent 执行了 4 轮迭代后返回 "Based on the information gathered..." 的工具摘要，没有给出实际回答。
+
+### 根因分析
+
+在修复 BUG-003 时，只更新了 `SmartOptimizationConfig.initial_budget` 从 2000 到 20000，但遗漏了 `TokenBudgetConfig.initial_budget` 的默认值：
+
+```python
+# nano_agent/config/schema.py (已修复)
+class SmartOptimizationConfig:
+    initial_budget: int = 20000  # ✅ 已更新
+
+# nano_agent/agent/token_budget.py (遗漏)
+@dataclass
+class TokenBudgetConfig:
+    initial_budget: int = 2000   # ❌ 未更新！
+```
+
+虽然 `ReActAgent.__init__` 正确传递了配置值，但如果直接使用 `TokenBudget()` 无参数构造，仍会使用 2000 的默认值。
+
+### 为什么测试没发现
+
+1. 测试用例 `test_default_values` 只测试了 `SmartOptimizationConfig.initial_budget`
+2. 测试用例 `test_initial_state` 期望值是 2000，测试通过但期望错误
+3. 没有端到端测试验证多轮对话场景下预算是否足够
+
+### 修复方案
+
+同步更新 `TokenBudgetConfig.initial_budget` 默认值：
+
+```python
+# nano_agent/agent/token_budget.py
+@dataclass
+class TokenBudgetConfig:
+    initial_budget: int = 20000  # Updated from 2000
+```
+
+### 补充的测试用例
+
+**`test_smart_optimization.py`** - 更新测试期望：
+- `test_initial_state`: 期望 `remaining == 20000`
+
+### 经验教训
+
+1. **配置默认值要同步**：当修改一处配置默认值时，要检查所有相关类的默认值
+2. **测试期望值要正确**：测试通过不代表正确，要验证期望值是否合理
+3. **配置传递链路要完整测试**：不仅要测试配置类，还要测试实际使用场景
+
+### 相关文件
+
+- `nano_agent/config/schema.py` - SmartOptimizationConfig 定义
+- `nano_agent/agent/token_budget.py` - TokenBudgetConfig 定义（遗漏点）
+- `nano_agent/agent/react.py` - 配置传递逻辑
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：

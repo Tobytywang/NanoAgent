@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 class TokenBudgetConfig:
     """Configuration for token budget management."""
 
-    initial_budget: int = 2000  # Initial token budget
+    initial_budget: int = 20000  # Initial token budget (increased for multi-turn conversations)
     warning_threshold: float = 0.2  # Warn when remaining < 20%
     force_summarize: bool = True  # Force summarize when exhausted
     # Calibration settings
