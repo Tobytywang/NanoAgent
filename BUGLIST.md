@@ -222,6 +222,70 @@ class SmartOptimizationConfig:
 
 ---
 
+## BUG-004: ConfidenceParser 将换行符合并为空格
+
+**发现日期**: 2026-05-19
+
+**严重程度**: 中等（导致输出格式混乱）
+
+**影响范围**: 所有使用 confidence marker 的 LLM 响应，多行内容会被合并为单行
+
+### 问题描述
+
+用户在 TYNote 项目测试时，Agent 的 `[Think]` 部分显示正常换行，但最终输出 `>` 部分所有内容被合并到一行。
+
+### 根因分析
+
+`ConfidenceParser.parse()` 方法在清理 confidence markers 后，使用正则表达式清理多余空白：
+
+```python
+# 原代码 (第 81-84 行)
+cleaned = self.CONFIDENCE_PATTERN.sub("", response)
+cleaned = self.CAN_ANSWER_PATTERN.sub("", cleaned)
+cleaned = re.sub(r"\s+", " ", cleaned).strip()  # 问题所在！
+```
+
+`re.sub(r"\s+", " ", cleaned)` 会将**所有空白字符**（包括换行符 `\n`）替换为单个空格，导致多行内容变成单行。
+
+### 为什么测试没发现
+
+1. `test_smart_optimization.py` 中的测试用例都是单行响应
+2. 没有测试验证多行 markdown 格式（标题、列表等）是否被保留
+3. 测试关注 confidence 值解析正确性，忽略了格式保留
+
+### 修复方案
+
+修改 `nano_agent/agent/confidence.py`，逐行处理空白，保留换行符：
+
+```python
+# 修复后的代码
+cleaned = self.CONFIDENCE_PATTERN.sub("", response)
+cleaned = self.CAN_ANSWER_PATTERN.sub("", cleaned)
+# Clean up extra whitespace but preserve newlines
+# Only collapse multiple spaces on the same line
+lines = cleaned.split("\n")
+cleaned_lines = [re.sub(r"[ \t]+", " ", line).strip() for line in lines]
+cleaned = "\n".join(cleaned_lines).strip()
+```
+
+### 补充的测试用例
+
+**`test_smart_optimization.py`** - 添加 1 个测试：
+- `test_preserves_newlines`: 测试多行 markdown 内容（标题、列表）的换行符被正确保留
+
+### 经验教训
+
+1. **正则表达式要精确**：`\s+` 匹配所有空白包括换行，应使用 `[ \t]+` 只匹配空格和制表符
+2. **测试要覆盖格式保留**：不仅测试数据正确性，还要测试格式完整性
+3. **用户可见的输出要特别关注**：格式问题直接影响用户体验
+
+### 相关文件
+
+- `nano_agent/agent/confidence.py` - ConfidenceParser 实现
+- `tests/test_smart_optimization.py` - 相关测试
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：

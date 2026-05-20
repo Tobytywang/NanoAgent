@@ -80,8 +80,11 @@ class ConfidenceParser:
         # Clean response by removing confidence markers
         cleaned = self.CONFIDENCE_PATTERN.sub("", response)
         cleaned = self.CAN_ANSWER_PATTERN.sub("", cleaned)
-        # Clean up extra whitespace
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        # Clean up extra whitespace but preserve newlines
+        # Only collapse multiple spaces on the same line
+        lines = cleaned.split("\n")
+        cleaned_lines = [re.sub(r"[ \t]+", " ", line).strip() for line in lines]
+        cleaned = "\n".join(cleaned_lines).strip()
 
         return ConfidenceResult(
             confidence=confidence,

@@ -346,6 +346,37 @@ class TestConfidenceParser:
         assert result.confidence == 0.9
         assert result.can_answer == True
 
+    def test_preserves_newlines(self):
+        """Test that newlines are preserved in cleaned response.
+
+        This is a regression test for the bug where all whitespace
+        (including newlines) was collapsed to single spaces.
+        """
+        parser = ConfidenceParser()
+
+        response = """## Header
+
+### Subheader
+
+**Bold text**:
+- Item 1
+- Item 2
+
+[CONFIDENCE: 1.0] [CAN_ANSWER: yes]"""
+
+        result = parser.parse(response)
+
+        # Newlines should be preserved
+        assert "\n" in result.cleaned_response
+        assert "## Header" in result.cleaned_response
+        assert "### Subheader" in result.cleaned_response
+        assert "- Item 1" in result.cleaned_response
+        assert "- Item 2" in result.cleaned_response
+
+        # Confidence markers should be removed
+        assert "[CONFIDENCE:" not in result.cleaned_response
+        assert "[CAN_ANSWER:" not in result.cleaned_response
+
 
 # === SmartOptimizationConfig Tests ===
 
@@ -362,7 +393,7 @@ class TestSmartOptimizationConfig:
 
         # Budget
         assert config.budget_enabled == True
-        assert config.initial_budget == 2000
+        assert config.initial_budget == 20000  # Increased from 2000 to support multi-turn conversations
         assert config.budget_warning_threshold == 0.2
         assert config.budget_force_summarize == True
 
