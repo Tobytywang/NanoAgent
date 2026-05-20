@@ -50,8 +50,8 @@ class TestTokenBudget:
         assert budget._total_consumed == 25000
 
     def test_should_warn(self):
-        """Test warning threshold."""
-        config = TokenBudgetConfig(initial_budget=1000, warning_threshold=0.2)
+        """Test warning threshold (backward compatible with new thresholds)."""
+        config = TokenBudgetConfig(initial_budget=1000, warning_thresholds=[0.2])
         budget = TokenBudget(config)
 
         # Initially no warning
@@ -391,11 +391,14 @@ class TestSmartOptimizationConfig:
         assert config.confidence_enabled == True
         assert config.confidence_threshold == 0.9
 
-        # Budget
+        # Budget (v0.7.8 updated)
         assert config.budget_enabled == True
         assert config.initial_budget == 20000  # Increased from 2000 to support multi-turn conversations
-        assert config.budget_warning_threshold == 0.2
+        assert config.budget_warning_thresholds == [0.5, 0.3, 0.2, 0.1]  # Multi-level thresholds
+        assert config.budget_warning_mode == "console"
+        assert config.budget_warning_interval == 1
         assert config.budget_force_summarize == True
+        assert config.budget_llm_summary_enabled == True  # LLM summary enabled by default
 
         # Routing
         assert config.routing_enabled == True
@@ -429,10 +432,12 @@ class TestSmartOptimizationConfig:
         """Test custom budget values."""
         config = SmartOptimizationConfig(
             initial_budget=5000,
-            budget_warning_threshold=0.1,
+            budget_warning_thresholds=[0.4, 0.2],
+            budget_warning_mode="silent",
         )
         assert config.initial_budget == 5000
-        assert config.budget_warning_threshold == 0.1
+        assert config.budget_warning_thresholds == [0.4, 0.2]
+        assert config.budget_warning_mode == "silent"
 
 
 # === Integration Tests ===
