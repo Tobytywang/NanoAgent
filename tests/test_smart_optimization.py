@@ -24,8 +24,8 @@ class TestTokenBudget:
     def test_initial_state(self):
         """Test initial budget state."""
         budget = TokenBudget()
-        assert budget.remaining == 20000  # Updated from 2000 to support multi-turn conversations
-        assert budget.initial_budget == 20000
+        assert budget.remaining == 50000  # Updated from 20000 to support longer conversations
+        assert budget.initial_budget == 50000
         assert budget._total_consumed == 0
 
     def test_custom_initial_budget(self):
@@ -39,15 +39,15 @@ class TestTokenBudget:
         """Test token consumption."""
         budget = TokenBudget()
         budget.consume(500)
-        assert budget.remaining == 19500  # 20000 - 500
+        assert budget.remaining == 49500  # 50000 - 500
         assert budget._total_consumed == 500
 
     def test_consume_exceeds_budget(self):
         """Test consumption that exceeds budget."""
         budget = TokenBudget()
-        budget.consume(25000)  # More than initial (20000)
+        budget.consume(55000)  # More than initial (50000)
         assert budget.remaining == 0  # Clamped to 0
-        assert budget._total_consumed == 25000
+        assert budget._total_consumed == 55000  # Total consumed tracks actual consumption
 
     def test_should_warn(self):
         """Test warning threshold (backward compatible with new thresholds)."""
@@ -87,16 +87,16 @@ class TestTokenBudget:
         budget = TokenBudget()
         assert not budget.is_exhausted()
 
-        budget.consume(20000)  # Exhaust full budget
+        budget.consume(50000)  # Exhaust full budget
         assert budget.is_exhausted()
 
     def test_reset(self):
         """Test budget reset."""
         budget = TokenBudget()
-        budget.consume(15000)
+        budget.consume(35000)
 
         budget.reset()
-        assert budget.remaining == 20000  # Reset to initial budget
+        assert budget.remaining == 50000  # Reset to initial budget
         assert budget._total_consumed == 0
 
     def test_reset_with_new_budget(self):
@@ -114,10 +114,10 @@ class TestTokenBudget:
         budget.consume(5000)
 
         status = budget.get_status()
-        assert status["initial"] == 20000
-        assert status["remaining"] == 15000
+        assert status["initial"] == 50000
+        assert status["remaining"] == 45000
         assert status["consumed"] == 5000
-        assert status["percentage_remaining"] == 75.0
+        assert status["percentage_remaining"] == 90.0
 
 
 # === QueryRouter Tests ===
@@ -393,7 +393,7 @@ class TestSmartOptimizationConfig:
 
         # Budget (v0.7.8 updated)
         assert config.budget_enabled == True
-        assert config.initial_budget == 20000  # Increased from 2000 to support multi-turn conversations
+        assert config.initial_budget == 50000  # Increased from 20000 to support longer conversations
         assert config.budget_warning_thresholds == [0.5, 0.3, 0.2, 0.1]  # Multi-level thresholds
         assert config.budget_warning_mode == "console"
         assert config.budget_warning_interval == 1

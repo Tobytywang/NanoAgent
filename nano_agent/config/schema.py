@@ -253,7 +253,7 @@ class SmartOptimizationConfig:
 
     # === Token Budget Management ===
     budget_enabled: bool = True  # Enable token budget tracking
-    initial_budget: int = 20000  # Initial token budget per session (increased from 2000)
+    initial_budget: int = 50000  # Initial token budget per session (increased from 20000)
 
     # Multi-level warning thresholds (v0.7.8)
     budget_warning_thresholds: list[float] = field(

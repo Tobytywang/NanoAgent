@@ -351,6 +351,60 @@ class TokenBudgetConfig:
 
 ---
 
+## v0.7.8 改进: Token Budget 友好终止机制
+
+**发现日期**: 2026-05-20
+
+**改进类型**: 用户体验优化
+
+### 原问题
+
+用户反馈：当前 `_force_summarize()` 直接返回工具结果摘要，体验差。增大阈值只会延迟问题到来，需要更友好的实现方式。
+
+### 改进内容
+
+#### 1. 渐进式警告
+
+**新增配置**:
+```python
+# Multi-level warning thresholds (relative to initial budget)
+warning_thresholds: list[float] = [0.5, 0.3, 0.2, 0.1]  # 50%, 30%, 20%, 10%
+warning_mode: Literal["silent", "console", "event"] = "console"
+warning_interval: int = 1  # Minimum iterations between warnings
+```
+
+**效果**:
+- 50% 时：⚠️ "Token budget at 50% - consider simplifying request"
+- 30% 时：⚡ "Token budget at 30% - approaching limit"
+- 20% 时：🔴 "Token budget at 20% - will summarize soon"
+- 10% 时：🚨 "Token budget at 10% - final warning before summarization"
+
+#### 2. LLM 结构化摘要
+
+**新增配置**:
+```python
+llm_summary_enabled: bool = True  # Use LLM to generate structured summary
+llm_summary_max_tokens: int = 500  # Max tokens for LLM summary
+```
+
+**效果**: 预算耗尽时，使用 LLM 生成结构化摘要（含：信息收集情况、主要发现、当前结论、需要补充），而非简单拼接工具结果。
+
+#### 3. 配置传递完善
+
+**修改文件**:
+- `nano_agent/agent/token_budget.py` - 新增 `check_warning()` 方法和多级阈值
+- `nano_agent/agent/react.py` - 集成渐进式警告和 LLM 摘要
+- `nano_agent/config/schema.py` - 新增配置项
+
+### 相关文件
+
+- `nano_agent/agent/token_budget.py` - TokenBudget 核心实现
+- `nano_agent/agent/react.py` - ReActAgent 集成
+- `nano_agent/config/schema.py` - SmartOptimizationConfig 配置
+- `tests/test_token_budget_integration.py` - 新增渐进式警告测试
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：

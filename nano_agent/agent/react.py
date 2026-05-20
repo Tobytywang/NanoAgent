@@ -209,6 +209,11 @@ class ReActAgent(BaseAgent):
         self._session_id: str = ""
         self._routing_max_tools: int = -1  # Max tools for current query (-1 = unlimited)
 
+        # Duplicate tool call detection (v0.7.8)
+        self._tool_call_history: dict[str, int] = {}  # key: tool_name+args_hash, value: count
+        self._duplicate_threshold: int = 3  # Max allowed duplicate calls
+        self._duplicate_warning_issued: bool = False
+
         # Prompt builder (v0.7.6)
         self._prompt_builder: PromptBuilder | None = None
         self._stable_system_prompt: str = ""
@@ -489,6 +494,10 @@ class ReActAgent(BaseAgent):
         self._session_id = session_id
         self._pending_name_updates = []
 
+        # Reset duplicate detection state (v0.7.8)
+        self._tool_call_history = {}
+        self._duplicate_warning_issued = False
+
         # Add user message to memory
         self.memory.add_user_message(user_input)
 
@@ -621,6 +630,26 @@ class ReActAgent(BaseAgent):
         Returns:
             ToolResult from the execution
         """
+        # Check for duplicate tool calls (v0.7.8)
+        if not dry_run and self._check_duplicate_tool_call(tool_call):
+            # Return cached result or empty result
+            cached_result = self.cache.get_cached_result(tool_call.name, tool_call.arguments)
+            if cached_result is not None:
+                result = cached_result
+            else:
+                result = ToolResult(
+                    success=True,
+                    output="[跳过] 检测到重复调用，已跳过"
+                )
+            # Record tool call
+            self._tool_call_records.append({
+                "name": tool_call.name,
+                "arguments": tool_call.arguments,
+                "success": result.success,
+                "output_preview": result.output[:100] if result.output else None,
+            })
+            return result
+
         # Emit tool call event
         self.events.emit(AgentEvent.TOOL_CALL, {
             "tool": tool_call.name,
@@ -985,6 +1014,42 @@ class ReActAgent(BaseAgent):
                 self._undo_stack.push(tool_call.name, result.undo_data)
 
         return result
+
+    def _check_duplicate_tool_call(self, tool_call: ToolCall) -> bool:
+        """
+        Check if this tool call is a duplicate and should be blocked.
+
+        Args:
+            tool_call: The tool call to check
+
+        Returns:
+            True if the call is a duplicate and should be skipped
+        """
+        import hashlib
+        import json
+
+        # Create a hash key from tool name and arguments
+        args_str = json.dumps(tool_call.arguments, sort_keys=True)
+        args_hash = hashlib.md5(args_str.encode()).hexdigest()[:8]
+        key = f"{tool_call.name}:{args_hash}"
+
+        # Update count
+        self._tool_call_history[key] = self._tool_call_history.get(key, 0) + 1
+        count = self._tool_call_history[key]
+
+        # Check threshold
+        if count > self._duplicate_threshold:
+            if not self._duplicate_warning_issued:
+                if self.verbose:
+                    print(f"[Duplicate] 检测到重复工具调用: {tool_call.name}")
+                    print(f"   已调用 {count} 次，跳过后续重复调用")
+                self._duplicate_warning_issued = True
+            return True
+
+        if count > 1 and self.verbose:
+            print(f"[Duplicate] {tool_call.name} 已调用 {count} 次")
+
+        return False
 
     def undo_current_round(self, context: dict) -> list[str]:
         """

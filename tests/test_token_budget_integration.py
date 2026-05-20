@@ -14,7 +14,7 @@ class TestTokenBudgetConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = TokenBudgetConfig()
-        assert config.initial_budget == 20000  # Updated from 2000 for multi-turn conversations
+        assert config.initial_budget == 50000  # Updated from 20000 for longer conversations
         assert config.warning_thresholds == [0.5, 0.3, 0.2, 0.1]  # Multi-level thresholds (v0.7.8)
         assert config.warning_mode == "console"
         assert config.warning_interval == 1
@@ -50,19 +50,19 @@ class TestTokenBudgetBasic:
     def test_initial_state(self):
         """Test initial budget state."""
         budget = TokenBudget()
-        assert budget.remaining == 20000  # Updated default
-        assert budget.initial_budget == 20000
+        assert budget.remaining == 50000  # Updated default
+        assert budget.initial_budget == 50000
 
     def test_consume_tokens(self):
         """Test consuming tokens."""
         budget = TokenBudget()
         budget.consume(500)
-        assert budget.remaining == 19500  # 20000 - 500
+        assert budget.remaining == 49500  # 50000 - 500
 
     def test_consume_more_than_budget(self):
         """Test consuming more than budget."""
         budget = TokenBudget()
-        budget.consume(25000)  # More than 20000
+        budget.consume(55000)  # More than 50000
         assert budget.remaining == 0  # Should not go negative
 
     def test_should_warn(self):
@@ -85,15 +85,15 @@ class TestTokenBudgetBasic:
         """Test exhaustion check."""
         budget = TokenBudget()
         assert not budget.is_exhausted()
-        budget.consume(20000)  # Exhaust full budget
+        budget.consume(50000)  # Exhaust full budget
         assert budget.is_exhausted()
 
     def test_reset(self):
         """Test budget reset."""
         budget = TokenBudget()
-        budget.consume(10000)
+        budget.consume(30000)
         budget.reset()
-        assert budget.remaining == 20000  # Reset to initial budget
+        assert budget.remaining == 50000  # Reset to initial budget
 
     def test_reset_with_new_budget(self):
         """Test reset with new budget."""
@@ -112,7 +112,7 @@ class TestTokenBudgetLLMUsageIntegration:
         budget = TokenBudget()
         usage = LLMUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150)
         budget.consume_usage(usage)
-        assert budget.remaining == 19850  # 20000 - 150
+        assert budget.remaining == 49850  # 50000 - 150
         assert len(budget.get_usage_history()) == 1
 
     def test_consume_usage_multiple(self):
@@ -122,7 +122,7 @@ class TestTokenBudgetLLMUsageIntegration:
         usage2 = LLMUsage(prompt_tokens=200, completion_tokens=100, total_tokens=300)
         budget.consume_usage(usage1)
         budget.consume_usage(usage2)
-        assert budget.remaining == 19550  # 20000 - 150 - 300
+        assert budget.remaining == 49550  # 50000 - 150 - 300
         assert len(budget.get_usage_history()) == 2
 
     def test_usage_history_window(self):
@@ -219,19 +219,19 @@ class TestTokenBudgetStatus:
         """Test basic status."""
         budget = TokenBudget()
         status = budget.get_status()
-        assert status["initial"] == 20000  # Updated default
-        assert status["remaining"] == 20000
+        assert status["initial"] == 50000  # Updated default
+        assert status["remaining"] == 50000
         assert status["consumed"] == 0
         assert status["percentage_remaining"] == 100.0
 
     def test_get_status_after_consumption(self):
         """Test status after consumption."""
         budget = TokenBudget()
-        budget.consume(5000)
+        budget.consume(10000)
         status = budget.get_status()
-        assert status["remaining"] == 15000  # 20000 - 5000
-        assert status["consumed"] == 5000
-        assert status["percentage_remaining"] == 75.0
+        assert status["remaining"] == 40000  # 50000 - 10000
+        assert status["consumed"] == 10000
+        assert status["percentage_remaining"] == 80.0
 
     def test_get_status_with_calibration(self):
         """Test status includes calibration info."""
@@ -261,7 +261,7 @@ class TestTokenBudgetEdgeCases:
         """Test consuming zero tokens."""
         budget = TokenBudget()
         budget.consume(0)
-        assert budget.remaining == 20000  # Unchanged
+        assert budget.remaining == 50000  # Unchanged
 
     def test_consume_usage_with_cache_tokens(self):
         """Test consuming LLMUsage with cache tokens."""
@@ -274,7 +274,7 @@ class TestTokenBudgetEdgeCases:
             cache_write_tokens=20,
         )
         budget.consume_usage(usage)
-        assert budget.remaining == 19850  # 20000 - 150
+        assert budget.remaining == 49850  # 50000 - 150
         # Cache tokens should be recorded in history
         history = budget.get_usage_history()
         assert history[0].cache_read_tokens == 50

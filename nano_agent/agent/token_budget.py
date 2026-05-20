@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class TokenBudgetConfig:
     """Configuration for token budget management."""
 
-    initial_budget: int = 20000  # Initial token budget (increased for multi-turn conversations)
+    initial_budget: int = 50000  # Initial token budget (increased for multi-turn conversations)
 
     # Multi-level warning thresholds (relative to initial budget)
     # Warnings issued when remaining ratio <= each threshold
