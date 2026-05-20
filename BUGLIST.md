@@ -405,6 +405,56 @@ llm_summary_max_tokens: int = 500  # Max tokens for LLM summary
 
 ---
 
+## v0.7.8 改进: Token Budget 优化与重复调用检测
+
+**发现日期**: 2026-05-20
+
+**改进类型**: 性能优化与用户体验改进
+
+### 原问题
+
+用户测试发现 Token 消耗速度远超预期：
+- 5 轮迭代消耗 13052 tokens（预计应支持 30-40 轮）
+- Agent 重复调用相同工具（CLAUDE.md 被读取 4 次）
+- 历史对话累积导致 prompt_tokens 每轮增长 300-400
+
+### 改进内容
+
+#### 1. 增加默认预算
+
+**修改文件**: `nano_agent/config/schema.py`, `nano_agent/agent/token_budget.py`
+
+```python
+# 从 20000 增加到 50000
+initial_budget: int = 50000  # Increased from 20000
+```
+
+**效果**: 以每轮 ~2500 tokens 计算，可支持约 20 轮对话（之前约 8 轮）
+
+#### 2. 重复工具调用检测
+
+**修改文件**: `nano_agent/agent/react.py`
+
+**新增机制**:
+- `_tool_call_history: dict[str, int]` - 追踪每个工具调用的次数
+- `_duplicate_threshold: int = 3` - 允许的最大重复次数
+- `_check_duplicate_tool_call()` - 检测并跳过重复调用
+
+**效果**:
+- 同一工具+参数组合调用超过 3 次后自动跳过
+- 返回缓存结果或占位结果
+- 避免无意义的重复读取文件
+
+### 相关文件
+
+- `nano_agent/config/schema.py` - SmartOptimizationConfig.initial_budget
+- `nano_agent/agent/token_budget.py` - TokenBudgetConfig.initial_budget
+- `nano_agent/agent/react.py` - 重复检测机制
+- `tests/test_smart_optimization.py` - 更新测试期望
+- `tests/test_token_budget_integration.py` - 更新测试期望
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：
