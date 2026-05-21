@@ -592,8 +592,78 @@ class TestStatsFunctions:
         config.agent = AgentConfig()
         config.llm = LLMConfig()
 
+        # Mock get_detailed_usage to return empty list (no detailed data)
+        mock_agent.tracker.get_detailed_usage.return_value = []
+
         # Should not raise
         _show_run_stats(mock_agent, config)
+
+    def test_show_run_stats_with_detailed_usage(self, mock_agent):
+        """Test _show_run_stats displays detailed usage data."""
+        from nano_agent.cli.main import _show_run_stats, GracefulExitManager
+        import io
+        import sys
+
+        GracefulExitManager.show_run_stats = True
+        config = Config()
+        config.agent = AgentConfig()
+        config.llm = LLMConfig()
+
+        # Mock detailed usage data (new format: one row per iteration)
+        mock_agent.tracker.get_detailed_usage.return_value = [
+            {
+                "id": 1,
+                "run_number": 1,
+                "iteration_number": 1,
+                "tool_tokens": 0,
+                "system_tokens": 300,
+                "skill_tokens": 50,
+                "message_tokens": 100,
+                "output_tokens": 80,
+                "total_tokens": 530,
+                "description": "[用户] 你好，请帮我..."
+            },
+            {
+                "id": 2,
+                "run_number": 1,
+                "iteration_number": 2,
+                "tool_tokens": 150,
+                "system_tokens": 300,
+                "skill_tokens": 50,
+                "message_tokens": 120,
+                "output_tokens": 60,
+                "total_tokens": 680,
+                "description": "[工具调用] file_read"
+            },
+        ]
+        mock_agent.tracker.get_session_summary.return_value = {
+            "total_tokens": 1210,
+            "total_llm_calls": 2,
+        }
+
+        # Capture output
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            _show_run_stats(mock_agent, config)
+            output = captured_output.getvalue()
+
+            # Verify output contains expected elements (new 11-column format)
+            assert "Token Usage" in output
+            assert "ID" in output
+            assert "轮次" in output
+            assert "迭代" in output
+            assert "工具" in output
+            assert "系统" in output
+            assert "技能" in output
+            assert "消息" in output
+            assert "输出" in output
+            assert "总和" in output
+            assert "简要描述" in output
+            assert "1210" in output  # total tokens
+        finally:
+            sys.stdout = sys.__stdout__
 
     def test_show_stats_status(self, mock_agent):
         """Test _show_stats_status displays session stats."""
@@ -1472,6 +1542,44 @@ class TestShowHelp:
             assert mock_print.call_count > 0
 
 
+class TestShowIterationBreakdown:
+    """Tests for iteration breakdown display."""
+
+    def test_show_iteration_breakdown_with_data(self):
+        """Test _show_iteration_breakdown with iteration data."""
+        from nano_agent.cli.main import _show_iteration_breakdown
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.get_iteration_token_list.return_value = [
+            {"iteration_number": 1, "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+            {"iteration_number": 2, "prompt_tokens": 150, "completion_tokens": 75, "total_tokens": 225},
+        ]
+
+        with patch('builtins.print'):
+            _show_iteration_breakdown(agent)
+
+    def test_show_iteration_breakdown_empty(self):
+        """Test _show_iteration_breakdown with no data."""
+        from nano_agent.cli.main import _show_iteration_breakdown
+
+        agent = Mock()
+        agent.tracker = Mock()
+        agent.tracker.get_iteration_token_list.return_value = []
+
+        with patch('builtins.print'):
+            _show_iteration_breakdown(agent)
+
+    def test_show_iteration_breakdown_no_tracker(self):
+        """Test _show_iteration_breakdown when no tracker."""
+        from nano_agent.cli.main import _show_iteration_breakdown
+
+        agent = Mock(spec=[])  # No tracker attribute
+
+        with patch('builtins.print'):
+            _show_iteration_breakdown(agent)
+
+
 class TestShowContextComposition:
     """Tests for context composition display."""
 
@@ -1485,13 +1593,6 @@ class TestShowContextComposition:
             {"role": "system", "content": "System prompt"},
             {"role": "user", "content": "Hello"},
         ]
-        agent.tracker = Mock()
-        agent.tracker.get_iteration_history.return_value = []
-        agent.tracker.get_run_count.return_value = 0
-        agent.tracker.run_metrics = None
-        agent.tool_registry = Mock()
-        agent.tool_registry.get_all_schemas.return_value = []
-        agent.skill_prompt = ""  # 需要设置为字符串，否则 Mock 对象会导致 TypeError
 
         config = Config()
         config.llm = LLMConfig()

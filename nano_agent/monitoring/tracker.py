@@ -35,19 +35,15 @@ class MetricsTracker:
         # Accumulated session statistics
         self._session_total_tokens: int = 0
         self._session_total_iterations: int = 0
-        self._session_total_runs: int = 0  # 轮次计数（用户交互次数）
         self._session_total_llm_calls: int = 0  # LLM API 调用次数
         self._session_total_tool_calls: int = 0
         self._session_successful_tool_calls: int = 0
         self._session_failed_tool_calls: int = 0
         self._session_start_time: float = time.perf_counter()
 
-        # 每轮次的 token 消耗记录
-        self._run_token_history: list[int] = []  # 每轮的总 token 消耗
-
-        # 每轮次的迭代详情记录
-        # 格式: [{"run": 1, "iteration": 1, "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}, ...]
-        self._iteration_history: list[dict] = []
+        # Cross-run history for detailed usage display
+        self._run_history: list[RunMetrics] = []
+        self._run_counter: int = 0  # Global run counter (轮次)
 
         # Token analyzer
         self.token_analyzer = TokenAnalyzer()
@@ -62,10 +58,12 @@ class MetricsTracker:
         if not self.enabled:
             return
 
+        self._run_counter += 1
         self.run_metrics = RunMetrics(
             session_id=f"run_{uuid.uuid4().hex[:8]}",
             start_time=datetime.now(),
             user_input=user_input,
+            run_number=self._run_counter,  # Track run number
         )
         self._run_start_time = time.perf_counter()
 
@@ -90,24 +88,12 @@ class MetricsTracker:
             if i.llm_call
         )
 
+        # Store run in history for cross-run analysis
+        self._run_history.append(self.run_metrics)
+
         # Accumulate session statistics
         self._session_total_tokens += self.run_metrics.total_tokens
         self._session_total_iterations += len(self.run_metrics.iterations)
-        self._session_total_runs += 1  # 增加轮次计数
-        self._run_token_history.append(self.run_metrics.total_tokens)  # 记录每轮的 token 消耗
-
-        # 记录每轮的迭代详情
-        run_number = self._session_total_runs
-        for iteration in self.run_metrics.iterations:
-            if iteration.llm_call:
-                self._iteration_history.append({
-                    "run": run_number,
-                    "iteration": iteration.iteration_number,
-                    "prompt_tokens": iteration.llm_call.prompt_tokens,
-                    "completion_tokens": iteration.llm_call.completion_tokens,
-                    "total_tokens": iteration.llm_call.total_tokens,
-                })
-
         for iteration in self.run_metrics.iterations:
             for tool in iteration.tool_executions:
                 self._session_total_tool_calls += 1
@@ -258,51 +244,11 @@ class MetricsTracker:
             "session_duration_ms": round(session_duration, 2),
             "total_tokens": self._session_total_tokens,
             "total_iterations": self._session_total_iterations,
-            "total_runs": self._session_total_runs,
             "total_llm_calls": self._session_total_llm_calls,
             "total_tool_calls": self._session_total_tool_calls,
             "successful_tool_calls": self._session_successful_tool_calls,
             "failed_tool_calls": self._session_failed_tool_calls,
         }
-
-    def get_run_count(self) -> int:
-        """
-        Get the total number of runs (rounds) in this session.
-
-        Returns:
-            Total run count
-        """
-        return self._session_total_runs
-
-    def get_current_run_iterations(self) -> int:
-        """
-        Get the number of iterations in the current run.
-
-        Returns:
-            Iteration count in current run, 0 if no run active
-        """
-        if self.run_metrics:
-            return len(self.run_metrics.iterations)
-        return 0
-
-    def get_run_token_history(self) -> list[int]:
-        """
-        Get token consumption for each run (round).
-
-        Returns:
-            List of total tokens for each completed run
-        """
-        return self._run_token_history.copy()
-
-    def get_iteration_history(self) -> list[dict]:
-        """
-        Get iteration details for all runs.
-
-        Returns:
-            List of dictionaries with run, iteration, prompt_tokens,
-            completion_tokens, total_tokens
-        """
-        return self._iteration_history.copy()
 
     def get_last_iteration_tokens(self) -> dict[str, int]:
         """
@@ -357,6 +303,150 @@ class MetricsTracker:
         if not self.run_metrics:
             return {}
         return self.run_metrics.to_dict()
+
+    def get_detailed_usage(self) -> list[dict[str, Any]]:
+        """
+        Get detailed usage information across all runs.
+
+        Returns:
+            List of usage entries, one per iteration:
+            {
+                "id": 1,  # 行号
+                "run_number": 1,  # 轮次
+                "iteration_number": 1,  # 迭代
+                "tool_tokens": 100,  # 工具相关 token
+                "system_tokens": 50,  # 系统提示 token
+                "skill_tokens": 30,  # 技能提示 token
+                "message_tokens": 20,  # 对话消息 token
+                "output_tokens": 80,  # 输出 token
+                "total_tokens": 280,  # 总和
+                "description": "file_read, python_execute"  # 简要描述
+            }
+        """
+        result = []
+        row_id = 0
+        for run in self._run_history:
+            run_num = run.run_number
+            for iteration in run.iterations:
+                iter_num = iteration.iteration_number
+                if iteration.llm_call:
+                    row_id += 1
+                    llm = iteration.llm_call
+
+                    # 分析输入消息，分类 token 消耗
+                    token_breakdown = self._categorize_tokens_v2(
+                        llm.input_messages,
+                        llm.prompt_tokens,
+                        llm.completion_tokens,
+                        iteration.tool_executions
+                    )
+
+                    # 获取工具名称作为描述
+                    tool_names = [t.tool_name for t in iteration.tool_executions]
+                    if tool_names:
+                        description = f"[工具调用] {', '.join(tool_names)}"
+                    else:
+                        # 获取用户消息内容预览
+                        user_msg = self._get_user_message_preview(llm.input_messages)
+                        if user_msg:
+                            description = f"[用户] {user_msg}"
+                        else:
+                            description = "直接响应"
+
+                    result.append({
+                        "id": row_id,
+                        "run_number": run_num,
+                        "iteration_number": iter_num,
+                        "tool_tokens": token_breakdown["tool_tokens"],
+                        "system_tokens": token_breakdown["system_tokens"],
+                        "skill_tokens": token_breakdown["skill_tokens"],
+                        "message_tokens": token_breakdown["message_tokens"],
+                        "output_tokens": llm.completion_tokens,
+                        "total_tokens": llm.total_tokens,
+                        "description": description,
+                    })
+
+        return result
+
+    def _categorize_tokens_v2(
+        self,
+        input_messages: list[dict],
+        prompt_tokens: int,
+        completion_tokens: int,
+        tool_executions: list[ToolExecutionMetrics]
+    ) -> dict[str, int]:
+        """
+        Categorize token consumption by type for a single iteration.
+
+        Args:
+            input_messages: Input messages sent to LLM
+            prompt_tokens: Total prompt tokens
+            completion_tokens: Total completion tokens
+            tool_executions: Tool executions in this iteration
+
+        Returns:
+            Dict with tool_tokens, system_tokens, skill_tokens, message_tokens
+        """
+        # 分析输入消息
+        system_tokens = 0
+        tool_tokens = 0
+        message_tokens = 0
+        skill_tokens = 0
+
+        for msg in input_messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            tokens = len(content) // 4 if content else 0  # 粗略估算
+
+            if role == "system":
+                # 检查是否包含 skill 相关内容
+                if "## Skills" in content or "skill" in content.lower():
+                    skill_tokens += tokens
+                else:
+                    system_tokens += tokens
+            elif role == "tool":
+                tool_tokens += tokens
+            else:
+                message_tokens += tokens
+
+        # 按比例分配实际 prompt_tokens
+        total_estimated = system_tokens + tool_tokens + message_tokens + skill_tokens
+        if total_estimated > 0:
+            ratio = prompt_tokens / total_estimated
+            system_tokens = int(system_tokens * ratio)
+            tool_tokens = int(tool_tokens * ratio)
+            message_tokens = int(message_tokens * ratio)
+            skill_tokens = int(skill_tokens * ratio)
+
+        return {
+            "tool_tokens": tool_tokens,
+            "system_tokens": system_tokens,
+            "skill_tokens": skill_tokens,
+            "message_tokens": message_tokens,
+        }
+
+    def _get_user_message_preview(self, input_messages: list[dict], max_len: int = 20) -> str:
+        """
+        Get a preview of the last user message from input messages.
+
+        Args:
+            input_messages: Input messages sent to LLM
+            max_len: Maximum length of preview
+
+        Returns:
+            Preview string of user message, or empty string if not found
+        """
+        # Find the last user message
+        for msg in reversed(input_messages):
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if content:
+                    # Truncate and clean
+                    preview = content.replace("\n", " ")[:max_len]
+                    if len(content) > max_len:
+                        preview += "..."
+                    return preview
+        return ""
 
     def reset(self) -> None:
         """Reset the tracker."""

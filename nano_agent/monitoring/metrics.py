@@ -95,6 +95,7 @@ class RunMetrics:
     iterations: list[IterationMetrics] = field(default_factory=list)
     total_tokens: int = 0
     total_latency_ms: float = 0.0
+    run_number: int = 0  # 轮次编号 (全局递增)
 
     @property
     def total_iterations(self) -> int:
