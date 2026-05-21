@@ -1472,44 +1472,6 @@ class TestShowHelp:
             assert mock_print.call_count > 0
 
 
-class TestShowIterationBreakdown:
-    """Tests for iteration breakdown display."""
-
-    def test_show_iteration_breakdown_with_data(self):
-        """Test _show_iteration_breakdown with iteration data."""
-        from nano_agent.cli.main import _show_iteration_breakdown
-
-        agent = Mock()
-        agent.tracker = Mock()
-        agent.tracker.get_iteration_token_list.return_value = [
-            {"iteration_number": 1, "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
-            {"iteration_number": 2, "prompt_tokens": 150, "completion_tokens": 75, "total_tokens": 225},
-        ]
-
-        with patch('builtins.print'):
-            _show_iteration_breakdown(agent)
-
-    def test_show_iteration_breakdown_empty(self):
-        """Test _show_iteration_breakdown with no data."""
-        from nano_agent.cli.main import _show_iteration_breakdown
-
-        agent = Mock()
-        agent.tracker = Mock()
-        agent.tracker.get_iteration_token_list.return_value = []
-
-        with patch('builtins.print'):
-            _show_iteration_breakdown(agent)
-
-    def test_show_iteration_breakdown_no_tracker(self):
-        """Test _show_iteration_breakdown when no tracker."""
-        from nano_agent.cli.main import _show_iteration_breakdown
-
-        agent = Mock(spec=[])  # No tracker attribute
-
-        with patch('builtins.print'):
-            _show_iteration_breakdown(agent)
-
-
 class TestShowContextComposition:
     """Tests for context composition display."""
 
@@ -1523,6 +1485,13 @@ class TestShowContextComposition:
             {"role": "system", "content": "System prompt"},
             {"role": "user", "content": "Hello"},
         ]
+        agent.tracker = Mock()
+        agent.tracker.get_iteration_history.return_value = []
+        agent.tracker.get_run_count.return_value = 0
+        agent.tracker.run_metrics = None
+        agent.tool_registry = Mock()
+        agent.tool_registry.get_all_schemas.return_value = []
+        agent.skill_prompt = ""  # 需要设置为字符串，否则 Mock 对象会导致 TypeError
 
         config = Config()
         config.llm = LLMConfig()

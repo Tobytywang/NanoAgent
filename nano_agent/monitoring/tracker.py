@@ -42,6 +42,13 @@ class MetricsTracker:
         self._session_failed_tool_calls: int = 0
         self._session_start_time: float = time.perf_counter()
 
+        # 每轮次的 token 消耗记录
+        self._run_token_history: list[int] = []  # 每轮的总 token 消耗
+
+        # 每轮次的迭代详情记录
+        # 格式: [{"run": 1, "iteration": 1, "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}, ...]
+        self._iteration_history: list[dict] = []
+
         # Token analyzer
         self.token_analyzer = TokenAnalyzer()
 
@@ -87,6 +94,20 @@ class MetricsTracker:
         self._session_total_tokens += self.run_metrics.total_tokens
         self._session_total_iterations += len(self.run_metrics.iterations)
         self._session_total_runs += 1  # 增加轮次计数
+        self._run_token_history.append(self.run_metrics.total_tokens)  # 记录每轮的 token 消耗
+
+        # 记录每轮的迭代详情
+        run_number = self._session_total_runs
+        for iteration in self.run_metrics.iterations:
+            if iteration.llm_call:
+                self._iteration_history.append({
+                    "run": run_number,
+                    "iteration": iteration.iteration_number,
+                    "prompt_tokens": iteration.llm_call.prompt_tokens,
+                    "completion_tokens": iteration.llm_call.completion_tokens,
+                    "total_tokens": iteration.llm_call.total_tokens,
+                })
+
         for iteration in self.run_metrics.iterations:
             for tool in iteration.tool_executions:
                 self._session_total_tool_calls += 1
@@ -263,6 +284,25 @@ class MetricsTracker:
         if self.run_metrics:
             return len(self.run_metrics.iterations)
         return 0
+
+    def get_run_token_history(self) -> list[int]:
+        """
+        Get token consumption for each run (round).
+
+        Returns:
+            List of total tokens for each completed run
+        """
+        return self._run_token_history.copy()
+
+    def get_iteration_history(self) -> list[dict]:
+        """
+        Get iteration details for all runs.
+
+        Returns:
+            List of dictionaries with run, iteration, prompt_tokens,
+            completion_tokens, total_tokens
+        """
+        return self._iteration_history.copy()
 
     def get_last_iteration_tokens(self) -> dict[str, int]:
         """
