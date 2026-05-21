@@ -2054,6 +2054,41 @@ def _show_stats_status(agent, config) -> None:
     print("\n" + "=" * 50 + "\n")
 
 
+def _get_display_width(text: str) -> int:
+    """计算字符串的显示宽度（中文字符占 2 宽度）"""
+    width = 0
+    for char in text:
+        # 中文字符范围（CJK）
+        if '一' <= char <= '鿿':
+            width += 2
+        else:
+            width += 1
+    return width
+
+
+def _pad_to_width(text: str, width: int, align: str = 'left') -> str:
+    """将字符串填充到指定显示宽度
+
+    Args:
+        text: 原始字符串
+        width: 目标显示宽度
+        align: 'left' 或 'right' 或 'center'
+    """
+    current_width = _get_display_width(text)
+    if current_width >= width:
+        return text
+
+    padding = width - current_width
+    if align == 'left':
+        return text + ' ' * padding
+    elif align == 'right':
+        return ' ' * padding + text
+    else:  # center
+        left_pad = padding // 2
+        right_pad = padding - left_pad
+        return ' ' * left_pad + text + ' ' * right_pad
+
+
 def _show_context_composition(agent, config) -> None:
     """显示当前上下文组成（按轮次分组）"""
     if not hasattr(agent, 'memory'):
