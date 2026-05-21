@@ -2012,69 +2012,81 @@ def _handle_stats_command(agent, config, command: str) -> None:
 
 
 def _show_stats_status(agent, config) -> None:
-    """显示当前会话统计状态"""
+    """显示当前会话统计状态（Session 级别消耗）"""
     print("\n" + "=" * 50)
-    print("📊 会话统计")
+    print("📊 会话消耗统计")
     print("=" * 50)
-
-    def format_line(label: str, value: str, width: int = 18) -> str:
-        return f"  {label:<{width}} {value}"
 
     # 显示会话统计
     if hasattr(agent, 'tracker'):
         session_summary = agent.tracker.get_session_summary()
-        iteration_list = agent.tracker.get_iteration_token_list()
 
         if session_summary:
             # 消耗概览
-            print("\n## 消耗概览")
+            print("\n## 累计消耗")
             total_tokens = session_summary.get('total_tokens', 0)
             total_llm_calls = session_summary.get('total_llm_calls', 0)
+            total_iterations = session_summary.get('total_iterations', 0)
+            total_runs = session_summary.get('total_runs', 0)
 
-            print(format_line("总 Token:", str(total_tokens)))
-            print(format_line("总 LLM 调用:", str(total_llm_calls)))
-
-            # 当前 run 的轮次（更直观）
-            current_run_iterations = len(iteration_list)
-            if current_run_iterations > 0:
-                print(format_line("本轮迭代:", str(current_run_iterations)))
-                avg_per_iteration = total_tokens / current_run_iterations
-                print(format_line("平均每轮:", f"{avg_per_iteration:.0f} tokens"))
-
-            # 上下文状态（使用最后一轮的 prompt_tokens）
-            print("\n## 上下文状态")
-            last_tokens = agent.tracker.get_last_iteration_tokens()
-            if last_tokens:
-                current_context = last_tokens.get('prompt_tokens', 0)
-                print(format_line("当前上下文:", f"{current_context} tokens"))
-
-                if config and hasattr(config, 'llm'):
-                    context_length = config.llm.get_context_length()
-                    if context_length > 0:
-                        usage_percent = (current_context / context_length) * 100
-                        print(format_line("上下文限制:", f"{context_length} tokens"))
-                        print(format_line("使用率:", f"{usage_percent:.1f}%"))
-            else:
-                print("  当前上下文: 无数据")
+            print(f"  {_pad_to_width('总 Token:', 14)} {total_tokens}")
+            print(f"  {_pad_to_width('总 LLM 调用:', 14)} {total_llm_calls}")
+            print(f"  {_pad_to_width('总迭代次数:', 14)} {total_iterations}")
+            print(f"  {_pad_to_width('总轮次:', 14)} {total_runs}")
 
             # 工具调用
             print("\n## 工具调用")
-            print(format_line("总调用:", str(session_summary.get('total_tool_calls', 0))))
-            print(format_line("成功:", str(session_summary.get('successful_tool_calls', 0))))
-            print(format_line("失败:", str(session_summary.get('failed_tool_calls', 0))))
+            print(f"  {_pad_to_width('总调用:', 14)} {session_summary.get('total_tool_calls', 0)}")
+            print(f"  {_pad_to_width('成功:', 14)} {session_summary.get('successful_tool_calls', 0)}")
+            print(f"  {_pad_to_width('失败:', 14)} {session_summary.get('failed_tool_calls', 0)}")
         else:
             print("\n## 会话统计")
             print("  无数据。请先运行查询。")
 
     # 命令说明
     print("\n## 命令")
-    print("  /stats          - 显示完整统计")
-    print("  /stats context  - 显示当前上下文组成")
-    print("  /stats breakdown - 显示各轮消耗趋势")
-    print("  /stats on       - 启用每次对话后自动显示")
-    print("  /stats off      - 禁用自动显示")
+    print("  /stats        - 显示会话消耗统计")
+    print("  /stats on     - 启用每次对话后自动显示")
+    print("  /stats off    - 禁用自动显示")
+    print("  /usage        - 显示上下文消息组成")
+    print("  /context      - 显示上下文预算分析")
 
     print("\n" + "=" * 50 + "\n")
+
+
+def _get_display_width(text: str) -> int:
+    """计算字符串的显示宽度（中文字符占 2 宽度）"""
+    width = 0
+    for char in text:
+        # 中文字符范围（CJK）
+        if '一' <= char <= '鿿':
+            width += 2
+        else:
+            width += 1
+    return width
+
+
+def _pad_to_width(text: str, width: int, align: str = 'left') -> str:
+    """将字符串填充到指定显示宽度
+
+    Args:
+        text: 原始字符串
+        width: 目标显示宽度
+        align: 'left' 或 'right' 或 'center'
+    """
+    current_width = _get_display_width(text)
+    if current_width >= width:
+        return text
+
+    padding = width - current_width
+    if align == 'left':
+        return text + ' ' * padding
+    elif align == 'right':
+        return ' ' * padding + text
+    else:  # center
+        left_pad = padding // 2
+        right_pad = padding - left_pad
+        return ' ' * left_pad + text + ' ' * right_pad
 
 
 def _show_context_composition(agent, config) -> None:
@@ -2264,6 +2276,8 @@ def _show_help() -> None:
     print("  /config           查看配置")
     print("  /memory           查看记忆状态")
     print("  /stats            查看统计")
+    print("  /usage            显示上下文消息组成")
+    print("  /context          显示上下文预算分析")
     print("  /tools            查看工具列表")
     print("  /skills           查看技能列表")
     print("  /sessions         查看会话列表")
