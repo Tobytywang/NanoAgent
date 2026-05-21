@@ -692,6 +692,14 @@ def run_interactive(
                 _handle_stats_command(agent, config, user_input[6:].strip())
                 continue
 
+            if user_input.lower() == "/usage":
+                _show_context_composition(agent, config)
+                continue
+
+            if user_input.lower() == "/context":
+                _show_context_budget(agent, config)
+                continue
+
             if user_input.lower() == "/init":
                 _init_project(agent)
                 continue
