@@ -245,6 +245,7 @@ class MetricsTracker:
             "total_tokens": self._session_total_tokens,
             "total_iterations": self._session_total_iterations,
             "total_llm_calls": self._session_total_llm_calls,
+            "total_runs": self._run_counter,
             "total_tool_calls": self._session_total_tool_calls,
             "successful_tool_calls": self._session_successful_tool_calls,
             "failed_tool_calls": self._session_failed_tool_calls,
