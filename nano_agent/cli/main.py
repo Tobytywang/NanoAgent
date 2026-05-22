@@ -2129,14 +2129,18 @@ def _show_context_composition(agent, config) -> None:
     print("\n📊 Token 消耗详情:")
     print("─" * 100)
 
-    # 表头
-    # ID  轮次  迭代  工具[*]  系统[*]  技能[*]  消息[*]  输入  输出(工具)[*]  输出[*]  总和  简要描述
-    header = (
-        f"  {'ID':<4} {'轮次':<5} {'迭代':<5} "
-        f"{'工具[*]':<9} {'系统[*]':<9} {'技能[*]':<9} {'消息[*]':<9} "
-        f"{'输入':<7} {'输出(工具)[*]':<13} {'输出[*]':<9} {'总和':<7} 简要描述"
-    )
-    print(header)
+    # 表头 - 使用 _pad_to_width 处理中文对齐
+    print(f"  {_pad_to_width('ID', 4)} "
+          f"{_pad_to_width('轮次', 5)} "
+          f"{_pad_to_width('迭代', 5)} "
+          f"{_pad_to_width('工具[*]', 9)} "
+          f"{_pad_to_width('系统[*]', 9)} "
+          f"{_pad_to_width('技能[*]', 9)} "
+          f"{_pad_to_width('消息[*]', 9)} "
+          f"{_pad_to_width('输入', 7)} "
+          f"{_pad_to_width('输出(工具)[*]', 13)} "
+          f"{_pad_to_width('输出[*]', 9)} "
+          f"{_pad_to_width('总和', 7)} 简要描述")
     print("─" * 100)
 
     # 格式化函数：0 显示为 "-"
@@ -2145,14 +2149,17 @@ def _show_context_composition(agent, config) -> None:
 
     # 各行数据
     for row in detailed_usage:
-        line = (
-            f"  {row['id']:<4} {row['run_number']:<5} {row['iteration_number']:<5} "
-            f"{fmt_token(row['tool_tokens']):<9} {fmt_token(row['system_tokens']):<9} "
-            f"{fmt_token(row['skill_tokens']):<9} {fmt_token(row['message_tokens']):<9} "
-            f"{row['input_tokens']:<7} {fmt_token(row['output_tool_tokens']):<13} "
-            f"{fmt_token(row['output_text_tokens']):<9} {row['total_tokens']:<7} {row['description']}"
-        )
-        print(line)
+        print(f"  {_pad_to_width(str(row['id']), 4)} "
+              f"{_pad_to_width(str(row['run_number']), 5)} "
+              f"{_pad_to_width(str(row['iteration_number']), 5)} "
+              f"{_pad_to_width(fmt_token(row['tool_tokens']), 9)} "
+              f"{_pad_to_width(fmt_token(row['system_tokens']), 9)} "
+              f"{_pad_to_width(fmt_token(row['skill_tokens']), 9)} "
+              f"{_pad_to_width(fmt_token(row['message_tokens']), 9)} "
+              f"{_pad_to_width(str(row['input_tokens']), 7)} "
+              f"{_pad_to_width(fmt_token(row['output_tool_tokens']), 13)} "
+              f"{_pad_to_width(fmt_token(row['output_text_tokens']), 9)} "
+              f"{_pad_to_width(str(row['total_tokens']), 7)} {row['description']}")
 
     print("─" * 100)
 
@@ -2167,6 +2174,121 @@ def _show_context_composition(agent, config) -> None:
     print("  [*] 表示按字符长度比例估算")
     print("  - 表示该值为 0")
     print()
+
+
+def _show_context_budget(agent, config) -> None:
+    """显示上下文预算分析
+
+    显示发送给 LLM API 的实际内容分类：
+    - 系统提示：messages 中的 system 消息
+    - 工具定义：单独的 tools schema（不在 messages 里）
+    - 对话消息：messages 中的 user + assistant + tool 消息
+    - 技能提示：Skills 相关提示（如有）
+    """
+    if not hasattr(agent, 'memory'):
+        Console.print("Memory not available", style="warning")
+        return
+
+    messages = agent.memory.get_all()
+    if not messages:
+        Console.print("No messages in memory", style="info")
+        return
+
+    print("\n" + "=" * 50)
+    print("📊 上下文预算分析")
+    print("=" * 50)
+
+    # 获取上下文限制
+    context_limit = 8192
+    if config and hasattr(config, 'llm'):
+        context_limit = config.llm.get_context_length()
+
+    # 分析上下文组成
+    breakdown = {}
+
+    # 1. 系统提示（system 消息）
+    system_msg = next((m for m in messages if m.get("role") == "system"), None)
+    system_content = system_msg.get("content", "") if system_msg else ""
+    system_tokens = estimate_text_tokens(system_content) if system_content else 0
+    if system_tokens > 0:
+        breakdown["系统提示"] = system_tokens
+
+    # 2. 工具定义（tools schema，单独发送给 API）
+    tools_tokens = 0
+    if hasattr(agent, 'tool_registry'):
+        import json
+        tools_schema = agent.tool_registry.get_all_schemas()
+        if tools_schema:
+            tools_json = json.dumps(tools_schema, ensure_ascii=False)
+            tools_tokens = estimate_text_tokens(tools_json)
+            if tools_tokens > 0:
+                breakdown["工具定义"] = tools_tokens
+
+    # 3. 技能提示（如有）
+    if hasattr(agent, 'skill_prompt') and agent.skill_prompt:
+        skill_tokens = estimate_text_tokens(agent.skill_prompt)
+        if skill_tokens > 0:
+            breakdown["技能提示"] = skill_tokens
+
+    # 4. 对话消息（user + assistant + tool）
+    messages_tokens = 0
+    for msg in messages:
+        role = msg.get("role", "")
+        if role != "system":  # system 已单独处理
+            content = msg.get("content", "") or ""
+            messages_tokens += estimate_text_tokens(content) if content else 0
+
+    if messages_tokens > 0:
+        breakdown["对话消息"] = messages_tokens
+
+    # 计算总计
+    total_tokens = sum(breakdown.values())
+
+    # 显示列表
+    print("\n## Token 组成")
+    for name, tokens in breakdown.items():
+        print(f"  {_pad_to_width(name + ':', 12)} {tokens}")
+    print(f"  {_pad_to_width('总计:', 12)} {total_tokens}")
+
+    # 堆叠条形图
+    usage_pct = (total_tokens / context_limit * 100) if context_limit > 0 else 0
+    remaining_pct = 100 - usage_pct
+
+    print(f"\n## 占比分布 (限制: {context_limit})")
+
+    # 使用不同符号表示各部分
+    symbols = ["█", "▓", "▒", "░"]
+    bar_parts = []
+    legend_parts = []
+
+    for i, (name, tokens) in enumerate(breakdown.items()):
+        pct = (tokens / context_limit * 100) if context_limit > 0 else 0
+        # 计算该部分在 40 格中的长度
+        part_len = max(1, int(pct / 100 * 40)) if pct > 0 else 0
+        symbol = symbols[i % len(symbols)]
+        bar_parts.append(symbol * part_len)
+        legend_parts.append(f"{symbol} {name}: {pct:.1f}%")
+
+    # 剩余部分
+    remaining_len = max(0, 40 - sum(len(p) for p in bar_parts))
+    bar_parts.append("·" * remaining_len)
+    legend_parts.append(f"· 剩余: {remaining_pct:.1f}%")
+
+    # 打印堆叠条形图
+    stacked_bar = "".join(bar_parts)
+    print(f"\n  [{stacked_bar}] {usage_pct:.1f}%")
+
+    # 图例
+    for legend in legend_parts:
+        print(f"    {legend}")
+
+    # 建议
+    if usage_pct >= 80:
+        print("\n  建议: 使用 /clear 清空历史")
+    elif usage_pct >= 50:
+        print("\n  建议: 关注剩余预算")
+
+    print("\n" + "=" * 50 + "\n")
 
 
 def _show_iteration_breakdown(agent) -> None:
