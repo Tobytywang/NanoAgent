@@ -599,7 +599,7 @@ class TestStatsFunctions:
         _show_run_stats(mock_agent, config)
 
     def test_show_run_stats_with_detailed_usage(self, mock_agent):
-        """Test _show_run_stats displays detailed usage data."""
+        """Test _show_run_stats displays statistics in simple format."""
         from nano_agent.cli.main import _show_run_stats, GracefulExitManager
         import io
         import sys
@@ -609,36 +609,28 @@ class TestStatsFunctions:
         config.agent = AgentConfig()
         config.llm = LLMConfig()
 
-        # Mock detailed usage data (new format: one row per iteration)
-        mock_agent.tracker.get_detailed_usage.return_value = [
-            {
-                "id": 1,
-                "run_number": 1,
-                "iteration_number": 1,
-                "tool_tokens": 0,
-                "system_tokens": 300,
-                "skill_tokens": 50,
-                "message_tokens": 100,
-                "output_tokens": 80,
-                "total_tokens": 530,
-                "description": "[用户] 你好，请帮我..."
-            },
-            {
-                "id": 2,
-                "run_number": 1,
-                "iteration_number": 2,
-                "tool_tokens": 150,
-                "system_tokens": 300,
-                "skill_tokens": 50,
-                "message_tokens": 120,
-                "output_tokens": 60,
-                "total_tokens": 680,
-                "description": "[工具调用] file_read"
-            },
-        ]
+        # Mock current run summary
+        mock_agent.tracker.get_summary.return_value = {
+            "duration_ms": 1500,
+            "total_tokens": 530,
+            "total_iterations": 2,
+        }
+        # Mock session summary
         mock_agent.tracker.get_session_summary.return_value = {
+            "session_duration_ms": 3000,
             "total_tokens": 1210,
             "total_llm_calls": 2,
+        }
+        # Mock full report for tool calls
+        mock_agent.tracker.get_full_report.return_value = {
+            "iterations": [
+                {
+                    "tool_executions": [
+                        {"success": True, "tool_name": "file_read"},
+                        {"success": True, "tool_name": "python_execute"},
+                    ]
+                }
+            ]
         }
 
         # Capture output
@@ -649,18 +641,11 @@ class TestStatsFunctions:
             _show_run_stats(mock_agent, config)
             output = captured_output.getvalue()
 
-            # Verify output contains expected elements (new 11-column format)
-            assert "Token Usage" in output
-            assert "ID" in output
-            assert "轮次" in output
-            assert "迭代" in output
-            assert "工具" in output
-            assert "系统" in output
-            assert "技能" in output
-            assert "消息" in output
-            assert "输出" in output
-            assert "总和" in output
-            assert "简要描述" in output
+            # Verify output contains expected elements (simple format)
+            assert "本轮" in output
+            assert "总计" in output
+            assert "tokens" in output
+            assert "530" in output  # current tokens
             assert "1210" in output  # total tokens
         finally:
             sys.stdout = sys.__stdout__

@@ -1623,51 +1623,68 @@ def _show_run_stats(agent, config=None) -> None:
     if not hasattr(agent, 'tracker') or not agent.tracker.run_metrics:
         return
 
-    # 获取详细 usage 数据
-    detailed_usage = agent.tracker.get_detailed_usage()
+    # Get current run and session statistics
+    current_summary = agent.tracker.get_summary()
+    session_summary = agent.tracker.get_session_summary()
 
-    if not detailed_usage:
-        # 没有详细数据时，显示简化版本
-        current_summary = agent.tracker.get_summary()
-        session_summary = agent.tracker.get_session_summary()
-        if current_summary and session_summary:
-            current_duration = current_summary.get('duration_ms', 0) / 1000
-            current_tokens = current_summary.get('total_tokens', 0)
-            session_tokens = session_summary.get('total_tokens', 0)
-            print(f"\n📊 本轮: {current_tokens} tokens | {current_duration:.2f}s")
-            print(f"📊 总计: {session_tokens} tokens")
+    if not current_summary or not session_summary:
         return
 
-    # 按11列格式显示：【ID】【轮次】【迭代】【工具】【系统】【技能】【消息】【输出】【总和】【简要描述】
-    print("\n📊 Token Usage:")
-    print("─" * 100)
-    print(f"  {'ID':<4} {'轮次':<4} {'迭代':<4} {'工具':<6} {'系统':<6} {'技能':<6} {'消息':<6} {'输出':<6} {'总和':<6} {'简要描述'}")
-    print("─" * 100)
+    # 收集工具调用类型 (from current run)，合并相同工具
+    tool_counts = {}
+    full_report = agent.tracker.get_full_report()
+    if full_report and full_report.get('iterations'):
+        for iteration in full_report['iterations']:
+            for tool in iteration.get('tool_executions', []):
+                status = "✓" if tool['success'] else "✗"
+                key = (status, tool['tool_name'])
+                tool_counts[key] = tool_counts.get(key, 0) + 1
 
-    for entry in detailed_usage:
-        print(f"  {entry['id']:<4} {entry['run_number']:<4} {entry['iteration_number']:<4} "
-              f"{entry['tool_tokens']:<6} {entry['system_tokens']:<6} {entry['skill_tokens']:<6} "
-              f"{entry['message_tokens']:<6} {entry['output_tokens']:<6} {entry['total_tokens']:<6} "
-              f"{entry['description']}")
+    # 格式化工具调用显示
+    tool_types = []
+    for (status, name), count in tool_counts.items():
+        if count > 1:
+            tool_types.append(f"{status}{name}*{count}")
+        else:
+            tool_types.append(f"{status}{name}")
 
-    print("─" * 100)
+    # 本轮统计
+    current_duration = current_summary.get('duration_ms', 0) / 1000
+    current_tokens = current_summary.get('total_tokens', 0)
+    current_iterations = current_summary.get('total_iterations', 0)
 
     # 会话总计
-    session_summary = agent.tracker.get_session_summary()
-    if session_summary:
-        total_tokens = session_summary.get('total_tokens', 0)
-        total_llm_calls = session_summary.get('total_llm_calls', 0)
-        print(f"\n📊 总计: {total_tokens} tokens | LLM调用: {total_llm_calls} 次")
+    session_duration = session_summary.get('session_duration_ms', 0) / 1000
+    session_tokens = session_summary.get('total_tokens', 0)
+    session_llm_calls = session_summary.get('total_llm_calls', 0)
 
-        # 上下文使用率
-        if config and hasattr(config, 'llm'):
-            context_length = config.llm.get_context_length()
-            if context_length > 0:
-                usage_percent = (total_tokens / context_length) * 100
-                context_info = f"上下文: {usage_percent:.1f}% ({total_tokens}/{context_length})"
-                if usage_percent >= 80:
-                    context_info = f"⚠️ 上下文: {usage_percent:.1f}% (接近上限!)"
-                print(f"📊 {context_info}")
+    # 上下文使用率
+    context_info = ""
+    if config and hasattr(config, 'llm'):
+        context_length = config.llm.get_context_length()
+        usage_percent = (session_tokens / context_length) * 100 if context_length > 0 else 0
+        context_info = f" | 上下文: {usage_percent:.1f}% ({session_tokens}/{context_length})"
+
+        # 警告接近上限
+        if usage_percent >= 80:
+            context_info = f" | ⚠️ 上下文: {usage_percent:.1f}% (接近上限!)"
+
+    # 格式化输出 - 右对齐数字
+    def format_tokens(n: int) -> str:
+        return f"{n:>6}"
+
+    def format_duration(s: float) -> str:
+        return f"{s:>6.2f}"
+
+    def format_llm_calls(n: int) -> str:
+        return f"{n:>3}"
+
+    # 本轮
+    print(f"\n📊 本轮: {format_tokens(current_tokens)} tokens | {format_duration(current_duration)}s | LLM调用: {format_llm_calls(current_iterations)} | 迭代: {current_iterations}", end="")
+    if tool_types:
+        print(f" | 工具: {', '.join(tool_types)}", end="")
+    # 总计
+    print(f"\n📊 总计: {format_tokens(session_tokens)} tokens | {format_duration(session_duration)}s | LLM调用: {format_llm_calls(session_llm_calls)}{context_info}")
 
 
 def _show_monitoring_stats(agent) -> None:
