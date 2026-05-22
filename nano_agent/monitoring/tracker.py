@@ -342,17 +342,24 @@ class MetricsTracker:
                         iteration.tool_executions
                     )
 
-                    # 获取工具名称作为描述
+                    # 获取工具名称
                     tool_names = [t.tool_name for t in iteration.tool_executions]
-                    if tool_names:
-                        description = f"[工具调用] {', '.join(tool_names)}"
-                    else:
-                        # 获取用户消息内容预览
+
+                    # 描述逻辑：每个【轮次-迭代】的第一行显示用户消息
+                    # 迭代 1 是用户发起的，后续迭代是工具结果驱动的
+                    if iter_num == 1:
+                        # 第一迭代：显示用户消息
                         user_msg = self._get_user_message_preview(llm.input_messages)
                         if user_msg:
                             description = f"[用户] {user_msg}"
                         else:
-                            description = "直接响应"
+                            description = "[用户] 发起请求"
+                    else:
+                        # 后续迭代：显示工具调用
+                        if tool_names:
+                            description = f"[工具调用] {', '.join(tool_names)}"
+                        else:
+                            description = "[思考] 继续处理"
 
                     result.append({
                         "id": row_id,
