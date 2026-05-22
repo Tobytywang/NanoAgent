@@ -1574,6 +1574,7 @@ class TestShowContextComposition:
 
         agent = Mock()
         agent.tracker = Mock()
+        # Use new decoupled API: return raw data instead of description
         agent.tracker.get_detailed_usage.return_value = [
             {
                 "id": 1,
@@ -1588,7 +1589,10 @@ class TestShowContextComposition:
                 "output_tool_tokens": 30,
                 "output_text_tokens": 0,
                 "total_tokens": 1080,
-                "description": "[用户] 你好",
+                # Raw data for CLI to format description
+                "tool_names": [],
+                "input_messages": [{"role": "user", "content": "你好"}],
+                "output_text": "",
             },
         ]
 

@@ -604,7 +604,8 @@ class MetricsTracker:
             "output_text_tokens": output_text_tokens,
         }
 
-    def _get_user_message_preview(self, input_messages: list[dict], max_len: int = 20) -> str:
+    @staticmethod
+    def _get_user_message_preview(input_messages: list[dict], max_len: int = 20) -> str:
         """
         Get a preview of the last user message from input messages.
 
