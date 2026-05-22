@@ -2168,6 +2168,8 @@ def _show_context_composition(agent, config) -> None:
               f"{_pad_to_width(str(row['total_tokens']), 7)} {row['description']}")
 
     print("  " + "-" * 95)
+    print("  [*] 表示按字符长度比例估算")
+    print("  - 表示该值为 0")
 
     # 统计摘要
     total_input = sum(r['input_tokens'] for r in detailed_usage)
@@ -2180,10 +2182,6 @@ def _show_context_composition(agent, config) -> None:
     print(f"  {_pad_to_width('输出(工具):', 12)} {total_output_tool}")
     print(f"  {_pad_to_width('输出:', 12)} {total_output_text}")
     print(f"  {_pad_to_width('总和:', 12)} {total_all}")
-
-    print("\n## 说明")
-    print("  [*] 表示按字符长度比例估算")
-    print("  - 表示该值为 0")
 
     print("\n" + "=" * 50 + "\n")
 
