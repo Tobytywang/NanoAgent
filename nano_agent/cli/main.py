@@ -2117,8 +2117,8 @@ def _pad_to_width(text: str, width: int, align: str = 'left') -> str:
 def _show_context_composition(agent, config) -> None:
     """显示详细 usage 信息（11列格式）
 
-    显示格式：【ID】【轮次】【迭代】【工具】【系统】【技能】【消息】【输出】【总和】【简要描述】
-    每迭代一行
+    显示格式：【ID】【轮次-迭代】【工具-系统-技能-消息】【输出】【总和】【简要描述】
+    每迭代一行，每个【轮次-迭代】组的第一行是用户调用
     """
     if not hasattr(agent, 'tracker'):
         Console.print("Tracker not available", style="warning")
@@ -2130,37 +2130,51 @@ def _show_context_composition(agent, config) -> None:
         Console.print("No usage data available. Run a query first.", style="info")
         return
 
-    print("\n📊 Token Usage:")
-    print("─" * 100)
-    print(f"  {'ID':<4} {'轮次':<4} {'迭代':<4} {'工具':<6} {'系统':<6} {'技能':<6} {'消息':<6} {'输出':<6} {'总和':<6} {'简要描述'}")
-    print("─" * 100)
+    print("\n" + "=" * 50)
+    print("📊 Token Usage")
+    print("=" * 50)
+
+    # 表头
+    print("\n  ID   轮次-迭代    工具    系统    技能    消息    输出    总和    简要描述")
+    print("  " + "-" * 80)
 
     for entry in detailed_usage:
-        print(f"  {entry['id']:<4} {entry['run_number']:<4} {entry['iteration_number']:<4} "
-              f"{entry['tool_tokens']:<6} {entry['system_tokens']:<6} {entry['skill_tokens']:<6} "
-              f"{entry['message_tokens']:<6} {entry['output_tokens']:<6} {entry['total_tokens']:<6} "
+        # 格式化轮次-迭代
+        run_iter = f"{entry['run_number']}-{entry['iteration_number']}"
+
+        # 使用 _pad_to_width 处理中文对齐
+        print(f"  {_pad_to_width(str(entry['id']), 4)} "
+              f"{_pad_to_width(run_iter, 10)} "
+              f"{_pad_to_width(str(entry['tool_tokens']), 6)} "
+              f"{_pad_to_width(str(entry['system_tokens']), 6)} "
+              f"{_pad_to_width(str(entry['skill_tokens']), 6)} "
+              f"{_pad_to_width(str(entry['message_tokens']), 6)} "
+              f"{_pad_to_width(str(entry['output_tokens']), 6)} "
+              f"{_pad_to_width(str(entry['total_tokens']), 6)} "
               f"{entry['description']}")
 
-    print("─" * 100)
+    print("  " + "-" * 80)
 
     # 会话总计
     session_summary = agent.tracker.get_session_summary()
     if session_summary:
         total_tokens = session_summary.get('total_tokens', 0)
         total_llm_calls = session_summary.get('total_llm_calls', 0)
-        print(f"\n📊 总计: {total_tokens} tokens | LLM调用: {total_llm_calls} 次")
+
+        print(f"\n## 总计")
+        print(f"  {_pad_to_width('Token:', 12)} {total_tokens}")
+        print(f"  {_pad_to_width('LLM调用:', 12)} {total_llm_calls}")
 
         # 上下文使用率
         if config and hasattr(config, 'llm'):
             context_length = config.llm.get_context_length()
             if context_length > 0:
                 usage_percent = (total_tokens / context_length) * 100
-                context_info = f"上下文: {usage_percent:.1f}% ({total_tokens}/{context_length})"
+                print(f"  {_pad_to_width('上下文:', 12)} {usage_percent:.1f}% ({total_tokens}/{context_length})")
                 if usage_percent >= 80:
-                    context_info = f"⚠️ 上下文: {usage_percent:.1f}% (接近上限!)"
-                print(f"📊 {context_info}")
+                    print(f"  ⚠️ 上下文接近上限!")
 
-    print()
+    print("\n" + "=" * 50 + "\n")
 
 
 def _show_context_budget(agent, config) -> None:
