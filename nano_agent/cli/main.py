@@ -2136,7 +2136,15 @@ def _show_context_composition(agent, config) -> None:
 
     # 表头
     print("\n## 迭代详情")
-    print("  ID   轮次-迭代    工具    系统    技能    消息    输出    总和    简要描述")
+    print(f"  {_pad_to_width('ID', 4)} "
+          f"{_pad_to_width('轮次-迭代', 10)} "
+          f"{_pad_to_width('工具', 6)} "
+          f"{_pad_to_width('系统', 6)} "
+          f"{_pad_to_width('技能', 6)} "
+          f"{_pad_to_width('消息', 6)} "
+          f"{_pad_to_width('输出', 6)} "
+          f"{_pad_to_width('总和', 6)} "
+          f"简要描述")
     print("  " + "-" * 80)
 
     for entry in detailed_usage:
