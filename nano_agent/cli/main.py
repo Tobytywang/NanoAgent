@@ -2142,14 +2142,18 @@ def _show_context_composition(agent, config) -> None:
           f"{_pad_to_width('系统', 6)} "
           f"{_pad_to_width('技能', 6)} "
           f"{_pad_to_width('消息', 6)} "
+          f"{_pad_to_width('输入', 6)} "
           f"{_pad_to_width('输出', 6)} "
           f"{_pad_to_width('总和', 6)} "
           f"简要描述")
-    print("  " + "-" * 80)
+    print("  " + "-" * 90)
 
     for entry in detailed_usage:
         # 格式化轮次-迭代
         run_iter = f"{entry['run_number']}-{entry['iteration_number']}"
+
+        # 输入 = 工具 + 系统 + 技能 + 消息
+        input_tokens = entry['tool_tokens'] + entry['system_tokens'] + entry['skill_tokens'] + entry['message_tokens']
 
         # 使用 _pad_to_width 处理中文对齐
         print(f"  {_pad_to_width(str(entry['id']), 4)} "
@@ -2158,11 +2162,12 @@ def _show_context_composition(agent, config) -> None:
               f"{_pad_to_width(str(entry['system_tokens']), 6)} "
               f"{_pad_to_width(str(entry['skill_tokens']), 6)} "
               f"{_pad_to_width(str(entry['message_tokens']), 6)} "
+              f"{_pad_to_width(str(input_tokens), 6)} "
               f"{_pad_to_width(str(entry['output_tokens']), 6)} "
               f"{_pad_to_width(str(entry['total_tokens']), 6)} "
               f"{entry['description']}")
 
-    print("  " + "-" * 80)
+    print("  " + "-" * 90)
 
     # 会话总计
     session_summary = agent.tracker.get_session_summary()
