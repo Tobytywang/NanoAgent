@@ -1658,13 +1658,17 @@ def _show_run_stats(agent, config=None) -> None:
     session_duration = session_summary.get('session_duration_ms', 0) / 1000
     session_tokens = session_summary.get('total_tokens', 0)
     session_llm_calls = session_summary.get('total_llm_calls', 0)
+    session_runs = session_summary.get('total_runs', 0)
 
-    # 上下文使用率
+    # 上下文使用率 - 使用当前上下文大小（最后一次 LLM 输入）
     context_info = ""
     if config and hasattr(config, 'llm'):
         context_length = config.llm.get_context_length()
-        usage_percent = (session_tokens / context_length) * 100 if context_length > 0 else 0
-        context_info = f" | 上下文: {usage_percent:.1f}% ({session_tokens}/{context_length})"
+        # 获取当前上下文大小（最后一次 prompt_tokens）
+        last_tokens = agent.tracker.get_last_iteration_tokens()
+        current_context_tokens = last_tokens.get('prompt_tokens', 0) if last_tokens else 0
+        usage_percent = (current_context_tokens / context_length) * 100 if context_length > 0 and current_context_tokens > 0 else 0
+        context_info = f" | 上下文: {usage_percent:.1f}% ({current_context_tokens}/{context_length})"
 
         # 警告接近上限
         if usage_percent >= 80:
@@ -1684,8 +1688,8 @@ def _show_run_stats(agent, config=None) -> None:
     print(f"\n📊 本轮: {format_tokens(current_tokens)} tokens | {format_duration(current_duration)}s | LLM调用: {format_llm_calls(current_iterations)} | 迭代: {current_iterations}", end="")
     if tool_types:
         print(f" | 工具: {', '.join(tool_types)}", end="")
-    # 总计
-    print(f"\n📊 总计: {format_tokens(session_tokens)} tokens | {format_duration(session_duration)}s | LLM调用: {format_llm_calls(session_llm_calls)}{context_info}")
+    # 总计 - 添加轮次显示
+    print(f"\n📊 总计: {format_tokens(session_tokens)} tokens | {format_duration(session_duration)}s | LLM调用: {format_llm_calls(session_llm_calls)} | 轮次: {session_runs}{context_info}")
 
 
 def _show_monitoring_stats(agent) -> None:
