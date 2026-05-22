@@ -565,6 +565,7 @@ class ReActAgent(BaseAgent):
             input_messages=messages,
             output_text=response_text,
             tool_calls=tool_calls_dict,
+            tools_schema=tools_schema,
         )
 
         # Update token count

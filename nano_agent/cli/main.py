@@ -2115,11 +2115,7 @@ def _pad_to_width(text: str, width: int, align: str = 'left') -> str:
 
 
 def _show_context_composition(agent, config) -> None:
-    """显示详细 usage 信息（11列格式）
-
-    显示格式：【ID】【轮次-迭代】【工具-系统-技能-消息】【输出】【总和】【简要描述】
-    每迭代一行，每个【轮次-迭代】组的第一行是用户调用
-    """
+    """显示 Token 消耗详情（按轮次、迭代分类）"""
     if not hasattr(agent, 'tracker'):
         Console.print("Tracker not available", style="warning")
         return
@@ -2127,187 +2123,50 @@ def _show_context_composition(agent, config) -> None:
     detailed_usage = agent.tracker.get_detailed_usage()
 
     if not detailed_usage:
-        Console.print("No usage data available. Run a query first.", style="info")
+        Console.print("No usage data yet. Run a query first.", style="info")
         return
 
-    print("\n" + "=" * 50)
-    print("📊 Token Usage")
-    print("=" * 50)
+    print("\n📊 Token 消耗详情:")
+    print("─" * 100)
 
     # 表头
-    print("\n## 迭代详情")
-    print(f"  {_pad_to_width('ID', 4)} "
-          f"{_pad_to_width('轮次', 4)} "
-          f"{_pad_to_width('迭代', 4)} "
-          f"{_pad_to_width('工具', 6)} "
-          f"{_pad_to_width('系统', 6)} "
-          f"{_pad_to_width('技能', 6)} "
-          f"{_pad_to_width('消息', 6)} "
-          f"{_pad_to_width('输入', 6)} "
-          f"{_pad_to_width('输出', 6)} "
-          f"{_pad_to_width('总和', 6)} "
-          f"简要描述")
-    print("  " + "-" * 95)
+    # ID  轮次  迭代  工具[*]  系统[*]  技能[*]  消息[*]  输入  输出(工具)[*]  输出[*]  总和  简要描述
+    header = (
+        f"  {'ID':<4} {'轮次':<5} {'迭代':<5} "
+        f"{'工具[*]':<9} {'系统[*]':<9} {'技能[*]':<9} {'消息[*]':<9} "
+        f"{'输入':<7} {'输出(工具)[*]':<13} {'输出[*]':<9} {'总和':<7} 简要描述"
+    )
+    print(header)
+    print("─" * 100)
 
-    prev_run_number = None
-    for entry in detailed_usage:
-        # 输入 = 工具 + 系统 + 技能 + 消息
-        input_tokens = entry['tool_tokens'] + entry['system_tokens'] + entry['skill_tokens'] + entry['message_tokens']
+    # 格式化函数：0 显示为 "-"
+    def fmt_token(n: int) -> str:
+        return str(n) if n > 0 else "-"
 
-        # 轮次：只在第一次出现时显示
-        run_display = str(entry['run_number']) if entry['run_number'] != prev_run_number else ""
-        prev_run_number = entry['run_number']
+    # 各行数据
+    for row in detailed_usage:
+        line = (
+            f"  {row['id']:<4} {row['run_number']:<5} {row['iteration_number']:<5} "
+            f"{fmt_token(row['tool_tokens']):<9} {fmt_token(row['system_tokens']):<9} "
+            f"{fmt_token(row['skill_tokens']):<9} {fmt_token(row['message_tokens']):<9} "
+            f"{row['input_tokens']:<7} {fmt_token(row['output_tool_tokens']):<13} "
+            f"{fmt_token(row['output_text_tokens']):<9} {row['total_tokens']:<7} {row['description']}"
+        )
+        print(line)
 
-        # 使用 _pad_to_width 处理中文对齐
-        print(f"  {_pad_to_width(str(entry['id']), 4)} "
-              f"{_pad_to_width(run_display, 4)} "
-              f"{_pad_to_width(str(entry['iteration_number']), 4)} "
-              f"{_pad_to_width(str(entry['tool_tokens']), 6)} "
-              f"{_pad_to_width(str(entry['system_tokens']), 6)} "
-              f"{_pad_to_width(str(entry['skill_tokens']), 6)} "
-              f"{_pad_to_width(str(entry['message_tokens']), 6)} "
-              f"{_pad_to_width(str(input_tokens), 6)} "
-              f"{_pad_to_width(str(entry['output_tokens']), 6)} "
-              f"{_pad_to_width(str(entry['total_tokens']), 6)} "
-              f"{entry['description']}")
+    print("─" * 100)
 
-    print("  " + "-" * 95)
+    # 统计摘要
+    total_input = sum(r['input_tokens'] for r in detailed_usage)
+    total_output_tool = sum(r['output_tool_tokens'] for r in detailed_usage)
+    total_output_text = sum(r['output_text_tokens'] for r in detailed_usage)
+    total_all = sum(r['total_tokens'] for r in detailed_usage)
 
-    # 会话总计
-    session_summary = agent.tracker.get_session_summary()
-    if session_summary:
-        total_tokens = session_summary.get('total_tokens', 0)
-        total_llm_calls = session_summary.get('total_llm_calls', 0)
-
-        print(f"\n## 总计")
-        print(f"  {_pad_to_width('Token:', 12)} {total_tokens}")
-        print(f"  {_pad_to_width('LLM调用:', 12)} {total_llm_calls}")
-
-        # 上下文使用率
-        if config and hasattr(config, 'llm'):
-            context_length = config.llm.get_context_length()
-            if context_length > 0:
-                usage_percent = (total_tokens / context_length) * 100
-                print(f"  {_pad_to_width('上下文:', 12)} {usage_percent:.1f}% ({total_tokens}/{context_length})")
-                if usage_percent >= 80:
-                    print(f"  ⚠️ 上下文接近上限!")
-
-    print("\n" + "=" * 50 + "\n")
-
-
-def _show_context_budget(agent, config) -> None:
-    """显示上下文预算分析
-
-    显示发送给 LLM API 的实际内容分类：
-    - 系统提示：messages 中的 system 消息
-    - 工具定义：单独的 tools schema（不在 messages 里）
-    - 对话消息：messages 中的 user + assistant + tool 消息
-    - 技能提示：Skills 相关提示（如有）
-    """
-    if not hasattr(agent, 'memory'):
-        Console.print("Memory not available", style="warning")
-        return
-
-    messages = agent.memory.get_all()
-    if not messages:
-        Console.print("No messages in memory", style="info")
-        return
-
-    print("\n" + "=" * 50)
-    print("📊 上下文预算分析")
-    print("=" * 50)
-
-    # 获取上下文限制
-    context_limit = 8192
-    if config and hasattr(config, 'llm'):
-        context_limit = config.llm.get_context_length()
-
-    # 分析上下文组成
-    breakdown = {}
-
-    # 1. 系统提示（system 消息）
-    system_msg = next((m for m in messages if m.get("role") == "system"), None)
-    system_content = system_msg.get("content", "") if system_msg else ""
-    system_tokens = estimate_text_tokens(system_content) if system_content else 0
-    if system_tokens > 0:
-        breakdown["系统提示"] = system_tokens
-
-    # 2. 工具定义（tools schema，单独发送给 API）
-    tools_tokens = 0
-    if hasattr(agent, 'tool_registry'):
-        import json
-        tools_schema = agent.tool_registry.get_all_schemas()
-        if tools_schema:
-            tools_json = json.dumps(tools_schema, ensure_ascii=False)
-            tools_tokens = estimate_text_tokens(tools_json)
-            if tools_tokens > 0:
-                breakdown["工具定义"] = tools_tokens
-
-    # 3. 技能提示（如有）
-    if hasattr(agent, 'skill_prompt') and agent.skill_prompt:
-        skill_tokens = estimate_text_tokens(agent.skill_prompt)
-        if skill_tokens > 0:
-            breakdown["技能提示"] = skill_tokens
-
-    # 4. 对话消息（user + assistant + tool）
-    messages_tokens = 0
-    for msg in messages:
-        role = msg.get("role", "")
-        if role != "system":  # system 已单独处理
-            content = msg.get("content", "") or ""
-            messages_tokens += estimate_text_tokens(content) if content else 0
-
-    if messages_tokens > 0:
-        breakdown["对话消息"] = messages_tokens
-
-    # 计算总计
-    total_tokens = sum(breakdown.values())
-
-    # 显示列表
-    print("\n## Token 组成")
-    for name, tokens in breakdown.items():
-        print(f"  {_pad_to_width(name + ':', 12)} {tokens}")
-    print(f"  {_pad_to_width('总计:', 12)} {total_tokens}")
-
-    # 堆叠条形图
-    usage_pct = (total_tokens / context_limit * 100) if context_limit > 0 else 0
-    remaining_pct = 100 - usage_pct
-
-    print(f"\n## 占比分布 (限制: {context_limit})")
-
-    # 使用不同符号表示各部分
-    symbols = ["█", "▓", "▒", "░"]
-    bar_parts = []
-    legend_parts = []
-
-    for i, (name, tokens) in enumerate(breakdown.items()):
-        pct = (tokens / context_limit * 100) if context_limit > 0 else 0
-        # 计算该部分在 40 格中的长度
-        part_len = max(1, int(pct / 100 * 40)) if pct > 0 else 0
-        symbol = symbols[i % len(symbols)]
-        bar_parts.append(symbol * part_len)
-        legend_parts.append(f"{symbol} {name}: {pct:.1f}%")
-
-    # 剩余部分
-    remaining_len = max(0, 40 - sum(len(p) for p in bar_parts))
-    bar_parts.append("·" * remaining_len)
-    legend_parts.append(f"· 剩余: {remaining_pct:.1f}%")
-
-    # 打印堆叠条形图
-    stacked_bar = "".join(bar_parts)
-    print(f"\n  [{stacked_bar}] {usage_pct:.1f}%")
-
-    # 图例
-    for legend in legend_parts:
-        print(f"    {legend}")
-
-    # 建议
-    if usage_pct >= 80:
-        print("\n  建议: 使用 /clear 清空历史")
-    elif usage_pct >= 50:
-        print("\n  建议: 关注剩余预算")
-
-    print("\n" + "=" * 50 + "\n")
+    print(f"  总计: 输入 {total_input} | 输出(工具) {total_output_tool} | 输出 {total_output_text} | 总和 {total_all}")
+    print()
+    print("  [*] 表示按字符长度比例估算")
+    print("  - 表示该值为 0")
+    print()
 
 
 def _show_iteration_breakdown(agent) -> None:

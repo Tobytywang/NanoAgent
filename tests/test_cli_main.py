@@ -1569,7 +1569,7 @@ class TestShowContextComposition:
     """Tests for context composition display."""
 
     def test_show_context_composition(self):
-        """Test _show_context_composition shows detailed usage."""
+        """Test _show_context_composition shows token usage breakdown."""
         from nano_agent.cli.main import _show_context_composition
 
         agent = Mock()
@@ -1579,19 +1579,17 @@ class TestShowContextComposition:
                 "id": 1,
                 "run_number": 1,
                 "iteration_number": 1,
-                "tool_tokens": 0,
+                "tool_tokens": 500,
                 "system_tokens": 300,
                 "skill_tokens": 50,
-                "message_tokens": 100,
-                "output_tokens": 80,
-                "total_tokens": 530,
-                "description": "[用户] 你好，请帮我..."
+                "message_tokens": 200,
+                "input_tokens": 1050,
+                "output_tool_tokens": 30,
+                "output_text_tokens": 0,
+                "total_tokens": 1080,
+                "description": "[用户] 你好",
             },
         ]
-        agent.tracker.get_session_summary.return_value = {
-            "total_tokens": 530,
-            "total_llm_calls": 1,
-        }
 
         config = Config()
         config.llm = LLMConfig()
