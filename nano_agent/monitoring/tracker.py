@@ -48,6 +48,9 @@ class MetricsTracker:
         # Token analyzer
         self.token_analyzer = TokenAnalyzer()
 
+        # Base ratio for stable token estimation (固定部分使用基准比例)
+        self._base_ratio: float = 0.0
+
     def start_run(self, user_input: str) -> None:
         """
         Start tracking a new run.
@@ -397,14 +400,10 @@ class MetricsTracker:
         """
         Categorize token consumption by type for a single iteration.
 
-        分类逻辑：
-        - 工具 = 工具定义 schema（从 tools_schema）
-        - 系统 = 系统提示词（messages 中 role="system"，不含 Skills）
-        - 技能 = Skills 提示（messages 中 role="system" 含 Skills）
-        - 消息 = user + assistant + tool 结果（messages 中对应 role）
-        - 输入 = 以上四项之和（prompt_tokens 准确值）
-        - 输出(工具) = tool_calls 参数（从 completion_tokens 估算）
-        - 输出 = content 文本（从 completion_tokens 估算）
+        分类逻辑（改进版：固定部分使用基准比例，确保数值稳定）：
+        1. 第一次迭代时计算基准比例 = prompt_tokens / 总字符长度
+        2. 后续迭代使用基准比例计算固定部分（工具、系统、技能）
+        3. 消息部分 = prompt_tokens - 固定部分，确保总和准确
 
         Args:
             input_messages: Input messages sent to LLM
@@ -421,43 +420,56 @@ class MetricsTracker:
         import json
 
         # === 输入部分分类 ===
-        system_tokens = 0
-        tool_tokens = 0
-        message_tokens = 0
-        skill_tokens = 0
+        # 步骤1：准确计算各部分的字符长度
+        tool_chars = 0
+        system_chars = 0
+        skill_chars = 0
+        message_chars = 0
 
-        # 1. 工具定义 token（从 tools_schema）
+        # 1. 工具定义字符长度（从 tools_schema）
         if tools_schema:
             tools_json = json.dumps(tools_schema, ensure_ascii=False)
-            tool_tokens = len(tools_json) // 4  # 粗略估算
+            tool_chars = len(tools_json)
 
-        # 2. 分析 messages 中的各角色
+        # 2. 分析 messages 中各角色的字符长度
         for msg in input_messages:
             role = msg.get("role", "")
-            content = msg.get("content", "")
-            tokens = len(content) // 4 if content else 0  # 粗略估算
+            content = msg.get("content", "") or ""
+            chars = len(content)
 
             if role == "system":
                 # 检查是否包含 skill 相关内容
                 if "## Skills" in content or "skill" in content.lower():
-                    skill_tokens += tokens
+                    skill_chars += chars
                 else:
-                    system_tokens += tokens
+                    system_chars += chars
             elif role == "tool":
                 # 工具结果属于消息列
-                message_tokens += tokens
+                message_chars += chars
             else:
                 # user, assistant 等属于消息列
-                message_tokens += tokens
+                message_chars += chars
 
-        # 按比例分配实际 prompt_tokens
-        total_estimated = system_tokens + tool_tokens + message_tokens + skill_tokens
-        if total_estimated > 0:
-            ratio = prompt_tokens / total_estimated
-            system_tokens = int(system_tokens * ratio)
-            tool_tokens = int(tool_tokens * ratio)
-            message_tokens = int(message_tokens * ratio)
-            skill_tokens = int(skill_tokens * ratio)
+        # 步骤2：计算总字符长度
+        total_chars = tool_chars + system_chars + skill_chars + message_chars
+
+        if total_chars > 0:
+            # 步骤3：第一次迭代时计算并保存基准比例
+            if self._base_ratio == 0:
+                self._base_ratio = prompt_tokens / total_chars
+
+            # 步骤4：使用基准比例计算固定部分
+            tool_tokens = int(tool_chars * self._base_ratio)
+            system_tokens = int(system_chars * self._base_ratio)
+            skill_tokens = int(skill_chars * self._base_ratio)
+
+            # 步骤5：消息部分用减法，确保总和等于 prompt_tokens
+            message_tokens = prompt_tokens - tool_tokens - system_tokens - skill_tokens
+        else:
+            tool_tokens = 0
+            system_tokens = 0
+            skill_tokens = 0
+            message_tokens = prompt_tokens
 
         # === 输出部分分类 ===
         output_tool_tokens = 0
@@ -524,3 +536,4 @@ class MetricsTracker:
         self._current_iteration = None
         self._iteration_start_time = 0.0
         self._run_start_time = 0.0
+        self._base_ratio = 0.0  # 重置基准比例
