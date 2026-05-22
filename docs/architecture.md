@@ -199,6 +199,22 @@ class ExecutionResult:
     tool_calls: list[dict]
     tokens_used: int
     session_id: str
+
+@dataclass
+class LLMCallMetrics:
+    """LLM 调用指标（新增字段用于 Token 消耗分析）"""
+    timestamp: datetime
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    latency_ms: float
+    tool_calls_count: int
+    # Token 分类相关
+    input_messages: list[dict]    # 输入消息列表
+    output_text: str              # 输出文本
+    tool_calls: list[dict]        # 工具调用列表
+    tools_schema: list[dict]      # 工具定义 schema
 ```
 
 ---
@@ -365,3 +381,44 @@ NanoAgent 采用"关键决策确认"模型，平衡用户控制与 LLM 自动化
 - **BaseAgent/BaseLLM/BaseMemory/BaseTool**: 使用 ABC 定义抽象基类
 - **Registry 模式**: `ToolRegistry` 和 `SkillRegistry` 集中管理扩展
 - **策略模式**: 存储后端可插拔 (`FileStorage` / `SQLiteStorage`)
+
+### Token 消耗分析
+
+NanoAgent 提供精细化的 Token 消耗分析，支持三个层次的查看：
+
+| 命令 | 说明 | 数据来源 |
+|------|------|----------|
+| `/stats` | 会话级累计统计 | `tracker.get_session_summary()` |
+| `/usage` | 每次请求的 Token 明细 | `tracker.get_detailed_usage()` |
+| `/context` | 下次请求的预算分析 | `tracker.get_base_ratio()` + `get_base_chars()` |
+
+**Token 分类逻辑**：
+
+```
+LLM API 调用结构:
+  messages: [...]     → prompt_tokens (部分)
+  tools: [...]        → prompt_tokens (部分)
+  
+Token 分类:
+  工具定义 = tools_schema 字符长度 × base_ratio
+  系统提示 = system 消息字符长度 × base_ratio
+  技能提示 = skill 相关消息 × base_ratio
+  摘要     = [历史摘要] 消息 × base_ratio
+  消息     = prompt_tokens - 上述固定部分 (减法保证准确)
+  
+base_ratio = 第一次迭代的 prompt_tokens / 总字符长度
+```
+
+**关键方法**：
+- `tracker.get_detailed_usage()` - 返回每次迭代的详细 Token 分类
+- `tracker.get_base_ratio()` - 返回基准比例（用于稳定估算）
+- `tracker.get_base_chars()` - 返回基准字符长度（工具/系统/技能）
+
+### 历史压缩机制
+
+当对话历史过长时，`MessageCompressor` 会压缩旧消息：
+
+1. 保留最近 N 条消息
+2. 将旧消息压缩为 `[历史摘要]` 格式
+3. 压缩后的摘要以 `role="system"` 添加到消息列表
+4. `/usage` 的"摘要[*]"列专门显示这部分 Token

@@ -18,6 +18,7 @@ from ..agent.token_utils import estimate_text_tokens
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
+from ..monitoring.tracker import MetricsTracker
 from .console import Console
 from .scanner import ProjectScanner
 
@@ -2156,6 +2157,14 @@ def _show_context_composition(agent, config) -> None:
         run_display = str(row['run_number']) if row['run_number'] != prev_run_number else ""
         prev_run_number = row['run_number']
 
+        # Format description using tracker's static method
+        description = MetricsTracker.format_iteration_description(
+            iter_num=row['iteration_number'],
+            tool_names=row.get('tool_names', []),
+            input_messages=row.get('input_messages', []),
+            output_text=row.get('output_text', ''),
+        )
+
         print(f"  {_pad_to_width(str(row['id']), 4)} "
               f"{_pad_to_width(run_display, 5)} "
               f"{_pad_to_width(str(row['iteration_number']), 5)} "
@@ -2167,7 +2176,7 @@ def _show_context_composition(agent, config) -> None:
               f"{_pad_to_width(str(row['input_tokens']), 7)} "
               f"{_pad_to_width(fmt_token(row['output_tool_tokens']), 13)} "
               f"{_pad_to_width(fmt_token(row['output_text_tokens']), 9)} "
-              f"{_pad_to_width(str(row['total_tokens']), 7)} {row['description']}")
+              f"{_pad_to_width(str(row['total_tokens']), 7)} {description}")
 
     print("  " + "-" * 105)
     print("  [*] 表示按字符长度比例估算")
@@ -2177,12 +2186,10 @@ def _show_context_composition(agent, config) -> None:
     total_input = sum(r['input_tokens'] for r in detailed_usage)
     total_output_tool = sum(r['output_tool_tokens'] for r in detailed_usage)
     total_output_text = sum(r['output_text_tokens'] for r in detailed_usage)
-    total_summary = sum(r['summary_tokens'] for r in detailed_usage)
     total_all = sum(r['total_tokens'] for r in detailed_usage)
 
     print("\n## 总计")
     print(f"  {_pad_to_width('输入:', 12)} {total_input}")
-    print(f"  {_pad_to_width('摘要:', 12)} {total_summary}")
     print(f"  {_pad_to_width('输出(工具):', 12)} {total_output_tool}")
     print(f"  {_pad_to_width('输出:', 12)} {total_output_text}")
     print(f"  {_pad_to_width('总和:', 12)} {total_all}")
@@ -2194,10 +2201,11 @@ def _show_context_budget(agent, config) -> None:
     """显示上下文预算分析
 
     显示发送给 LLM API 的实际内容分类：
-    - 系统提示：messages 中的 system 消息
     - 工具定义：单独的 tools schema（不在 messages 里）
-    - 对话消息：messages 中的 user + assistant + tool 消息
+    - 系统提示：messages 中的 system 消息（不含摘要和技能）
     - 技能提示：Skills 相关提示（如有）
+    - 摘要：历史摘要（compressor 生成）
+    - 对话消息：messages 中的 user + assistant + tool 消息
     """
     if not hasattr(agent, 'memory'):
         Console.print("Memory not available", style="warning")
@@ -2217,51 +2225,91 @@ def _show_context_budget(agent, config) -> None:
     if config and hasattr(config, 'llm'):
         context_limit = config.llm.get_context_length()
 
-    # 分析上下文组成
+    # 从 tracker 获取最后一轮的数据（精确值）
     breakdown = {}
 
-    # 1. 系统提示（system 消息）
-    system_msg = next((m for m in messages if m.get("role") == "system"), None)
-    system_content = system_msg.get("content", "") if system_msg else ""
-    system_tokens = estimate_text_tokens(system_content) if system_content else 0
-    if system_tokens > 0:
-        breakdown["系统提示"] = system_tokens
+    if hasattr(agent, 'tracker') and agent.tracker:
+        detailed_usage = agent.tracker.get_detailed_usage()
+        if detailed_usage:
+            last_row = detailed_usage[-1]
 
-    # 2. 工具定义（tools schema，单独发送给 API）
-    tools_tokens = 0
-    if hasattr(agent, 'tool_registry'):
-        import json
-        tools_schema = agent.tool_registry.get_all_schemas()
-        if tools_schema:
-            tools_json = json.dumps(tools_schema, ensure_ascii=False)
-            tools_tokens = estimate_text_tokens(tools_json)
+            # 使用 tracker 保存的基准值（固定部分）
+            base_chars = agent.tracker.get_base_chars()
+            base_ratio = agent.tracker.get_base_ratio()
+
+            # 工具定义：使用基准值
+            tools_tokens = int(base_chars["tool_chars"] * base_ratio) if base_chars["tool_chars"] > 0 else 0
             if tools_tokens > 0:
                 breakdown["工具定义"] = tools_tokens
 
-    # 3. 技能提示（如有）
-    if hasattr(agent, 'skill_prompt') and agent.skill_prompt:
-        skill_tokens = estimate_text_tokens(agent.skill_prompt)
-        if skill_tokens > 0:
-            breakdown["技能提示"] = skill_tokens
+            # 系统提示：使用基准值
+            system_tokens = int(base_chars["system_chars"] * base_ratio) if base_chars["system_chars"] > 0 else 0
+            if system_tokens > 0:
+                breakdown["系统提示"] = system_tokens
 
-    # 4. 对话消息（user + assistant + tool）
-    messages_tokens = 0
-    for msg in messages:
-        role = msg.get("role", "")
-        if role != "system":  # system 已单独处理
-            content = msg.get("content", "") or ""
-            messages_tokens += estimate_text_tokens(content) if content else 0
+            # 技能提示：使用基准值
+            skill_tokens = int(base_chars["skill_chars"] * base_ratio) if base_chars["skill_chars"] > 0 else 0
+            if skill_tokens > 0:
+                breakdown["技能提示"] = skill_tokens
 
-    if messages_tokens > 0:
-        breakdown["对话消息"] = messages_tokens
+            # 摘要：使用最后一轮的实际值
+            summary_tokens = last_row.get("summary_tokens", 0)
+            if summary_tokens > 0:
+                breakdown["摘要"] = summary_tokens
+
+            # 对话消息：最后一轮的消息 + 输出(工具) + 输出文本
+            messages_tokens = last_row.get("message_tokens", 0) + last_row.get("output_tool_tokens", 0) + last_row.get("output_text_tokens", 0)
+            if messages_tokens > 0:
+                breakdown["对话消息"] = messages_tokens
+    else:
+        # 没有 tracker 数据时，使用估算
+        base_ratio = 0.25
+
+        # 工具定义
+        if hasattr(agent, 'tool_registry'):
+            import json
+            tools_schema = agent.tool_registry.get_all_schemas()
+            if tools_schema:
+                tools_json = json.dumps(tools_schema, ensure_ascii=False)
+                tools_tokens = int(len(tools_json) * base_ratio)
+                if tools_tokens > 0:
+                    breakdown["工具定义"] = tools_tokens
+
+        # 分析 system 消息
+        for msg in messages:
+            if msg.get("role") == "system":
+                content = msg.get("content", "") or ""
+                chars = len(content)
+                if chars == 0:
+                    continue
+
+                estimated_tokens = int(chars * base_ratio)
+                if content.startswith("[历史摘要]"):
+                    breakdown["摘要"] = breakdown.get("摘要", 0) + estimated_tokens
+                elif "## Skills" in content or "skill" in content.lower():
+                    breakdown["技能提示"] = breakdown.get("技能提示", 0) + estimated_tokens
+                else:
+                    breakdown["系统提示"] = breakdown.get("系统提示", 0) + estimated_tokens
+
+        # 对话消息
+        messages_tokens = 0
+        for msg in messages:
+            if msg.get("role") not in ("system",):
+                content = msg.get("content", "") or ""
+                messages_tokens += int(len(content) * base_ratio) if content else 0
+        if messages_tokens > 0:
+            breakdown["对话消息"] = messages_tokens
 
     # 计算总计
     total_tokens = sum(breakdown.values())
 
-    # 显示列表
+    # 显示列表（固定顺序，与 /usage 表格一致）
     print("\n## Token 组成")
-    for name, tokens in breakdown.items():
-        print(f"  {_pad_to_width(name + ':', 12)} {tokens}")
+    display_order = ["工具定义", "系统提示", "技能提示", "摘要", "对话消息"]
+    for name in display_order:
+        tokens = breakdown.get(name, 0)
+        display_val = tokens if tokens > 0 else "-"
+        print(f"  {_pad_to_width(name + ':', 12)} {display_val}")
     print(f"  {_pad_to_width('总计:', 12)} {total_tokens}")
 
     # 堆叠条形图

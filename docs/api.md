@@ -382,6 +382,11 @@ tracker.record_tool_execution(
 summary = tracker.get_summary()           # 当前运行
 session_summary = tracker.get_session_summary()  # 会话总计
 full_report = tracker.get_full_report()   # 完整报告
+detailed_usage = tracker.get_detailed_usage()  # 详细 Token 消耗列表
+
+# Token 估算相关
+base_ratio = tracker.get_base_ratio()     # 获取基准比例
+base_chars = tracker.get_base_chars()     # 获取基准字符长度
 ```
 
 ### 统计数据结构
@@ -396,6 +401,11 @@ class LLMCallMetrics:
     total_tokens: int
     latency_ms: float
     tool_calls_count: int
+    # 新增字段
+    input_messages: list[dict]    # 输入消息列表
+    output_text: str              # 输出文本
+    tool_calls: list[dict]        # 工具调用列表
+    tools_schema: list[dict]      # 工具定义 schema
 
 @dataclass
 class ToolExecutionMetrics:

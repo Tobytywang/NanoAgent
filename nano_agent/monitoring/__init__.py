@@ -8,6 +8,7 @@ from .metrics import (
     IterationMetrics,
     RunMetrics,
 )
+from .raw_data import RawLLMCallData, RawToolExecutionData
 from .tracker import MetricsTracker
 from .token_analyzer import (
     TokenCategory,
@@ -31,6 +32,8 @@ __all__ = [
     "ToolExecutionMetrics",
     "IterationMetrics",
     "RunMetrics",
+    "RawLLMCallData",
+    "RawToolExecutionData",
     "MetricsTracker",
     "TokenCategory",
     "TokenBreakdown",
