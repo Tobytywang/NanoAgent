@@ -2126,10 +2126,12 @@ def _show_context_composition(agent, config) -> None:
         Console.print("No usage data yet. Run a query first.", style="info")
         return
 
-    print("\n📊 Token 消耗详情:")
-    print("─" * 100)
+    print("\n" + "=" * 50)
+    print("📊 Token 消耗详情")
+    print("=" * 50)
 
     # 表头 - 使用 _pad_to_width 处理中文对齐
+    print("\n## 迭代明细")
     print(f"  {_pad_to_width('ID', 4)} "
           f"{_pad_to_width('轮次', 5)} "
           f"{_pad_to_width('迭代', 5)} "
@@ -2141,7 +2143,7 @@ def _show_context_composition(agent, config) -> None:
           f"{_pad_to_width('输出(工具)[*]', 13)} "
           f"{_pad_to_width('输出[*]', 9)} "
           f"{_pad_to_width('总和', 7)} 简要描述")
-    print("─" * 100)
+    print("  " + "-" * 95)
 
     # 格式化函数：0 显示为 "-"
     def fmt_token(n: int) -> str:
@@ -2161,7 +2163,7 @@ def _show_context_composition(agent, config) -> None:
               f"{_pad_to_width(fmt_token(row['output_text_tokens']), 9)} "
               f"{_pad_to_width(str(row['total_tokens']), 7)} {row['description']}")
 
-    print("─" * 100)
+    print("  " + "-" * 95)
 
     # 统计摘要
     total_input = sum(r['input_tokens'] for r in detailed_usage)
@@ -2169,11 +2171,17 @@ def _show_context_composition(agent, config) -> None:
     total_output_text = sum(r['output_text_tokens'] for r in detailed_usage)
     total_all = sum(r['total_tokens'] for r in detailed_usage)
 
-    print(f"  总计: 输入 {total_input} | 输出(工具) {total_output_tool} | 输出 {total_output_text} | 总和 {total_all}")
-    print()
+    print("\n## 总计")
+    print(f"  {_pad_to_width('输入:', 12)} {total_input}")
+    print(f"  {_pad_to_width('输出(工具):', 12)} {total_output_tool}")
+    print(f"  {_pad_to_width('输出:', 12)} {total_output_text}")
+    print(f"  {_pad_to_width('总和:', 12)} {total_all}")
+
+    print("\n## 说明")
     print("  [*] 表示按字符长度比例估算")
     print("  - 表示该值为 0")
-    print()
+
+    print("\n" + "=" * 50 + "\n")
 
 
 def _show_context_budget(agent, config) -> None:
