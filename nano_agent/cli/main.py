@@ -2137,7 +2137,8 @@ def _show_context_composition(agent, config) -> None:
     # 表头
     print("\n## 迭代详情")
     print(f"  {_pad_to_width('ID', 4)} "
-          f"{_pad_to_width('轮次-迭代', 10)} "
+          f"{_pad_to_width('轮次', 4)} "
+          f"{_pad_to_width('迭代', 4)} "
           f"{_pad_to_width('工具', 6)} "
           f"{_pad_to_width('系统', 6)} "
           f"{_pad_to_width('技能', 6)} "
@@ -2146,18 +2147,21 @@ def _show_context_composition(agent, config) -> None:
           f"{_pad_to_width('输出', 6)} "
           f"{_pad_to_width('总和', 6)} "
           f"简要描述")
-    print("  " + "-" * 90)
+    print("  " + "-" * 95)
 
+    prev_run_number = None
     for entry in detailed_usage:
-        # 格式化轮次-迭代
-        run_iter = f"{entry['run_number']}-{entry['iteration_number']}"
-
         # 输入 = 工具 + 系统 + 技能 + 消息
         input_tokens = entry['tool_tokens'] + entry['system_tokens'] + entry['skill_tokens'] + entry['message_tokens']
 
+        # 轮次：只在第一次出现时显示
+        run_display = str(entry['run_number']) if entry['run_number'] != prev_run_number else ""
+        prev_run_number = entry['run_number']
+
         # 使用 _pad_to_width 处理中文对齐
         print(f"  {_pad_to_width(str(entry['id']), 4)} "
-              f"{_pad_to_width(run_iter, 10)} "
+              f"{_pad_to_width(run_display, 4)} "
+              f"{_pad_to_width(str(entry['iteration_number']), 4)} "
               f"{_pad_to_width(str(entry['tool_tokens']), 6)} "
               f"{_pad_to_width(str(entry['system_tokens']), 6)} "
               f"{_pad_to_width(str(entry['skill_tokens']), 6)} "
@@ -2167,7 +2171,7 @@ def _show_context_composition(agent, config) -> None:
               f"{_pad_to_width(str(entry['total_tokens']), 6)} "
               f"{entry['description']}")
 
-    print("  " + "-" * 90)
+    print("  " + "-" * 95)
 
     # 会话总计
     session_summary = agent.tracker.get_session_summary()
