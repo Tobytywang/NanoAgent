@@ -2163,6 +2163,7 @@ def _show_context_composition(agent, config) -> None:
             tool_names=row.get('tool_names', []),
             input_messages=row.get('input_messages', []),
             output_text=row.get('output_text', ''),
+            skipped_tool_calls=row.get('skipped_tool_calls', []),
         )
 
         print(f"  {_pad_to_width(str(row['id']), 4)} "

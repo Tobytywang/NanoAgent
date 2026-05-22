@@ -12,6 +12,7 @@ from .metrics import (
     ToolExecutionMetrics,
     IterationMetrics,
     RunMetrics,
+    SkippedToolCall,
 )
 from .raw_data import RawLLMCallData, RawToolExecutionData
 from .token_analyzer import TokenAnalyzer
@@ -312,6 +313,37 @@ class MetricsTracker:
             )
         )
 
+    def record_skipped_tool_call(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        reason: str,
+    ) -> None:
+        """
+        Record a skipped tool call with reason.
+
+        This is called when a tool call is not executed due to various reasons:
+        - routing_limit: Reached max tools limit
+        - merged: Merged with another tool call
+        - duplicate: Detected as duplicate call
+        - budget_exceeded: Token budget exceeded
+
+        Args:
+            tool_name: The tool name that was skipped
+            arguments: The arguments for the tool call
+            reason: The reason why the tool call was skipped
+        """
+        if not self.enabled or not self._current_iteration:
+            return
+
+        self._current_iteration.skipped_tool_calls.append(
+            SkippedToolCall(
+                tool_name=tool_name,
+                arguments=arguments,
+                reason=reason,
+            )
+        )
+
     def get_summary(self) -> dict[str, Any]:
         """
         Get a summary of the current run.
@@ -452,6 +484,12 @@ class MetricsTracker:
                     # 获取工具名称
                     tool_names = [t.tool_name for t in iteration.tool_executions]
 
+                    # 获取跳过的工具调用
+                    skipped_calls = [
+                        {"tool_name": s.tool_name, "reason": s.reason}
+                        for s in iteration.skipped_tool_calls
+                    ]
+
                     result.append({
                         "id": row_id,
                         "run_number": run_num,
@@ -469,6 +507,7 @@ class MetricsTracker:
                         "tool_names": tool_names,
                         "input_messages": llm.input_messages,
                         "output_text": llm.output_text,
+                        "skipped_tool_calls": skipped_calls,
                     })
 
         return result
@@ -657,6 +696,7 @@ class MetricsTracker:
         tool_names: list[str],
         input_messages: list[dict],
         output_text: str,
+        skipped_tool_calls: list[dict] | None = None,
     ) -> str:
         """
         Format description for an iteration (for CLI layer to use).
@@ -666,10 +706,13 @@ class MetricsTracker:
             tool_names: List of tool names executed in this iteration
             input_messages: Input messages for this iteration
             output_text: Output text from LLM
+            skipped_tool_calls: List of skipped tool calls with reasons
 
         Returns:
             Formatted description string
         """
+        skipped_tool_calls = skipped_tool_calls or []
+
         if iter_num == 1:
             # First iteration: show user message
             user_msg = MetricsTracker._get_user_message_preview(input_messages)
@@ -678,8 +721,14 @@ class MetricsTracker:
             else:
                 return "[用户] 发起请求"
         else:
-            # Subsequent iterations: based on tool calls or output
-            if tool_names:
+            # Subsequent iterations: check skipped first, then tool calls, then output
+            if skipped_tool_calls:
+                # Show skipped tool calls with reason
+                skipped_names = [s["tool_name"] for s in skipped_tool_calls]
+                reasons = set(s["reason"] for s in skipped_tool_calls)
+                reason_str = ", ".join(reasons)
+                return f"[跳过] {', '.join(skipped_names)} ({reason_str})"
+            elif tool_names:
                 return f"[工具调用] {', '.join(tool_names)}"
             elif output_text:
                 # No tool calls, has output text -> final answer

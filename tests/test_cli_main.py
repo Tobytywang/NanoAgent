@@ -1593,6 +1593,7 @@ class TestShowContextComposition:
                 "tool_names": [],
                 "input_messages": [{"role": "user", "content": "你好"}],
                 "output_text": "",
+                "skipped_tool_calls": [],
             },
         ]
 

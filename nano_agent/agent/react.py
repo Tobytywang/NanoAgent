@@ -458,6 +458,14 @@ class ReActAgent(BaseAgent):
                     if tool_calls_in_round >= self._routing_max_tools:
                         if self.verbose:
                             print(f"[Router] Reached max tools limit: {self._routing_max_tools}")
+                        # Record all remaining tool calls as skipped
+                        remaining_calls = merged_tool_calls[merged_tool_calls.index(tool_call):]
+                        for skipped_call in remaining_calls:
+                            self.tracker.record_skipped_tool_call(
+                                skipped_call.name,
+                                skipped_call.arguments,
+                                "routing_limit"
+                            )
                         # Force summarize with current info
                         response = self._force_summarize()
                         self.tracker.end_run(response)
@@ -628,6 +636,12 @@ class ReActAgent(BaseAgent):
         """
         # Check for duplicate tool calls (v0.7.8)
         if not dry_run and self._check_duplicate_tool_call(tool_call):
+            # Record as skipped
+            self.tracker.record_skipped_tool_call(
+                tool_call.name,
+                tool_call.arguments,
+                "duplicate"
+            )
             # Return cached result or empty result
             cached_result = self.cache.get_cached_result(tool_call.name, tool_call.arguments)
             if cached_result is not None:

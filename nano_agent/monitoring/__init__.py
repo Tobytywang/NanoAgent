@@ -7,6 +7,7 @@ from .metrics import (
     ToolExecutionMetrics,
     IterationMetrics,
     RunMetrics,
+    SkippedToolCall,
 )
 from .raw_data import RawLLMCallData, RawToolExecutionData
 from .tracker import MetricsTracker
@@ -32,6 +33,7 @@ __all__ = [
     "ToolExecutionMetrics",
     "IterationMetrics",
     "RunMetrics",
+    "SkippedToolCall",
     "RawLLMCallData",
     "RawToolExecutionData",
     "MetricsTracker",
