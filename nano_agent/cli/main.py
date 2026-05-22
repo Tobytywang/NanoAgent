@@ -2115,100 +2115,57 @@ def _pad_to_width(text: str, width: int, align: str = 'left') -> str:
 
 
 def _show_context_composition(agent, config) -> None:
-    """显示当前上下文组成（按轮次分组）"""
-    if not hasattr(agent, 'memory'):
-        Console.print("Memory not available", style="warning")
+    """显示 Token 消耗详情（按轮次、迭代分类）"""
+    if not hasattr(agent, 'tracker'):
+        Console.print("Tracker not available", style="warning")
         return
 
-    messages = agent.memory.get_all()
-    if not messages:
-        Console.print("No messages in memory", style="info")
+    detailed_usage = agent.tracker.get_detailed_usage()
+
+    if not detailed_usage:
+        Console.print("No usage data yet. Run a query first.", style="info")
         return
 
-    print("\n📊 当前上下文组成 (准备发送给 LLM 的内容):")
-    print("─" * 70)
+    print("\n📊 Token 消耗详情:")
+    print("─" * 100)
 
-    # 按轮次分组消息
-    # 轮次定义: user + assistant(tool_calls) + tool(s) = 一轮
-    rounds = []
-    current_round = {"messages": [], "chars": 0, "tokens": 0}
+    # 表头
+    # ID  轮次  迭代  工具[*]  系统[*]  技能[*]  消息[*]  输入  输出(工具)[*]  输出[*]  总和  简要描述
+    header = (
+        f"  {'ID':<4} {'轮次':<5} {'迭代':<5} "
+        f"{'工具[*]':<9} {'系统[*]':<9} {'技能[*]':<9} {'消息[*]':<9} "
+        f"{'输入':<7} {'输出(工具)[*]':<13} {'输出[*]':<9} {'总和':<7} 简要描述"
+    )
+    print(header)
+    print("─" * 100)
 
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-        chars = len(content) if isinstance(content, str) else 0
-        tokens = estimate_text_tokens(content) if content else 0
+    # 格式化函数：0 显示为 "-"
+    def fmt_token(n: int) -> str:
+        return str(n) if n > 0 else "-"
 
-        current_round["messages"].append({
-            "role": role,
-            "content": content,
-            "chars": chars,
-            "tokens": tokens,
-        })
-        current_round["chars"] += chars
-        current_round["tokens"] += tokens
+    # 各行数据
+    for row in detailed_usage:
+        line = (
+            f"  {row['id']:<4} {row['run_number']:<5} {row['iteration_number']:<5} "
+            f"{fmt_token(row['tool_tokens']):<9} {fmt_token(row['system_tokens']):<9} "
+            f"{fmt_token(row['skill_tokens']):<9} {fmt_token(row['message_tokens']):<9} "
+            f"{row['input_tokens']:<7} {fmt_token(row['output_tool_tokens']):<13} "
+            f"{fmt_token(row['output_text_tokens']):<9} {row['total_tokens']:<7} {row['description']}"
+        )
+        print(line)
 
-        # 一轮结束的判断：
-        # - user 消息后遇到 assistant（无 tool_calls）或新的 user
-        # - assistant(tool_calls) + 所有 tool 结果后遇到新的 user 或 assistant
-        if role == "user":
-            # 如果当前轮已有内容，保存并开始新轮
-            if len(current_round["messages"]) > 1:
-                rounds.append(current_round)
-                current_round = {"messages": [], "chars": 0, "tokens": 0}
+    print("─" * 100)
 
-    # 保存最后一轮
-    if current_round["messages"]:
-        rounds.append(current_round)
+    # 统计摘要
+    total_input = sum(r['input_tokens'] for r in detailed_usage)
+    total_output_tool = sum(r['output_tool_tokens'] for r in detailed_usage)
+    total_output_text = sum(r['output_text_tokens'] for r in detailed_usage)
+    total_all = sum(r['total_tokens'] for r in detailed_usage)
 
-    # 显示按轮次分组的统计
-    print(f"\n  共 {len(rounds)} 轮对话，{len(messages)} 条消息")
-    print("─" * 70)
-
-    total_chars = 0
-    total_tokens = 0
-
-    for i, round_data in enumerate(rounds, 1):
-        round_chars = round_data["chars"]
-        round_tokens = round_data["tokens"]
-        msg_count = len(round_data["messages"])
-
-        total_chars += round_chars
-        total_tokens += round_tokens
-
-        # 显示该轮摘要
-        roles = [m["role"] for m in round_data["messages"]]
-        role_summary = " → ".join(roles)
-
-        print(f"  轮次 {i}: {msg_count} 条消息 ({role_summary})")
-        print(f"         {round_chars} chars, {round_tokens} tokens")
-
-        # 显示该轮的消息详情
-        for j, msg in enumerate(round_data["messages"], 1):
-            role = msg["role"]
-            chars = msg["chars"]
-            tokens = msg["tokens"]
-            content = msg["content"]
-
-            # 内容预览
-            preview = content[:25] + "..." if len(content) > 25 else content
-            preview = preview.replace("\n", " ")
-
-            indent = "    " if j > 1 else "    "
-            print(f"{indent}{j}. {role:<10} {chars:>6} chars, {tokens:>4} tokens  {preview}")
-
-        print()
-
-    print("─" * 70)
-    print(f"  总计: {total_chars} chars, {total_tokens} tokens")
-
-    # 上下文使用率
-    if config and hasattr(config, 'llm'):
-        context_length = config.llm.get_context_length()
-        if context_length > 0:
-            usage_percent = (total_tokens / context_length) * 100
-            print(f"\n  上下文使用率: {usage_percent:.1f}% ({total_tokens} / {context_length})")
-
+    print(f"  总计: 输入 {total_input} | 输出(工具) {total_output_tool} | 输出 {total_output_text} | 总和 {total_all}")
+    print()
+    print("  [*] 表示按字符长度比例估算")
+    print("  - 表示该值为 0")
     print()
 
 

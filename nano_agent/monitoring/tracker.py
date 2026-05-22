@@ -136,6 +136,7 @@ class MetricsTracker:
         input_messages: list[dict] | None = None,
         output_text: str = "",
         tool_calls: list[dict] | None = None,
+        tools_schema: list[dict] | None = None,
     ) -> None:
         """
         Record an LLM call.
@@ -149,6 +150,7 @@ class MetricsTracker:
             input_messages: The input messages sent to LLM
             output_text: The output text from LLM
             tool_calls: The tool calls from LLM response
+            tools_schema: The tool definitions schema sent to LLM
         """
         if not self.enabled or not self._current_iteration:
             return
@@ -164,6 +166,7 @@ class MetricsTracker:
             input_messages=input_messages or [],
             output_text=output_text,
             tool_calls=tool_calls or [],
+            tools_schema=tools_schema or [],
         )
 
         # Increment LLM call count
@@ -315,13 +318,15 @@ class MetricsTracker:
                 "id": 1,  # 行号
                 "run_number": 1,  # 轮次
                 "iteration_number": 1,  # 迭代
-                "tool_tokens": 100,  # 工具相关 token
+                "tool_tokens": 100,  # 工具定义 token
                 "system_tokens": 50,  # 系统提示 token
                 "skill_tokens": 30,  # 技能提示 token
-                "message_tokens": 20,  # 对话消息 token
-                "output_tokens": 80,  # 输出 token
+                "message_tokens": 20,  # user + assistant + tool 结果 token
+                "input_tokens": 200,  # prompt_tokens（准确值）
+                "output_tool_tokens": 30,  # tool_calls 参数 token
+                "output_text_tokens": 50,  # content 文本 token
                 "total_tokens": 280,  # 总和
-                "description": "file_read, python_execute"  # 简要描述
+                "description": "[用户] xxx"  # 简要描述
             }
         """
         result = []
@@ -339,20 +344,29 @@ class MetricsTracker:
                         llm.input_messages,
                         llm.prompt_tokens,
                         llm.completion_tokens,
-                        iteration.tool_executions
+                        llm.tools_schema,
+                        llm.tool_calls,
+                        llm.output_text,
                     )
 
-                    # 获取工具名称作为描述
+                    # 获取工具名称
                     tool_names = [t.tool_name for t in iteration.tool_executions]
-                    if tool_names:
-                        description = f"[工具调用] {', '.join(tool_names)}"
-                    else:
-                        # 获取用户消息内容预览
+
+                    # 描述逻辑：每个【轮次-迭代】的第一行显示用户消息
+                    # 迭代 1 是用户发起的，后续迭代是工具结果驱动的
+                    if iter_num == 1:
+                        # 第一迭代：显示用户消息
                         user_msg = self._get_user_message_preview(llm.input_messages)
                         if user_msg:
                             description = f"[用户] {user_msg}"
                         else:
-                            description = "直接响应"
+                            description = "[用户] 发起请求"
+                    else:
+                        # 后续迭代：显示工具调用
+                        if tool_names:
+                            description = f"[工具调用] {', '.join(tool_names)}"
+                        else:
+                            description = "[思考] 继续处理"
 
                     result.append({
                         "id": row_id,
@@ -362,7 +376,9 @@ class MetricsTracker:
                         "system_tokens": token_breakdown["system_tokens"],
                         "skill_tokens": token_breakdown["skill_tokens"],
                         "message_tokens": token_breakdown["message_tokens"],
-                        "output_tokens": llm.completion_tokens,
+                        "input_tokens": llm.prompt_tokens,
+                        "output_tool_tokens": token_breakdown["output_tool_tokens"],
+                        "output_text_tokens": token_breakdown["output_text_tokens"],
                         "total_tokens": llm.total_tokens,
                         "description": description,
                     })
@@ -374,26 +390,48 @@ class MetricsTracker:
         input_messages: list[dict],
         prompt_tokens: int,
         completion_tokens: int,
-        tool_executions: list[ToolExecutionMetrics]
+        tools_schema: list[dict],
+        tool_calls: list[dict],
+        output_text: str,
     ) -> dict[str, int]:
         """
         Categorize token consumption by type for a single iteration.
+
+        分类逻辑：
+        - 工具 = 工具定义 schema（从 tools_schema）
+        - 系统 = 系统提示词（messages 中 role="system"，不含 Skills）
+        - 技能 = Skills 提示（messages 中 role="system" 含 Skills）
+        - 消息 = user + assistant + tool 结果（messages 中对应 role）
+        - 输入 = 以上四项之和（prompt_tokens 准确值）
+        - 输出(工具) = tool_calls 参数（从 completion_tokens 估算）
+        - 输出 = content 文本（从 completion_tokens 估算）
 
         Args:
             input_messages: Input messages sent to LLM
             prompt_tokens: Total prompt tokens
             completion_tokens: Total completion tokens
-            tool_executions: Tool executions in this iteration
+            tools_schema: Tool definitions schema sent to LLM
+            tool_calls: Tool calls from LLM response
+            output_text: Output text from LLM
 
         Returns:
-            Dict with tool_tokens, system_tokens, skill_tokens, message_tokens
+            Dict with tool_tokens, system_tokens, skill_tokens, message_tokens,
+                 output_tool_tokens, output_text_tokens
         """
-        # 分析输入消息
+        import json
+
+        # === 输入部分分类 ===
         system_tokens = 0
         tool_tokens = 0
         message_tokens = 0
         skill_tokens = 0
 
+        # 1. 工具定义 token（从 tools_schema）
+        if tools_schema:
+            tools_json = json.dumps(tools_schema, ensure_ascii=False)
+            tool_tokens = len(tools_json) // 4  # 粗略估算
+
+        # 2. 分析 messages 中的各角色
         for msg in input_messages:
             role = msg.get("role", "")
             content = msg.get("content", "")
@@ -406,8 +444,10 @@ class MetricsTracker:
                 else:
                     system_tokens += tokens
             elif role == "tool":
-                tool_tokens += tokens
+                # 工具结果属于消息列
+                message_tokens += tokens
             else:
+                # user, assistant 等属于消息列
                 message_tokens += tokens
 
         # 按比例分配实际 prompt_tokens
@@ -419,11 +459,40 @@ class MetricsTracker:
             message_tokens = int(message_tokens * ratio)
             skill_tokens = int(skill_tokens * ratio)
 
+        # === 输出部分分类 ===
+        output_tool_tokens = 0
+        output_text_tokens = 0
+
+        if tool_calls:
+            # 有 tool_calls
+            # 计算 tool_calls 的字符长度
+            tool_calls_json = json.dumps(tool_calls, ensure_ascii=False)
+            tool_calls_chars = len(tool_calls_json)
+            output_text_chars = len(output_text) if output_text else 0
+
+            # 简化估算：如果 content 极短（<50字符），全部归为 tool_calls
+            if output_text_chars < 50:
+                output_tool_tokens = completion_tokens
+                output_text_tokens = 0
+            else:
+                # 按比例分配
+                total_output_chars = tool_calls_chars + output_text_chars
+                if total_output_chars > 0:
+                    tool_ratio = tool_calls_chars / total_output_chars
+                    output_tool_tokens = int(completion_tokens * tool_ratio)
+                    output_text_tokens = completion_tokens - output_tool_tokens
+        else:
+            # 无 tool_calls，全部是文本回复
+            output_tool_tokens = 0
+            output_text_tokens = completion_tokens
+
         return {
             "tool_tokens": tool_tokens,
             "system_tokens": system_tokens,
             "skill_tokens": skill_tokens,
             "message_tokens": message_tokens,
+            "output_tool_tokens": output_tool_tokens,
+            "output_text_tokens": output_text_tokens,
         }
 
     def _get_user_message_preview(self, input_messages: list[dict], max_len: int = 20) -> str:

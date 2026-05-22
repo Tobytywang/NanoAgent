@@ -22,6 +22,8 @@ class LLMCallMetrics:
     input_messages: list[dict] = field(default_factory=list)
     output_text: str = ""
     tool_calls: list[dict] = field(default_factory=list)
+    # 新增：工具定义 schema（用于 token 分类）
+    tools_schema: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -36,6 +38,7 @@ class LLMCallMetrics:
             "input_messages": self.input_messages,
             "output_text": self.output_text,
             "tool_calls": self.tool_calls,
+            "tools_schema": self.tools_schema,
         }
 
 
