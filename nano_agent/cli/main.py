@@ -2149,10 +2149,14 @@ def _show_context_composition(agent, config) -> None:
     def fmt_token(n: int) -> str:
         return str(n) if n > 0 else "-"
 
-    # 各行数据
+    # 各行数据 - 轮次只在每个轮次的第一次迭代时显示
+    prev_run_number = None
     for row in detailed_usage:
+        run_display = str(row['run_number']) if row['run_number'] != prev_run_number else ""
+        prev_run_number = row['run_number']
+
         print(f"  {_pad_to_width(str(row['id']), 4)} "
-              f"{_pad_to_width(str(row['run_number']), 5)} "
+              f"{_pad_to_width(run_display, 5)} "
               f"{_pad_to_width(str(row['iteration_number']), 5)} "
               f"{_pad_to_width(fmt_token(row['tool_tokens']), 9)} "
               f"{_pad_to_width(fmt_token(row['system_tokens']), 9)} "
