@@ -50,6 +50,10 @@ class MetricsTracker:
 
         # Base ratio for stable token estimation (固定部分使用基准比例)
         self._base_ratio: float = 0.0
+        # 保存第一次迭代时的字符长度，确保后续迭代使用相同值
+        self._base_tool_chars: int = 0
+        self._base_system_chars: int = 0
+        self._base_skill_chars: int = 0
 
     def start_run(self, user_input: str) -> None:
         """
@@ -454,14 +458,17 @@ class MetricsTracker:
         total_chars = tool_chars + system_chars + skill_chars + message_chars
 
         if total_chars > 0:
-            # 步骤3：第一次迭代时计算并保存基准比例
+            # 步骤3：第一次迭代时计算并保存基准比例和字符长度
             if self._base_ratio == 0:
                 self._base_ratio = prompt_tokens / total_chars
+                self._base_tool_chars = tool_chars
+                self._base_system_chars = system_chars
+                self._base_skill_chars = skill_chars
 
-            # 步骤4：使用基准比例计算固定部分
-            tool_tokens = int(tool_chars * self._base_ratio)
-            system_tokens = int(system_chars * self._base_ratio)
-            skill_tokens = int(skill_chars * self._base_ratio)
+            # 步骤4：使用保存的基准值计算固定部分（确保数值稳定）
+            tool_tokens = int(self._base_tool_chars * self._base_ratio)
+            system_tokens = int(self._base_system_chars * self._base_ratio)
+            skill_tokens = int(self._base_skill_chars * self._base_ratio)
 
             # 步骤5：消息部分用减法，确保总和等于 prompt_tokens
             message_tokens = prompt_tokens - tool_tokens - system_tokens - skill_tokens
@@ -537,3 +544,6 @@ class MetricsTracker:
         self._iteration_start_time = 0.0
         self._run_start_time = 0.0
         self._base_ratio = 0.0  # 重置基准比例
+        self._base_tool_chars = 0  # 重置基准字符长度
+        self._base_system_chars = 0
+        self._base_skill_chars = 0
