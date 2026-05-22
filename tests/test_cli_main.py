@@ -1582,6 +1582,7 @@ class TestShowContextComposition:
                 "tool_tokens": 500,
                 "system_tokens": 300,
                 "skill_tokens": 50,
+                "summary_tokens": 0,
                 "message_tokens": 200,
                 "input_tokens": 1050,
                 "output_tool_tokens": 30,

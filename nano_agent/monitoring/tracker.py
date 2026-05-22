@@ -382,6 +382,7 @@ class MetricsTracker:
                         "tool_tokens": token_breakdown["tool_tokens"],
                         "system_tokens": token_breakdown["system_tokens"],
                         "skill_tokens": token_breakdown["skill_tokens"],
+                        "summary_tokens": token_breakdown["summary_tokens"],
                         "message_tokens": token_breakdown["message_tokens"],
                         "input_tokens": llm.prompt_tokens,
                         "output_tool_tokens": token_breakdown["output_tool_tokens"],
@@ -418,7 +419,7 @@ class MetricsTracker:
             output_text: Output text from LLM
 
         Returns:
-            Dict with tool_tokens, system_tokens, skill_tokens, message_tokens,
+            Dict with tool_tokens, system_tokens, skill_tokens, summary_tokens, message_tokens,
                  output_tool_tokens, output_text_tokens
         """
         import json
@@ -428,6 +429,7 @@ class MetricsTracker:
         tool_chars = 0
         system_chars = 0
         skill_chars = 0
+        summary_chars = 0  # 新增：历史摘要
         message_chars = 0
 
         # 1. 工具定义字符长度（从 tools_schema）
@@ -442,8 +444,11 @@ class MetricsTracker:
             chars = len(content)
 
             if role == "system":
+                # 检查是否是历史摘要（compressor 生成的）
+                if content.startswith("[历史摘要]"):
+                    summary_chars += chars
                 # 检查是否包含 skill 相关内容
-                if "## Skills" in content or "skill" in content.lower():
+                elif "## Skills" in content or "skill" in content.lower():
                     skill_chars += chars
                 else:
                     system_chars += chars
@@ -455,7 +460,7 @@ class MetricsTracker:
                 message_chars += chars
 
         # 步骤2：计算总字符长度
-        total_chars = tool_chars + system_chars + skill_chars + message_chars
+        total_chars = tool_chars + system_chars + skill_chars + summary_chars + message_chars
 
         if total_chars > 0:
             # 步骤3：第一次迭代时计算并保存基准比例和字符长度
@@ -470,12 +475,16 @@ class MetricsTracker:
             system_tokens = int(self._base_system_chars * self._base_ratio)
             skill_tokens = int(self._base_skill_chars * self._base_ratio)
 
+            # 摘要部分：按当前字符长度计算（摘要会变化，不使用基准值）
+            summary_tokens = int(summary_chars * self._base_ratio) if summary_chars > 0 else 0
+
             # 步骤5：消息部分用减法，确保总和等于 prompt_tokens
-            message_tokens = prompt_tokens - tool_tokens - system_tokens - skill_tokens
+            message_tokens = prompt_tokens - tool_tokens - system_tokens - skill_tokens - summary_tokens
         else:
             tool_tokens = 0
             system_tokens = 0
             skill_tokens = 0
+            summary_tokens = 0
             message_tokens = prompt_tokens
 
         # === 输出部分分类 ===
@@ -509,6 +518,7 @@ class MetricsTracker:
             "tool_tokens": tool_tokens,
             "system_tokens": system_tokens,
             "skill_tokens": skill_tokens,
+            "summary_tokens": summary_tokens,
             "message_tokens": message_tokens,
             "output_tool_tokens": output_tool_tokens,
             "output_text_tokens": output_text_tokens,

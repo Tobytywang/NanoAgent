@@ -2138,12 +2138,13 @@ def _show_context_composition(agent, config) -> None:
           f"{_pad_to_width('工具[*]', 9)} "
           f"{_pad_to_width('系统[*]', 9)} "
           f"{_pad_to_width('技能[*]', 9)} "
+          f"{_pad_to_width('摘要[*]', 9)} "
           f"{_pad_to_width('消息[*]', 9)} "
           f"{_pad_to_width('输入', 7)} "
           f"{_pad_to_width('输出(工具)[*]', 13)} "
           f"{_pad_to_width('输出[*]', 9)} "
           f"{_pad_to_width('总和', 7)} 简要描述")
-    print("  " + "-" * 95)
+    print("  " + "-" * 105)
 
     # 格式化函数：0 显示为 "-"
     def fmt_token(n: int) -> str:
@@ -2161,13 +2162,14 @@ def _show_context_composition(agent, config) -> None:
               f"{_pad_to_width(fmt_token(row['tool_tokens']), 9)} "
               f"{_pad_to_width(fmt_token(row['system_tokens']), 9)} "
               f"{_pad_to_width(fmt_token(row['skill_tokens']), 9)} "
+              f"{_pad_to_width(fmt_token(row['summary_tokens']), 9)} "
               f"{_pad_to_width(fmt_token(row['message_tokens']), 9)} "
               f"{_pad_to_width(str(row['input_tokens']), 7)} "
               f"{_pad_to_width(fmt_token(row['output_tool_tokens']), 13)} "
               f"{_pad_to_width(fmt_token(row['output_text_tokens']), 9)} "
               f"{_pad_to_width(str(row['total_tokens']), 7)} {row['description']}")
 
-    print("  " + "-" * 95)
+    print("  " + "-" * 105)
     print("  [*] 表示按字符长度比例估算")
     print("  - 表示该值为 0")
 
@@ -2175,10 +2177,12 @@ def _show_context_composition(agent, config) -> None:
     total_input = sum(r['input_tokens'] for r in detailed_usage)
     total_output_tool = sum(r['output_tool_tokens'] for r in detailed_usage)
     total_output_text = sum(r['output_text_tokens'] for r in detailed_usage)
+    total_summary = sum(r['summary_tokens'] for r in detailed_usage)
     total_all = sum(r['total_tokens'] for r in detailed_usage)
 
     print("\n## 总计")
     print(f"  {_pad_to_width('输入:', 12)} {total_input}")
+    print(f"  {_pad_to_width('摘要:', 12)} {total_summary}")
     print(f"  {_pad_to_width('输出(工具):', 12)} {total_output_tool}")
     print(f"  {_pad_to_width('输出:', 12)} {total_output_text}")
     print(f"  {_pad_to_width('总和:', 12)} {total_all}")
