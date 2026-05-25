@@ -30,7 +30,7 @@ from .confidence import ConfidenceParser
 from .prompt_builder import PromptBuilder
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
-from ..monitoring import MetricsTracker
+from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
 from ..config.schema import OutputStyleConfig, SmartOptimizationConfig, PromptConfig
 
 
@@ -458,6 +458,14 @@ class ReActAgent(BaseAgent):
                     if tool_calls_in_round >= self._routing_max_tools:
                         if self.verbose:
                             print(f"[Router] Reached max tools limit: {self._routing_max_tools}")
+                        # Record all remaining tool calls as skipped
+                        remaining_calls = merged_tool_calls[merged_tool_calls.index(tool_call):]
+                        for skipped_call in remaining_calls:
+                            self.tracker.record_skipped_tool_call(
+                                skipped_call.name,
+                                skipped_call.arguments,
+                                "routing_limit"
+                            )
                         # Force summarize with current info
                         response = self._force_summarize()
                         self.tracker.end_run(response)
@@ -552,21 +560,16 @@ class ReActAgent(BaseAgent):
         if usage.cache_read_tokens > 0 and self.verbose:
             print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
 
-        # Convert tool_calls to dict for reporting
-        tool_calls_dict = [tc.to_dict() for tc in tool_calls] if tool_calls else []
-
-        # Record LLM call with input/output
-        self.tracker.record_llm_call(
-            model=self.llm.model,
-            prompt_tokens=usage.prompt_tokens,
-            completion_tokens=usage.completion_tokens,
-            latency_ms=llm_latency,
-            tool_calls_count=len(tool_calls),
-            input_messages=messages,
-            output_text=response_text,
-            tool_calls=tool_calls_dict,
+        # Record LLM call with raw data (decoupled API)
+        self.tracker.record_raw_llm_call(RawLLMCallData(
+            llm=self.llm,
+            messages=messages,
             tools_schema=tools_schema,
-        )
+            response_text=response_text,
+            tool_calls=tool_calls,  # Pass raw ToolCall objects
+            usage=usage,
+            latency_ms=llm_latency,
+        ))
 
         # Update token count
         self._total_tokens += usage.total_tokens
@@ -633,6 +636,12 @@ class ReActAgent(BaseAgent):
         """
         # Check for duplicate tool calls (v0.7.8)
         if not dry_run and self._check_duplicate_tool_call(tool_call):
+            # Record as skipped
+            self.tracker.record_skipped_tool_call(
+                tool_call.name,
+                tool_call.arguments,
+                "duplicate"
+            )
             # Return cached result or empty result
             cached_result = self.cache.get_cached_result(tool_call.name, tool_call.arguments)
             if cached_result is not None:
@@ -713,15 +722,12 @@ class ReActAgent(BaseAgent):
                 # Cache the result if cacheable
                 self.cache.set_cached_result(tool_call.name, tool_call.arguments, result)
 
-                # Record tool execution
-                self.tracker.record_tool_execution(
-                    tool_name=tool_call.name,
-                    arguments=tool_call.arguments,
-                    success=result.success,
+                # Record tool execution with raw data (decoupled API)
+                self.tracker.record_raw_tool_execution(RawToolExecutionData(
+                    tool_call=tool_call,
+                    result=result,
                     latency_ms=tool_latency,
-                    output_length=len(result.output) if result.output else 0,
-                    error=result.error,
-                )
+                ))
 
         # Record tool call
         self._tool_call_records.append({

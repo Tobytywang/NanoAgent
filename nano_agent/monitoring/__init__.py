@@ -7,7 +7,9 @@ from .metrics import (
     ToolExecutionMetrics,
     IterationMetrics,
     RunMetrics,
+    SkippedToolCall,
 )
+from .raw_data import RawLLMCallData, RawToolExecutionData
 from .tracker import MetricsTracker
 from .token_analyzer import (
     TokenCategory,
@@ -31,6 +33,9 @@ __all__ = [
     "ToolExecutionMetrics",
     "IterationMetrics",
     "RunMetrics",
+    "SkippedToolCall",
+    "RawLLMCallData",
+    "RawToolExecutionData",
     "MetricsTracker",
     "TokenCategory",
     "TokenBreakdown",

@@ -382,6 +382,11 @@ tracker.record_tool_execution(
 summary = tracker.get_summary()           # 当前运行
 session_summary = tracker.get_session_summary()  # 会话总计
 full_report = tracker.get_full_report()   # 完整报告
+detailed_usage = tracker.get_detailed_usage()  # 详细 Token 消耗列表
+
+# Token 估算相关
+base_ratio = tracker.get_base_ratio()     # 获取基准比例
+base_chars = tracker.get_base_chars()     # 获取基准字符长度
 ```
 
 ### 统计数据结构
@@ -396,6 +401,11 @@ class LLMCallMetrics:
     total_tokens: int
     latency_ms: float
     tool_calls_count: int
+    # 新增字段
+    input_messages: list[dict]    # 输入消息列表
+    output_text: str              # 输出文本
+    tool_calls: list[dict]        # 工具调用列表
+    tools_schema: list[dict]      # 工具定义 schema
 
 @dataclass
 class ToolExecutionMetrics:
@@ -581,6 +591,51 @@ nano-agent --resume session_abc123
 # 非交互模式
 echo "列出当前目录文件" | nano-agent --non-interactive
 ```
+
+### Slash Command 输出格式规范
+
+所有内置 slash command 的输出遵循以下统一格式：
+
+**标题区**
+
+```
+==================================================
+📊 标题（中文）
+==================================================
+```
+
+- 分隔线：ASCII `"=" * 50`
+- 标题：中文 + 📊 emoji 前缀
+- 上下各一条分隔线
+
+**子标题**
+
+```
+## 子标题（中文）
+```
+
+- 使用 `## ` Markdown 风格，中文
+
+**结束区**
+
+```
+==================================================
+```
+
+- 单条分隔线 + 换行：`print("=" * 50 + "\n")`
+
+**表格分隔线**
+
+- 使用 ASCII `"-" * N`（N 根据内容宽度调整）
+- 不使用 Unicode 字符（─、━ 等）
+
+**键值对**
+
+```
+  键名:    值
+```
+
+- 左对齐标签，使用 `format_line()` 处理宽度
 
 ---
 

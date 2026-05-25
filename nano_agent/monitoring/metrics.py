@@ -68,12 +68,30 @@ class ToolExecutionMetrics:
 
 
 @dataclass
+class SkippedToolCall:
+    """跳过的工具调用记录"""
+
+    tool_name: str
+    arguments: dict[str, Any]
+    reason: str  # "routing_limit" | "merged" | "duplicate" | "budget_exceeded"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "tool_name": self.tool_name,
+            "arguments": self.arguments,
+            "reason": self.reason,
+        }
+
+
+@dataclass
 class IterationMetrics:
     """迭代指标"""
 
     iteration_number: int
     llm_call: LLMCallMetrics | None = None
     tool_executions: list[ToolExecutionMetrics] = field(default_factory=list)
+    skipped_tool_calls: list[SkippedToolCall] = field(default_factory=list)
     total_latency_ms: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,6 +100,7 @@ class IterationMetrics:
             "iteration_number": self.iteration_number,
             "llm_call": self.llm_call.to_dict() if self.llm_call else None,
             "tool_executions": [t.to_dict() for t in self.tool_executions],
+            "skipped_tool_calls": [s.to_dict() for s in self.skipped_tool_calls],
             "total_latency_ms": round(self.total_latency_ms, 2),
         }
 

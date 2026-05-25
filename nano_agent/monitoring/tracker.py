@@ -12,7 +12,9 @@ from .metrics import (
     ToolExecutionMetrics,
     IterationMetrics,
     RunMetrics,
+    SkippedToolCall,
 )
+from .raw_data import RawLLMCallData, RawToolExecutionData
 from .token_analyzer import TokenAnalyzer
 
 
@@ -197,7 +199,7 @@ class MetricsTracker:
         error: str | None = None,
     ) -> None:
         """
-        Record a tool execution.
+        Record a tool execution (legacy method, accepts individual parameters).
 
         Args:
             tool_name: The tool name
@@ -219,6 +221,126 @@ class MetricsTracker:
                 latency_ms=latency_ms,
                 output_length=output_length,
                 error=error,
+            )
+        )
+
+    def _convert_tool_calls(self, tool_calls: list[Any] | None) -> list[dict]:
+        """
+        Convert ToolCall objects to dict format.
+
+        Args:
+            tool_calls: List of ToolCall objects or dicts
+
+        Returns:
+            List of dicts
+        """
+        if not tool_calls:
+            return []
+        return [tc.to_dict() if hasattr(tc, "to_dict") else tc for tc in tool_calls]
+
+    def record_raw_llm_call(self, raw_data: RawLLMCallData) -> None:
+        """
+        Record an LLM call from raw data (decoupled API).
+
+        This method accepts a container with raw data objects, extracting
+        and converting internally. The agent layer only needs to pass
+        the raw objects without knowing how to extract values.
+
+        Args:
+            raw_data: Container with raw LLM call data
+        """
+        if not self.enabled or not self._current_iteration:
+            return
+
+        # Extract and convert internally
+        model = raw_data.llm.model
+        prompt_tokens = raw_data.usage.prompt_tokens
+        completion_tokens = raw_data.usage.completion_tokens
+        latency_ms = raw_data.latency_ms
+        tool_calls_count = len(raw_data.tool_calls) if raw_data.tool_calls else 0
+
+        # Convert ToolCall objects to dict internally
+        tool_calls_dict = self._convert_tool_calls(raw_data.tool_calls)
+
+        # Create metrics
+        self._current_iteration.llm_call = LLMCallMetrics(
+            timestamp=datetime.now(),
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            latency_ms=latency_ms,
+            tool_calls_count=tool_calls_count,
+            input_messages=raw_data.messages,
+            output_text=raw_data.response_text,
+            tool_calls=tool_calls_dict,
+            tools_schema=raw_data.tools_schema or [],
+        )
+
+        # Increment LLM call count
+        self._session_total_llm_calls += 1
+
+        # Analyze token consumption
+        self.token_analyzer.analyze_llm_call(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            input_messages=raw_data.messages,
+            tool_calls=tool_calls_dict,
+        )
+
+    def record_raw_tool_execution(self, raw_data: RawToolExecutionData) -> None:
+        """
+        Record a tool execution from raw data (decoupled API).
+
+        This method accepts a container with raw tool call and result objects,
+        extracting internally. The agent layer only needs to pass the raw objects.
+
+        Args:
+            raw_data: Container with raw tool execution data
+        """
+        if not self.enabled or not self._current_iteration:
+            return
+
+        self._current_iteration.tool_executions.append(
+            ToolExecutionMetrics(
+                timestamp=datetime.now(),
+                tool_name=raw_data.tool_call.name,
+                arguments=raw_data.tool_call.arguments,
+                success=raw_data.result.success,
+                latency_ms=raw_data.latency_ms,
+                output_length=len(raw_data.result.output) if raw_data.result.output else 0,
+                error=raw_data.result.error,
+            )
+        )
+
+    def record_skipped_tool_call(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        reason: str,
+    ) -> None:
+        """
+        Record a skipped tool call with reason.
+
+        This is called when a tool call is not executed due to various reasons:
+        - routing_limit: Reached max tools limit
+        - merged: Merged with another tool call
+        - duplicate: Detected as duplicate call
+        - budget_exceeded: Token budget exceeded
+
+        Args:
+            tool_name: The tool name that was skipped
+            arguments: The arguments for the tool call
+            reason: The reason why the tool call was skipped
+        """
+        if not self.enabled or not self._current_iteration:
+            return
+
+        self._current_iteration.skipped_tool_calls.append(
+            SkippedToolCall(
+                tool_name=tool_name,
+                arguments=arguments,
+                reason=reason,
             )
         )
 
@@ -333,7 +455,10 @@ class MetricsTracker:
                 "output_tool_tokens": 30,  # tool_calls 参数 token
                 "output_text_tokens": 50,  # content 文本 token
                 "total_tokens": 280,  # 总和
-                "description": "[用户] xxx"  # 简要描述
+                # Raw data for CLI to format description
+                "tool_names": ["shell_execute"],
+                "input_messages": [...],
+                "output_text": "...",
             }
         """
         result = []
@@ -359,21 +484,11 @@ class MetricsTracker:
                     # 获取工具名称
                     tool_names = [t.tool_name for t in iteration.tool_executions]
 
-                    # 描述逻辑：每个【轮次-迭代】的第一行显示用户消息
-                    # 迭代 1 是用户发起的，后续迭代是工具结果驱动的
-                    if iter_num == 1:
-                        # 第一迭代：显示用户消息
-                        user_msg = self._get_user_message_preview(llm.input_messages)
-                        if user_msg:
-                            description = f"[用户] {user_msg}"
-                        else:
-                            description = "[用户] 发起请求"
-                    else:
-                        # 后续迭代：显示工具调用
-                        if tool_names:
-                            description = f"[工具调用] {', '.join(tool_names)}"
-                        else:
-                            description = "[思考] 继续处理"
+                    # 获取跳过的工具调用
+                    skipped_calls = [
+                        {"tool_name": s.tool_name, "reason": s.reason}
+                        for s in iteration.skipped_tool_calls
+                    ]
 
                     result.append({
                         "id": row_id,
@@ -388,7 +503,11 @@ class MetricsTracker:
                         "output_tool_tokens": token_breakdown["output_tool_tokens"],
                         "output_text_tokens": token_breakdown["output_text_tokens"],
                         "total_tokens": llm.total_tokens,
-                        "description": description,
+                        # Raw data for CLI to format description
+                        "tool_names": tool_names,
+                        "input_messages": llm.input_messages,
+                        "output_text": llm.output_text,
+                        "skipped_tool_calls": skipped_calls,
                     })
 
         return result
@@ -524,7 +643,8 @@ class MetricsTracker:
             "output_text_tokens": output_text_tokens,
         }
 
-    def _get_user_message_preview(self, input_messages: list[dict], max_len: int = 20) -> str:
+    @staticmethod
+    def _get_user_message_preview(input_messages: list[dict], max_len: int = 20) -> str:
         """
         Get a preview of the last user message from input messages.
 
@@ -546,6 +666,78 @@ class MetricsTracker:
                         preview += "..."
                     return preview
         return ""
+
+    def get_base_ratio(self) -> float:
+        """
+        Get the base ratio for token estimation.
+
+        Returns:
+            Base ratio (prompt_tokens / total_chars) from first iteration,
+            or 0.25 as default if not available.
+        """
+        return self._base_ratio if self._base_ratio > 0 else 0.25
+
+    def get_base_chars(self) -> dict[str, int]:
+        """
+        Get the base character lengths for stable estimation.
+
+        Returns:
+            Dict with tool_chars, system_chars, skill_chars
+        """
+        return {
+            "tool_chars": self._base_tool_chars,
+            "system_chars": self._base_system_chars,
+            "skill_chars": self._base_skill_chars,
+        }
+
+    @staticmethod
+    def format_iteration_description(
+        iter_num: int,
+        tool_names: list[str],
+        input_messages: list[dict],
+        output_text: str,
+        skipped_tool_calls: list[dict] | None = None,
+    ) -> str:
+        """
+        Format description for an iteration (for CLI layer to use).
+
+        Args:
+            iter_num: Iteration number
+            tool_names: List of tool names executed in this iteration
+            input_messages: Input messages for this iteration
+            output_text: Output text from LLM
+            skipped_tool_calls: List of skipped tool calls with reasons
+
+        Returns:
+            Formatted description string
+        """
+        skipped_tool_calls = skipped_tool_calls or []
+
+        if iter_num == 1:
+            # First iteration: show user message
+            user_msg = MetricsTracker._get_user_message_preview(input_messages)
+            if user_msg:
+                return f"[用户] {user_msg}"
+            else:
+                return "[用户] 发起请求"
+        else:
+            # Subsequent iterations: check skipped first, then tool calls, then output
+            if skipped_tool_calls:
+                # Show skipped tool calls with reason
+                skipped_names = [s["tool_name"] for s in skipped_tool_calls]
+                reasons = set(s["reason"] for s in skipped_tool_calls)
+                reason_str = ", ".join(reasons)
+                return f"[跳过] {', '.join(skipped_names)} ({reason_str})"
+            elif tool_names:
+                return f"[工具调用] {', '.join(tool_names)}"
+            elif output_text:
+                # No tool calls, has output text -> final answer
+                preview = output_text.replace("\n", " ")[:20]
+                if len(output_text) > 20:
+                    preview += "..."
+                return f"[回答] {preview}"
+            else:
+                return "[思考] 继续处理"
 
     def reset(self) -> None:
         """Reset the tracker."""

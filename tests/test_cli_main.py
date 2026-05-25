@@ -594,6 +594,8 @@ class TestStatsFunctions:
 
         # Mock get_detailed_usage to return empty list (no detailed data)
         mock_agent.tracker.get_detailed_usage.return_value = []
+        # Mock get_last_iteration_tokens for context calculation
+        mock_agent.tracker.get_last_iteration_tokens.return_value = {"prompt_tokens": 500}
 
         # Should not raise
         _show_run_stats(mock_agent, config)
@@ -620,6 +622,7 @@ class TestStatsFunctions:
             "session_duration_ms": 3000,
             "total_tokens": 1210,
             "total_llm_calls": 2,
+            "total_runs": 3,
         }
         # Mock full report for tool calls
         mock_agent.tracker.get_full_report.return_value = {
@@ -632,6 +635,8 @@ class TestStatsFunctions:
                 }
             ]
         }
+        # Mock get_last_iteration_tokens for context calculation
+        mock_agent.tracker.get_last_iteration_tokens.return_value = {"prompt_tokens": 500}
 
         # Capture output
         captured_output = io.StringIO()
@@ -1574,6 +1579,7 @@ class TestShowContextComposition:
 
         agent = Mock()
         agent.tracker = Mock()
+        # Use new decoupled API: return raw data instead of description
         agent.tracker.get_detailed_usage.return_value = [
             {
                 "id": 1,
@@ -1588,7 +1594,11 @@ class TestShowContextComposition:
                 "output_tool_tokens": 30,
                 "output_text_tokens": 0,
                 "total_tokens": 1080,
-                "description": "[用户] 你好",
+                # Raw data for CLI to format description
+                "tool_names": [],
+                "input_messages": [{"role": "user", "content": "你好"}],
+                "output_text": "",
+                "skipped_tool_calls": [],
             },
         ]
 

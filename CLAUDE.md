@@ -99,6 +99,7 @@ output_style:
 2. **Coverage**: Check coverage when fixing bugs or adding features
 3. **Documentation**: Update help text, `docs/api.md`, `docs/tutorial.md`
 4. **Roadmap**: Update ROADMAP.md if adding/changing features
+5. **Version**: Update version in `pyproject.toml` if releasing new version
 
 ### Testing
 
