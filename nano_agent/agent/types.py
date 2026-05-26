@@ -10,6 +10,20 @@ from enum import Enum
 from typing import Any
 
 
+class TerminationReason(str, Enum):
+    """Reason why the ReAct loop terminated."""
+
+    COMPLETED = "completed"
+    MAX_ITERATIONS = "max_iterations"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    BUDGET_WRAP_UP = "budget_wrap_up"
+    STALL_DETECTED = "stall_detected"
+    CONFIDENCE_EARLY_STOP = "confidence_early_stop"
+    CONFIDENCE_VERIFIED = "confidence_verified"
+    ROUTING_LIMIT = "routing_limit"
+    DUPLICATE_BLOCKED = "duplicate_blocked"
+
+
 @dataclass(frozen=True)
 class ExecutionResult:
     """
@@ -24,6 +38,7 @@ class ExecutionResult:
     tool_calls: list[dict]
     tokens_used: int
     session_id: str
+    termination_reason: str = ""
 
 
 @dataclass
@@ -63,6 +78,8 @@ class AgentEvent(Enum):
     TOOL_RESULT = "tool_result"
     RUN_END = "run_end"
     CONFIRMATION_REQUIRED = "confirmation_required"
+    BUDGET_WRAPUP = "budget_wrapup"
+    DUPLICATE_BLOCKED = "duplicate_blocked"
 
 
 class RiskLevel(Enum):

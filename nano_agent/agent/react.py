@@ -14,7 +14,7 @@ from .prompts import (
     REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE, REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE,
     TOOL_DESCRIPTION_TEMPLATE, CONFIDENCE_SUFFIX
 )
-from .types import ExecutionResult, ThinkResult, AgentEvent
+from .types import ExecutionResult, ThinkResult, AgentEvent, TerminationReason
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .undo import UndoStack
@@ -28,6 +28,7 @@ from .token_budget import TokenBudget, TokenBudgetConfig
 from .router import QueryRouter, QueryComplexity
 from .confidence import ConfidenceParser
 from .prompt_builder import PromptBuilder
+from .duplicate import DuplicateDetector
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
@@ -167,6 +168,10 @@ class ReActAgent(BaseAgent):
                 force_summarize=self.smart_optimization_config.budget_force_summarize,
                 llm_summary_enabled=self.smart_optimization_config.budget_llm_summary_enabled,
                 llm_summary_max_tokens=self.smart_optimization_config.budget_llm_summary_max_tokens,
+                wrapup_enabled=self.smart_optimization_config.budget_wrapup_enabled,
+                wrapup_threshold=self.smart_optimization_config.budget_wrapup_threshold,
+                wrapup_free_round=self.smart_optimization_config.budget_wrapup_free_round,
+                wrapup_max_tokens=self.smart_optimization_config.budget_wrapup_max_tokens,
             )
             self.token_budget = TokenBudget(token_budget_config)
         else:
@@ -209,10 +214,11 @@ class ReActAgent(BaseAgent):
         self._session_id: str = ""
         self._routing_max_tools: int = -1  # Max tools for current query (-1 = unlimited)
 
-        # Duplicate tool call detection (v0.7.8)
-        self._tool_call_history: dict[str, int] = {}  # key: tool_name+args_hash, value: count
-        self._duplicate_threshold: int = 3  # Max allowed duplicate calls
-        self._duplicate_warning_issued: bool = False
+        # Duplicate tool call detection (v0.7.9)
+        self._duplicate_detector = DuplicateDetector(
+            threshold=self.smart_optimization_config.duplicate_threshold,
+            deep_equal=self.smart_optimization_config.duplicate_deep_equal,
+        )
 
         # Prompt builder (v0.7.6)
         self._prompt_builder: PromptBuilder | None = None
@@ -389,14 +395,15 @@ class ReActAgent(BaseAgent):
             if routing_result.complexity == QueryComplexity.SIMPLE:
                 response = self._answer_simple_question(user_input)
                 self.tracker.end_run(response)
-                return self._build_result(response, 0, success=True)
-
+                return self._build_result(response, 0, success=True,
+                                          termination_reason=TerminationReason.COMPLETED.value)
         # Pre-check: simple questions can be answered directly (legacy)
         if self.output_style_config.style == "concise" and _is_simple_question(user_input):
             # Direct answer for simple questions (skip tool calls)
             response = self._answer_simple_question(user_input)
             self.tracker.end_run(response)
-            return self._build_result(response, 0, success=True)
+            return self._build_result(response, 0, success=True,
+                                      termination_reason=TerminationReason.COMPLETED.value)
 
         iteration = 0
         tool_calls_in_round = 0  # Track tool calls for routing limits
@@ -417,11 +424,47 @@ class ReActAgent(BaseAgent):
                 if warning:
                     self._handle_budget_warning(warning)
 
+                # Budget wrap-up round (v0.7.9)
+                if self.token_budget.should_wrapup() and not self._wrapup_issued:
+                    self._wrapup_issued = True
+                    self.events.emit(AgentEvent.BUDGET_WRAPUP, {"remaining": self.token_budget.remaining})
+                    self.memory.add_user_message(
+                        "[System] Token budget is critically low. This is the final round. "
+                        "Please summarize your findings, list any unfinished work, "
+                        "and provide the best answer you can."
+                    )
+                    if self.verbose:
+                        print("[Budget Wrap-Up] Token budget critically low — entering final round")
+
+                    # Save current budget if free round is enabled
+                    saved_remaining = self.token_budget.remaining if self.token_budget.config.wrapup_free_round else None
+
+                    self.tracker.start_iteration(iteration)
+                    think = self._think()
+
+                    # Restore budget if free round (no deduction)
+                    if saved_remaining is not None:
+                        self.token_budget.remaining = saved_remaining
+
+                    # If LLM gave a final answer → return it
+                    if think.is_final:
+                        self.tracker.end_iteration()
+                        self.tracker.end_run(think.response_text)
+                        return self._build_result(think.response_text, iteration, success=True,
+                                                  termination_reason=TerminationReason.BUDGET_WRAP_UP.value)
+
+                    # If LLM still wants tools → force summarize instead
+                    response = self._force_summarize()
+                    self.tracker.end_run(response)
+                    return self._build_result(response, iteration, success=True,
+                                              termination_reason=TerminationReason.BUDGET_WRAP_UP.value)
+
                 # Check for force summarize
                 if self.token_budget.should_summarize():
                     response = self._force_summarize()
                     self.tracker.end_run(response)
-                    return self._build_result(response, iteration, success=True)
+                    return self._build_result(response, iteration, success=True,
+                                              termination_reason=TerminationReason.BUDGET_EXHAUSTED.value)
 
             self.tracker.start_iteration(iteration)
 
@@ -441,12 +484,14 @@ class ReActAgent(BaseAgent):
                         print(f"[Confidence] Early stop: {conf_result.confidence:.2f}")
                     self.tracker.end_iteration()
                     self.tracker.end_run(conf_result.cleaned_response)
-                    return self._build_result(conf_result.cleaned_response, iteration, success=True)
+                    return self._build_result(conf_result.cleaned_response, iteration, success=True,
+                                          termination_reason=TerminationReason.CONFIDENCE_EARLY_STOP.value)
 
             if think.is_final:
                 self.tracker.end_iteration()
                 self.tracker.end_run(think.response_text)
-                return self._build_result(think.response_text, iteration, success=True)
+                return self._build_result(think.response_text, iteration, success=True,
+                                          termination_reason=TerminationReason.COMPLETED.value)
 
             # Merge similar tool calls for token efficiency
             merged_tool_calls = self._merge_tool_calls(think.tool_calls)
@@ -469,7 +514,8 @@ class ReActAgent(BaseAgent):
                         # Force summarize with current info
                         response = self._force_summarize()
                         self.tracker.end_run(response)
-                        return self._build_result(response, iteration, success=True)
+                        return self._build_result(response, iteration, success=True,
+                                                  termination_reason=TerminationReason.ROUTING_LIMIT.value)
 
                 result = self._act(tool_call, dry_run)
                 self._observe(tool_call, result)
@@ -484,7 +530,8 @@ class ReActAgent(BaseAgent):
         # Reached max iterations or budget exhausted
         response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
         self.tracker.end_run(response)
-        return self._build_result(response, iteration, success=False)
+        return self._build_result(response, iteration, success=False,
+                                  termination_reason=TerminationReason.MAX_ITERATIONS.value)
 
     def _prepare_run(self, user_input: str, session_id: str) -> None:
         """
@@ -502,9 +549,9 @@ class ReActAgent(BaseAgent):
         self._session_id = session_id
         self._pending_name_updates = []
 
-        # Reset duplicate detection state (v0.7.8)
-        self._tool_call_history = {}
-        self._duplicate_warning_issued = False
+        # Reset duplicate detection state (v0.7.9)
+        self._duplicate_detector.reset()
+        self._wrapup_issued = False
 
         # Add user message to memory
         self.memory.add_user_message(user_input)
@@ -960,7 +1007,8 @@ class ReActAgent(BaseAgent):
         self,
         response: str,
         iterations: int,
-        success: bool
+        success: bool,
+        termination_reason: str = ""
     ) -> ExecutionResult:
         """
         Build the execution result.
@@ -969,6 +1017,7 @@ class ReActAgent(BaseAgent):
             response: The final response text
             iterations: Number of iterations executed
             success: Whether execution completed successfully
+            termination_reason: Why the loop terminated
 
         Returns:
             ExecutionResult with all execution metadata
@@ -983,7 +1032,8 @@ class ReActAgent(BaseAgent):
             iterations=iterations,
             tool_calls=self._tool_call_records,
             tokens_used=self._total_tokens,
-            session_id=self._session_id
+            session_id=self._session_id,
+            termination_reason=termination_reason
         )
 
     def run_stream(self, user_input: str) -> Generator[str, None, None]:
@@ -1032,29 +1082,18 @@ class ReActAgent(BaseAgent):
         Returns:
             True if the call is a duplicate and should be skipped
         """
-        import hashlib
-        import json
+        result = self._duplicate_detector.check(tool_call)
 
-        # Create a hash key from tool name and arguments
-        args_str = json.dumps(tool_call.arguments, sort_keys=True)
-        args_hash = hashlib.md5(args_str.encode()).hexdigest()[:8]
-        key = f"{tool_call.name}:{args_hash}"
-
-        # Update count
-        self._tool_call_history[key] = self._tool_call_history.get(key, 0) + 1
-        count = self._tool_call_history[key]
-
-        # Check threshold
-        if count > self._duplicate_threshold:
-            if not self._duplicate_warning_issued:
+        if result.should_skip:
+            if not self._duplicate_detector.warning_issued:
                 if self.verbose:
                     print(f"[Duplicate] 检测到重复工具调用: {tool_call.name}")
-                    print(f"   已调用 {count} 次，跳过后续重复调用")
-                self._duplicate_warning_issued = True
+                    print(f"   已调用 {result.count} 次，跳过后续重复调用")
+                self._duplicate_detector.warning_issued = True
             return True
 
-        if count > 1 and self.verbose:
-            print(f"[Duplicate] {tool_call.name} 已调用 {count} 次")
+        if result.is_duplicate and self.verbose:
+            print(f"[Duplicate] {tool_call.name} 已调用 {result.count} 次")
 
         return False
 

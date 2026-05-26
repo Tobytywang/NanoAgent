@@ -8,7 +8,8 @@ from typing import Any
 
 from .schema import (
     Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, SkillsConfig,
-    OutputStyleConfig, ToolMergeConfig, CacheConfig, CompressorConfig, ProjectFileConfig
+    OutputStyleConfig, ToolMergeConfig, CacheConfig, CompressorConfig,
+    ProjectFileConfig, SmartOptimizationConfig
 )
 
 
@@ -52,7 +53,8 @@ class ConfigLoader:
             tool_merge=cls._parse_tool_merge_config(data.get("tool_merge", {})),
             cache=cls._parse_cache_config(data.get("cache", {})),
             compressor=cls._parse_compressor_config(data.get("compressor", {})),
-            project_file=cls._parse_project_file_config(data.get("project_file", {}))
+            project_file=cls._parse_project_file_config(data.get("project_file", {})),
+            smart_optimization=cls._parse_smart_optimization_config(data.get("smart_optimization", {}))
         )
 
     @classmethod
@@ -162,6 +164,34 @@ class ConfigLoader:
         )
 
     @classmethod
+    def _parse_smart_optimization_config(cls, data: dict) -> SmartOptimizationConfig:
+        """解析智能优化配置"""
+        return SmartOptimizationConfig(
+            confidence_enabled=data.get("confidence_enabled", True),
+            confidence_threshold=data.get("confidence_threshold", 0.9),
+            budget_enabled=data.get("budget_enabled", True),
+            initial_budget=data.get("initial_budget", 50000),
+            budget_warning_thresholds=data.get("budget_warning_thresholds", [0.5, 0.3, 0.2, 0.1]),
+            budget_warning_mode=data.get("budget_warning_mode", "console"),
+            budget_warning_interval=data.get("budget_warning_interval", 1),
+            budget_force_summarize=data.get("budget_force_summarize", True),
+            budget_llm_summary_enabled=data.get("budget_llm_summary_enabled", True),
+            budget_llm_summary_max_tokens=data.get("budget_llm_summary_max_tokens", 500),
+            routing_enabled=data.get("routing_enabled", True),
+            routing_simple_direct=data.get("routing_simple_direct", True),
+            routing_moderate_single_tool=data.get("routing_moderate_single_tool", True),
+            routing_complex_full_loop=data.get("routing_complex_full_loop", True),
+            tool_processor_enabled=data.get("tool_processor_enabled", True),
+            tool_processor_max_output_tokens=data.get("tool_processor_max_output_tokens", 300),
+            duplicate_threshold=data.get("duplicate_threshold", 3),
+            duplicate_deep_equal=data.get("duplicate_deep_equal", False),
+            budget_wrapup_enabled=data.get("budget_wrapup_enabled", False),
+            budget_wrapup_threshold=data.get("budget_wrapup_threshold", 0.1),
+            budget_wrapup_free_round=data.get("budget_wrapup_free_round", True),
+            budget_wrapup_max_tokens=data.get("budget_wrapup_max_tokens", 2000),
+        )
+
+    @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
         """
         保存配置到 YAML 文件。
@@ -236,6 +266,30 @@ class ConfigLoader:
             },
             "project_file": {
                 "mode": config.project_file.mode
+            },
+            "smart_optimization": {
+                "confidence_enabled": config.smart_optimization.confidence_enabled,
+                "confidence_threshold": config.smart_optimization.confidence_threshold,
+                "budget_enabled": config.smart_optimization.budget_enabled,
+                "initial_budget": config.smart_optimization.initial_budget,
+                "budget_warning_thresholds": config.smart_optimization.budget_warning_thresholds,
+                "budget_warning_mode": config.smart_optimization.budget_warning_mode,
+                "budget_warning_interval": config.smart_optimization.budget_warning_interval,
+                "budget_force_summarize": config.smart_optimization.budget_force_summarize,
+                "budget_llm_summary_enabled": config.smart_optimization.budget_llm_summary_enabled,
+                "budget_llm_summary_max_tokens": config.smart_optimization.budget_llm_summary_max_tokens,
+                "routing_enabled": config.smart_optimization.routing_enabled,
+                "routing_simple_direct": config.smart_optimization.routing_simple_direct,
+                "routing_moderate_single_tool": config.smart_optimization.routing_moderate_single_tool,
+                "routing_complex_full_loop": config.smart_optimization.routing_complex_full_loop,
+                "tool_processor_enabled": config.smart_optimization.tool_processor_enabled,
+                "tool_processor_max_output_tokens": config.smart_optimization.tool_processor_max_output_tokens,
+                "duplicate_threshold": config.smart_optimization.duplicate_threshold,
+                "duplicate_deep_equal": config.smart_optimization.duplicate_deep_equal,
+                "budget_wrapup_enabled": config.smart_optimization.budget_wrapup_enabled,
+                "budget_wrapup_threshold": config.smart_optimization.budget_wrapup_threshold,
+                "budget_wrapup_free_round": config.smart_optimization.budget_wrapup_free_round,
+                "budget_wrapup_max_tokens": config.smart_optimization.budget_wrapup_max_tokens,
             }
         }
 

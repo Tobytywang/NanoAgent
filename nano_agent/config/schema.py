@@ -278,6 +278,16 @@ class SmartOptimizationConfig:
     tool_processor_enabled: bool = True  # Enable intelligent tool result processing
     tool_processor_max_output_tokens: int = 300  # Max tokens for processed tool output
 
+    # === Duplicate Detection (v0.7.9) ===
+    duplicate_threshold: int = 3  # Max identical calls before blocking
+    duplicate_deep_equal: bool = False  # Use full JSON comparison instead of MD5[:8]
+
+    # === Budget Wrap-Up (v0.7.9) ===
+    budget_wrapup_enabled: bool = False  # Enable budget wrap-up round
+    budget_wrapup_threshold: float = 0.1  # Trigger when remaining ratio <= threshold
+    budget_wrapup_free_round: bool = True  # Wrap-up round doesn't consume budget
+    budget_wrapup_max_tokens: int = 2000  # Max tokens for wrap-up LLM call
+
 
 @dataclass
 class PromptConfig:

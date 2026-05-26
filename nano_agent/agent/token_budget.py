@@ -49,6 +49,12 @@ class TokenBudgetConfig:
     calibration_window: int = 5  # Number of calls to consider for calibration
     min_calibration_samples: int = 3  # Minimum samples before calibration
 
+    # Wrap-up round settings (v0.7.9)
+    wrapup_enabled: bool = False  # Enable budget wrap-up round
+    wrapup_threshold: float = 0.1  # Trigger when remaining ratio <= threshold
+    wrapup_free_round: bool = True  # Wrap-up round doesn't consume budget
+    wrapup_max_tokens: int = 2000  # Max tokens for wrap-up LLM call
+
 
 class TokenBudget:
     """
@@ -266,6 +272,17 @@ class TokenBudget:
             True if no budget remaining
         """
         return self.remaining <= 0
+
+    def should_wrapup(self) -> bool:
+        """
+        Check if budget wrap-up round should be triggered.
+
+        Returns:
+            True if remaining ratio is at or below wrapup threshold
+        """
+        if not self.config.wrapup_enabled or self.initial_budget == 0:
+            return False
+        return self.remaining / self.initial_budget <= self.config.wrapup_threshold
 
     def reset(self, new_budget: int | None = None) -> None:
         """
