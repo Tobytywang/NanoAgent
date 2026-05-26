@@ -219,6 +219,7 @@ class ReActAgent(BaseAgent):
             threshold=self.smart_optimization_config.duplicate_threshold,
             deep_equal=self.smart_optimization_config.duplicate_deep_equal,
         )
+        self._wrapup_issued = False
 
         # Prompt builder (v0.7.6)
         self._prompt_builder: PromptBuilder | None = None
@@ -436,15 +437,13 @@ class ReActAgent(BaseAgent):
                     if self.verbose:
                         print("[Budget Wrap-Up] Token budget critically low — entering final round")
 
-                    # Save current budget if free round is enabled
-                    saved_remaining = self.token_budget.remaining if self.token_budget.config.wrapup_free_round else None
-
                     self.tracker.start_iteration(iteration)
                     think = self._think()
 
-                    # Restore budget if free round (no deduction)
-                    if saved_remaining is not None:
-                        self.token_budget.remaining = saved_remaining
+                    # Track usage properly then refund if free round
+                    self.token_budget.consume(think.usage.total_tokens)
+                    if self.token_budget.config.wrapup_free_round:
+                        self.token_budget.remaining += think.usage.total_tokens
 
                     # If LLM gave a final answer → return it
                     if think.is_final:

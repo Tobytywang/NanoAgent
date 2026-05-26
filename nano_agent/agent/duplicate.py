@@ -40,7 +40,7 @@ class DuplicateDetector:
         self.threshold = threshold
         self.deep_equal = deep_equal
         self._call_history: dict[str, int] = {}
-        self._warning_issued: bool = False
+        self.warning_issued: bool = False
 
     def _make_key(self, tool_call) -> str:
         """Create a deduplication key from a tool call."""
@@ -71,15 +71,7 @@ class DuplicateDetector:
             key=key,
         )
 
-    @property
-    def warning_issued(self) -> bool:
-        return self._warning_issued
-
-    @warning_issued.setter
-    def warning_issued(self, value: bool) -> None:
-        self._warning_issued = value
-
     def reset(self) -> None:
         """Reset state for a new run."""
         self._call_history = {}
-        self._warning_issued = False
+        self.warning_issued = False

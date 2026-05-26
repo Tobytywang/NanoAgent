@@ -56,6 +56,24 @@ agent:
 
 每轮扣减实际 LLM 消耗的 Token，预算归零时调用 `_force_summarize()` 强制总结并终止。与 BudgetChecker 不同，这是逐扣减制而非累计检查。
 
+**预算收尾轮（v0.7.9）**：
+
+预算即将耗尽时（剩余比例 ≤ `budget_wrapup_threshold`），触发收尾轮：注入收尾指令到对话，让 LLM 执行最后一轮总结。收尾轮可以不扣预算（`budget_wrapup_free_round`），相当于"低电量时弹出保存对话框"。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `smart_optimization.budget_wrapup_enabled` | `False` | 是否启用收尾轮 |
+| `smart_optimization.budget_wrapup_threshold` | `0.1` | 触发阈值（剩余比例 ≤ 此值时触发） |
+| `smart_optimization.budget_wrapup_free_round` | `True` | 收尾轮不扣预算 |
+| `smart_optimization.budget_wrapup_max_tokens` | `2000` | 收尾轮 LLM 最大 Token 数 |
+
+```yaml
+smart_optimization:
+  budget_wrapup_enabled: true      # 启用收尾轮
+  budget_wrapup_threshold: 0.15    # 剩余 15% 时触发
+  budget_wrapup_free_round: true   # 收尾轮不扣预算
+```
+
 **渐进式预算警告**：
 
 | 配置项 | 默认值 | 说明 |
@@ -126,11 +144,21 @@ smart_optimization:
 
 | 项目 | 值 |
 |------|------|
-| 配置路径 | 内部参数（不可配置） |
-| 默认值 | `3` |
-| 源码位置 | `nano_agent/agent/react.py` → `_duplicate_threshold` |
+| 配置路径 | `smart_optimization.duplicate_threshold` / `duplicate_deep_equal` |
+| 默认值 | `3` / `False` |
+| 源码位置 | `nano_agent/agent/duplicate.py` → `DuplicateDetector` |
 
-同一工具名+参数组合调用超过 3 次后自动跳过，返回缓存结果或 `[skipped] duplicate call`。防止 LLM 陷入重复调用死循环。
+同一工具名+参数组合调用超过 `duplicate_threshold` 次后自动跳过，返回缓存结果或 `[skipped] duplicate call`。防止 LLM 陷入重复调用死循环。
+
+`duplicate_deep_equal` 控制键生成方式：
+- `False`（默认）：使用 `MD5[:8]` 哈希，与之前行为一致
+- `True`：使用完整 JSON 参数比较，更精确但键更长
+
+```yaml
+smart_optimization:
+  duplicate_threshold: 5     # 允许更多重复调用
+  duplicate_deep_equal: true  # 使用精确参数比较
+```
 
 ### 8. 各类超时
 
@@ -329,6 +357,7 @@ cache:
   │   │
   │   ├─ ③ TokenBudget（预算耗尽 → 强制总结终止）
   │   │   ├─ 渐进式警告（50% → 30% → 20% → 10%）
+  │   │   ├─ 收尾轮（剩余 ≤ wrapup_threshold → 注入收尾指令 → 最后一轮 LLM → 终止）
   │   │
   │   ├─ ④ 上下文压力检测
   │   │   ├─ 70% → 轻清理
@@ -361,6 +390,8 @@ cache:
 - BudgetChecker 和 TokenBudget 是**两个独立的终止机制**：BudgetChecker 检查累计值是否超限，TokenBudget 检查扣减后是否归零
 - 上下文压缩和消息压缩是**两个独立的压缩机制**：上下文压缩基于窗口占比，消息压缩基于 prompt_tokens 阈值
 - 置信度早停和查询路由是**两个独立的提前终止机制**：置信度在循环内部触发，路由在循环入口触发
+- 预算收尾轮是**TokenBudget 的子机制**：在 `should_summarize()` 之前检查，收尾轮执行后直接终止，不会回到主循环
+- 重复检测阈值现在可通过 `smart_optimization.duplicate_threshold` 配置
 
 ---
 
@@ -400,6 +431,12 @@ cache:
 | `smart_optimization.budget_warning_interval` | `1` | 警告最小间隔 | 软限制 |
 | `smart_optimization.budget_llm_summary_enabled` | `True` | LLM 摘要生成开关 | 软限制 |
 | `smart_optimization.budget_llm_summary_max_tokens` | `500` | LLM 摘要最大 Token | 软限制 |
+| `smart_optimization.duplicate_threshold` | `3` | 重复调用阻断阈值 | 硬限制 |
+| `smart_optimization.duplicate_deep_equal` | `False` | 重复检测精确模式 | 硬限制 |
+| `smart_optimization.budget_wrapup_enabled` | `False` | 预算收尾轮开关 | 硬限制 |
+| `smart_optimization.budget_wrapup_threshold` | `0.1` | 收尾轮触发阈值 | 硬限制 |
+| `smart_optimization.budget_wrapup_free_round` | `True` | 收尾轮不扣预算 | 硬限制 |
+| `smart_optimization.budget_wrapup_max_tokens` | `2000` | 收尾轮 LLM 最大 Token | 硬限制 |
 | `tool_merge.enabled` | `True` | 工具合并开关 | 软限制 |
 | `tool_merge.max_batch_size` | `3` | 合批最大数量 | 软限制 |
 
@@ -413,7 +450,7 @@ cache:
 |------|--------|---------|------|
 | `Budget.max_tokens` | `100000` | `nano_agent/agent/budget.py` | 全会话 Token 总量上限 |
 | `Budget.max_tool_calls` | `50` | `nano_agent/agent/budget.py` | 全会话工具调用上限 |
-| `_duplicate_threshold` | `3` | `nano_agent/agent/react.py` | 重复调用阻断阈值 |
+| `_duplicate_threshold` | `3` | `nano_agent/agent/duplicate.py` → `DuplicateDetector` | 重复调用阻断阈值（已可配置：`smart_optimization.duplicate_threshold`） |
 | AnthropicLLM `max_tokens` | `4096` | `nano_agent/llm/anthropic.py` | Anthropic 单次响应上限 |
 | Shell timeout | `30s` | `nano_agent/tools/builtin/shell.py` | Shell 命令超时 |
 | Python timeout | `30s` | `nano_agent/tools/builtin/python_executor.py` | Python 执行超时 |
