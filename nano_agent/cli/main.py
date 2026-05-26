@@ -1793,7 +1793,7 @@ def _show_config(config, agent) -> None:
         agent: Agent 实例
     """
     print("\n" + "=" * 50)
-    print("Current Configuration")
+    print("📊 当前配置")
     print("=" * 50)
 
     # 格式化函数：左对齐标签，右对齐值
@@ -1801,7 +1801,7 @@ def _show_config(config, agent) -> None:
         return f"  {label:<{width}} {value}"
 
     # LLM 配置
-    print("\n## LLM Settings")
+    print("\n## LLM 设置")
     print(format_line("Provider:", config.llm.provider))
     print(format_line("Model:", config.llm.model))
     print(format_line("Base URL:", config.llm.base_url))
@@ -1810,12 +1810,12 @@ def _show_config(config, agent) -> None:
     print(format_line("Context Length:", f"{config.llm.get_context_length():,}"))
 
     # Agent 配置
-    print("\n## Agent Settings")
+    print("\n## Agent 设置")
     print(format_line("Max Iterations:", str(config.agent.max_iterations)))
     print(format_line("Verbose:", str(config.agent.verbose)))
 
     # Memory 配置
-    print("\n## Memory Settings")
+    print("\n## 记忆设置")
     print(format_line("Type:", config.memory.type))
     print(format_line("Storage Type:", config.memory.storage_type))
     print(format_line("Storage Path:", config.memory.storage_path))
@@ -1826,25 +1826,25 @@ def _show_config(config, agent) -> None:
         print(format_line("Auto Extract:", str(config.memory.auto_extract)))
 
     # Skills 配置
-    print("\n## Skills Settings")
+    print("\n## 技能设置")
     print(format_line("Directory:", config.skills.directory))
     if hasattr(agent, 'skill_loader'):
         skills = agent.skill_loader.list_loaded_skills()
         print(format_line("Loaded Skills:", ', '.join(skills) if skills else 'None'))
 
     # Plugins 配置
-    print("\n## Plugins Settings")
+    print("\n## 插件设置")
     print(format_line("Directories:", ', '.join(config.plugins.directories) if config.plugins.directories else 'None'))
     print(format_line("Modules:", ', '.join(config.plugins.modules) if config.plugins.modules else 'None'))
 
     # Logging 配置
-    print("\n## Logging Settings")
+    print("\n## 日志设置")
     print(format_line("Level:", config.logging.level))
     print(format_line("Console:", str(config.logging.console)))
     print(format_line("File:", config.logging.file or 'None'))
 
     # 工具统计
-    print("\n## Tools")
+    print("\n## 工具")
     tools = agent.tool_registry.list_tools()
     print(format_line("Total:", str(len(tools))))
     tools_display = ', '.join(tools[:10])
@@ -1853,12 +1853,12 @@ def _show_config(config, agent) -> None:
     print(format_line("Tools:", tools_display))
 
     # Output Style 配置
-    print("\n## Output Style")
+    print("\n## 输出风格")
     print(format_line("Style:", config.output_style.style))
     print(format_line("Max Tool Output:", f"{config.output_style.tool_output_max_tokens} tokens"))
 
     # Prompt 配置 (v0.7.6)
-    print("\n## Prompt Settings")
+    print("\n## Prompt 设置")
     print(format_line("Source:", config.prompt.source))
     print(format_line("Style:", config.prompt.style))
     print(format_line("Token Budget:", f"{config.prompt.token_budget} tokens"))
@@ -1900,30 +1900,30 @@ def _handle_memory_command(agent, config, command: str) -> None:
 def _show_memory_status(config) -> None:
     """显示当前记忆配置状态"""
     print("\n" + "=" * 50)
-    print("Memory Configuration")
+    print("📊 记忆配置")
     print("=" * 50)
 
     def format_line(label: str, value: str, width: int = 20) -> str:
         return f"  {label:<{width}} {value}"
 
-    print("\n## Current Settings")
-    print(format_line("Memory Type:", config.memory.type))
-    print(format_line("Storage Type:", config.memory.storage_type))
-    print(format_line("Storage Path:", config.memory.storage_path))
+    print("\n## 当前设置")
+    print(format_line("记忆类型:", config.memory.type))
+    print(format_line("存储类型:", config.memory.storage_type))
+    print(format_line("存储路径:", config.memory.storage_path))
 
     if config.memory.type == "hybrid":
-        print(format_line("Long-term Path:", config.memory.long_term_storage_path))
-        print(format_line("Auto Extract:", str(config.memory.auto_extract)))
+        print(format_line("长期记忆路径:", config.memory.long_term_storage_path))
+        print(format_line("自动提取:", str(config.memory.auto_extract)))
 
-    print("\n## Memory Modes")
-    print("  short_term  - Only current context (no persistence)")
-    print("  hybrid      - Short-term + Long-term memory (recommended)")
+    print("\n## 记忆模式")
+    print("  short_term  - 仅当前上下文（无持久化）")
+    print("  hybrid      - 短期 + 长期记忆（推荐）")
 
-    print("\n## Commands")
-    print("  /memory on   - Enable long-term memory (hybrid mode)")
-    print("  /memory off  - Disable long-term memory (short_term mode)")
+    print("\n## 命令")
+    print("  /memory on   - 启用长期记忆（hybrid 模式）")
+    print("  /memory off  - 禁用长期记忆（short_term 模式）")
 
-    print("\n" + "=" * 50 + "\n")
+    print("=" * 50 + "\n")
 
 
 def _enable_long_term_memory(config) -> None:
@@ -2321,7 +2321,7 @@ def _show_context_budget(agent, config) -> None:
     usage_pct = (total_tokens / context_limit * 100) if context_limit > 0 else 0
     remaining_pct = 100 - usage_pct
 
-    print(f"\n## 占比分布 (限制: {context_limit})")
+    print(f"\n## 占比分布 (上限: {context_limit})")
 
     # 使用不同符号表示各部分
     symbols = ["█", "▓", "▒", "░"]
@@ -2370,15 +2370,16 @@ def _show_iteration_breakdown(agent) -> None:
         Console.print("No iteration data yet. Run a query first.", style="info")
         return
 
-    print("\n📊 各轮 Token 消耗趋势:")
-    print("─" * 60)
+    print("\n" + "=" * 50)
+    print("📊 Token 消耗趋势")
+    print("=" * 50)
 
     # 找出最大值用于趋势条
     max_total = max(i['total_tokens'] for i in iterations) if iterations else 1
 
     # 表头
     print(f"  {'轮次':<6} {'输入':<8} {'输出':<8} {'总计':<8} 趋势")
-    print("─" * 60)
+    print("  " + "-" * 55)
 
     # 各轮数据
     for iter_data in iterations:
@@ -2393,7 +2394,7 @@ def _show_iteration_breakdown(agent) -> None:
 
         print(f"  {i:<6} {prompt:<8} {completion:<8} {total:<8} {bar}")
 
-    print("─" * 60)
+    print("-" * 55)
 
     # 统计摘要
     total_all = sum(i['total_tokens'] for i in iterations)
@@ -2404,7 +2405,7 @@ def _show_iteration_breakdown(agent) -> None:
     print(f"  平均每轮: {avg:.0f} tokens")
     print(f"  最大: {max_iter['total_tokens']} (轮次 {max_iter['iteration_number']})")
     print(f"  最小: {min_iter['total_tokens']} (轮次 {min_iter['iteration_number']})")
-    print()
+    print("=" * 50 + "\n")
 
 
 def _enable_run_stats() -> None:
@@ -2432,7 +2433,7 @@ def _disable_run_stats() -> None:
 def _show_help() -> None:
     """显示交互模式帮助信息"""
     print("\n" + "=" * 50)
-    print("Available Commands")
+    print("📊 可用命令")
     print("=" * 50)
 
     print("\n## 基本操作")
