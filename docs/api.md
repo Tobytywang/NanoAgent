@@ -699,6 +699,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.10 | 柔化硬限制（TerminationReason、智能重复检测、预算收尾轮） |
 | v0.5.0 | PyPI 发布准备，API 文档 |
 | v0.4.1 | WebSearchTool 工具 |
 | v0.4.0 | 运行监控（Token 统计、上下文使用率） |

@@ -1904,6 +1904,54 @@ class SemanticCompressor:
 
 ---
 
+### v0.7.10 - 柔化硬限制 ✅
+
+**目标**: 将 ReAct 循环的硬限制柔化为动态软限制，避免过早终止。
+
+**背景**:
+ReAct 循环有多层硬限制（迭代次数、Token 预算、重复调用检测），这些限制经常过早触发终止。例如：预算归零时"突然猝死"，不给收尾机会；重复调用阈值不可配置；终止原因无记录。
+
+**任务列表**:
+
+**Phase 0: TerminationReason**:
+- [x] 添加 `TerminationReason` 枚举到 `types.py`
+- [x] 添加 `termination_reason` 字段到 `ExecutionResult`
+- [x] 所有 8 个退出路径设置对应的终止原因
+
+**Phase 1: 智能重复检测**:
+- [x] 新建 `DuplicateDetector` 类 (`duplicate.py`)
+- [x] 支持可配置 threshold (`duplicate_threshold`)
+- [x] 支持 deep_equal 模式 (`duplicate_deep_equal`)
+- [x] 替换 `react.py` 内联重复检测逻辑
+- [x] 配置加载器解析新字段
+
+**Phase 2: 预算收尾轮**:
+- [x] 添加 wrapup 配置到 `TokenBudgetConfig`
+- [x] 实现 `should_wrapup()` 方法
+- [x] 在 `react.py` 循环中插入收尾逻辑
+- [x] 配置加载器解析 wrapup 字段
+- [x] 更新 `docs/constraints.md`
+
+**新增/修改文件**:
+```
+nano_agent/agent/duplicate.py          # 新建
+nano_agent/agent/types.py              # TerminationReason, AgentEvent
+nano_agent/agent/react.py              # DuplicateDetector, wrap-up logic
+nano_agent/agent/token_budget.py       # wrapup config + should_wrapup()
+nano_agent/config/schema.py            # 新配置字段
+nano_agent/config/loader.py            # smart_optimization 解析
+tests/test_duplicate.py                # 15 tests
+tests/test_budget_wrapup.py            # 13 tests
+docs/constraints.md                    # 文档更新
+```
+
+**后续规划** (本轮不做):
+- Phase 3: 增量感知迭代控制（stall detection）
+- Phase 4: 置信度验证触发
+- Phase 5: 按复杂度分配预算 profile
+
+---
+
 ### v0.8.0 - 流式执行
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
@@ -2279,6 +2327,7 @@ persona:
 | v0.7.7 | Prefix Caching 优化 ✅ | AnthropicLLM、cache_control、稳定/动态分离、enable_caching |
 | v0.7.8 | Token 优化增强 ✅ | Tool Caching、Dynamic Module、Budget 与 LLMUsage 集成 |
 | v0.7.9 | Token 效率深度优化 | 预判机制、激进输出精简、工具输出标准化、多轮缓存、语义压缩 |
+| v0.7.10 | 柔化硬限制 | TerminationReason、可配置重复检测、预算收尾轮 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
