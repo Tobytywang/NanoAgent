@@ -13,6 +13,7 @@
   - [Monitoring](#monitoring)
   - [Config](#config)
 - [CLI 使用](#cli-使用)
+- [相关文档](#相关文档)
 
 ---
 
@@ -706,3 +707,15 @@ enabled: true
 | v0.3.0 | 技能包机制，热加载 |
 | v0.2.0 | 持久化记忆，会话管理 |
 | v0.1.0 | ReAct 模式，基础工具 |
+
+---
+
+## 相关文档
+
+| 文档 | 说明 |
+|------|------|
+| [constraints.md](constraints.md) | 资源约束与限制参考 — 所有硬限制/软限制、默认值、交互关系 |
+| [architecture.md](architecture.md) | 系统架构设计 |
+| [tutorial.md](tutorial.md) | 使用教程 |
+| [plugins.md](plugins.md) | 插件开发指南 |
+| [testing.md](testing.md) | 测试指南 |
