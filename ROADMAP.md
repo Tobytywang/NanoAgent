@@ -1598,12 +1598,132 @@ class TokenBudget:
 
 ---
 
-### v0.7.9 - Token 效率深度优化
+### v0.7.9 - Agent/Monitoring/CLI 解耦与斜杠命令统一 ✅
+
+**目标**: 解耦 Agent 与 Monitoring 层的直接依赖，统一斜杠命令格式。
+
+**背景**:
+Agent 层（react.py）直接调用 tracker 的具体方法（record_llm_call），导致两层紧耦合。当 tracker API 变更时，agent 层也需同步修改。通过引入 RawData 容器，agent 只需传递原始数据，由 tracker 自行提取和转换。
+
+**架构归属**: 基础设施层 - 层间解耦
+
+**任务列表**:
+
+**1. RawData 容器 (P0)**:
+- [x] 创建 `RawLLMCallData` 数据类 - 封装 LLM 调用原始数据
+- [x] 创建 `RawToolExecutionData` 数据类 - 封装工具执行原始数据
+- [x] Agent 传递原始对象而非提取字段
+
+**2. Tracker 解耦 API (P0)**:
+- [x] 实现 `record_raw_llm_call()` 方法 - 接收 RawLLMCallData
+- [x] 实现 `record_raw_tool_execution()` 方法 - 接收 RawToolExecutionData
+- [x] Tracker 内部处理类型转换和字段提取
+- [x] 新增 `record_skipped_tool_call()` 方法 - 记录跳过的工具调用
+
+**3. Metrics 扩展 (P1)**:
+- [x] `LLMCallMetrics` 添加 `tools_schema` 字段 - 支持工具定义 Token 分类
+- [x] 新增 `SkippedToolCall` 数据类 - 记录跳过原因（routing_limit/merged/duplicate/budget_exceeded）
+- [x] `IterationMetrics` 添加 `skipped_tool_calls` 字段
+- [x] `RunMetrics` 添加 `run_number` 字段 - 全局轮次编号
+
+**4. 斜杠命令格式统一 (P1)**:
+- [x] 统一所有命令使用 `/` 前缀
+- [x] 新增 `/usage` 命令 - 显示上下文组成明细
+- [x] 新增 `/context` 命令 - 显示上下文预算
+- [x] `/stats` 增强 - 显示轮次计数、当前上下文大小
+- [x] 配置显示中文化
+
+**5. 渐进式预算警告 (P1)**:
+- [x] `TokenBudgetConfig` 扩展多级警告阈值
+- [x] 实现 `check_warning()` 方法 - 按阈值触发不同级别警告
+- [x] 重复工具调用检测 - `_tool_call_history` + `_check_duplicate_tool_call()`
+- [x] 跳过的工具调用记录为 `SkippedToolCall`
+
+**6. 文档与测试**:
+- [x] 创建 `docs/architecture.md` - 架构文档
+- [x] 创建 `docs/constraints.md` - 资源约束参考
+- [x] 新增 `tests/test_cli_main.py` - 935 个 CLI 测试用例
+- [x] 新增 `tests/test_memory_interface.py` - 接口一致性测试
+- [x] BUGLIST.md 记录历史 BUG
+
+**新增文件**:
+```
+nano_agent/monitoring/
+├── raw_data.py              # RawLLMCallData, RawToolExecutionData
+docs/
+├── architecture.md           # 架构文档
+├── constraints.md            # 资源约束参考
+tests/
+├── test_cli_main.py          # 935 测试用例
+├── test_memory_interface.py  # 接口一致性测试
+```
+
+**修改文件**:
+```
+nano_agent/agent/react.py            # 使用 RawData API, 重复检测
+nano_agent/monitoring/tracker.py      # record_raw_* API, 多级警告
+nano_agent/monitoring/metrics.py      # SkippedToolCall, tools_schema
+nano_agent/cli/main.py               # /usage, /context, 中文化
+nano_agent/agent/token_budget.py     # 多级警告配置
+nano_agent/config/schema.py          # 新配置字段
+```
+
+---
+
+### v0.7.10 - 柔化硬限制 ✅
+
+**目标**: 将 ReAct 循环的硬限制柔化为动态软限制，避免过早终止。
+
+**背景**:
+ReAct 循环有多层硬限制（迭代次数、Token 预算、重复调用检测），这些限制经常过早触发终止。例如：预算归零时"突然猝死"，不给收尾机会；重复调用阈值不可配置；终止原因无记录。
+
+**任务列表**:
+
+**Phase 0: TerminationReason**:
+- [x] 添加 `TerminationReason` 枚举到 `types.py`
+- [x] 添加 `termination_reason` 字段到 `ExecutionResult`
+- [x] 所有 8 个退出路径设置对应的终止原因
+
+**Phase 1: 智能重复检测**:
+- [x] 新建 `DuplicateDetector` 类 (`duplicate.py`)
+- [x] 支持可配置 threshold (`duplicate_threshold`)
+- [x] 支持 deep_equal 模式 (`duplicate_deep_equal`)
+- [x] 替换 `react.py` 内联重复检测逻辑
+- [x] 配置加载器解析新字段
+
+**Phase 2: 预算收尾轮**:
+- [x] 添加 wrapup 配置到 `TokenBudgetConfig`
+- [x] 实现 `should_wrapup()` 方法
+- [x] 在 `react.py` 循环中插入收尾逻辑
+- [x] 配置加载器解析 wrapup 字段
+- [x] 更新 `docs/constraints.md`
+
+**新增/修改文件**:
+```
+nano_agent/agent/duplicate.py          # 新建
+nano_agent/agent/types.py              # TerminationReason, AgentEvent
+nano_agent/agent/react.py              # DuplicateDetector, wrap-up logic
+nano_agent/agent/token_budget.py       # wrapup config + should_wrapup()
+nano_agent/config/schema.py            # 新配置字段
+nano_agent/config/loader.py            # smart_optimization 解析
+tests/test_duplicate.py                # 15 tests
+tests/test_budget_wrapup.py            # 13 tests
+docs/constraints.md                    # 文档更新
+```
+
+**后续规划** (本轮不做):
+- Phase 3: 增量感知迭代控制（stall detection）
+- Phase 4: 置信度验证触发
+- Phase 5: 按复杂度分配预算 profile
+
+---
+
+### v0.7.11 - Token 效率深度优化
 
 **目标**: 实现更深层次的 Token 优化，包括预判机制、激进输出精简、工具输出标准化等。
 
 **背景**:
-v0.7.1-v0.7.8 实现了多层 Token 优化，但在以下场景仍有优化空间：
+v0.7.1-v0.7.10 实现了多层 Token 优化，但在以下场景仍有优化空间：
 1. 简单问题（问候、感谢）仍需完整 LLM 调用流程
 2. LLM 输出格式自由，包含冗余格式（表格、emoji、列表）
 3. 工具输出是自由格式字符串，LLM 需要额外解析
@@ -1674,218 +1794,6 @@ nano_agent/tools/builtin/shell.py    # 标准化输出
 nano_agent/agent/cache.py            # 跨轮次缓存
 ```
 
-**技术方案**:
-
-```python
-# 1. 预判机制
-# nano_agent/agent/prejudgment.py
-
-class QueryPrejudgment:
-    """查询预判器 - 在完整流程前判断复杂度"""
-
-    PREJUDGMENT_PROMPT = """判断问题复杂度:
-- simple: 问候、感谢、简单问答
-- moderate: 需要单次查询或操作
-- complex: 需要多步推理或多个工具
-
-问题: {query}
-复杂度:"""
-
-    SIMPLE_PROMPT = """简洁回答用户问题。
-用户: {query}
-回答:"""
-
-    def prejudge(self, query: str) -> str:
-        """预判问题复杂度（轻量级 LLM 调用）"""
-        response = self.llm.chat_simple(
-            prompt=self.PREJUDGMENT_PROMPT.format(query=query),
-            max_tokens=10
-        )
-        return response.strip().lower()
-
-    def handle_simple(self, query: str) -> str:
-        """直接回答简单问题（不走 ReAct 循环）"""
-        return self.llm.chat_simple(
-            prompt=self.SIMPLE_PROMPT.format(query=query),
-            max_tokens=100
-        )
-
-# 集成到 ReAct 流程
-def run(self, user_input: str) -> ExecutionResult:
-    if self.prejudgment_enabled:
-        complexity = self.prejudgment.prejudge(user_input)
-
-        if complexity == "simple":
-            return self.prejudgment.handle_simple(user_input)
-        elif complexity == "moderate":
-            self.max_tool_calls = 1  # 限制工具调用次数
-
-    return self._run_react_loop(user_input)
-
-# 2. 激进输出精简
-# nano_agent/agent/output_simplifier.py
-
-@dataclass
-class AggressiveOutputConfig:
-    enabled: bool = False
-    level: Literal["mild", "aggressive", "extreme"] = "aggressive"
-    max_answer_length: int = 50
-    max_key_points: int = 2
-    no_table: bool = True
-    no_list: bool = True
-    no_emoji: bool = True
-    no_markdown: bool = True
-
-class OutputSimplifier:
-    AGGRESSIVE_SUFFIX = """
-【输出规则 - 必须严格遵守】
-1. 一句话回答，不超过 50 字
-2. 禁止使用表格、列表、分点
-3. 禁止使用 emoji 和表情符号
-4. 禁止使用 Markdown 格式
-5. 只陈述事实，不说废话
-"""
-
-    def simplify(self, response: str, level: str) -> str:
-        if level == "extreme":
-            return self._to_one_sentence(response)
-        elif level == "aggressive":
-            return self._to_compact_format(response)
-        return self._remove_formatting(response)
-
-    def _to_one_sentence(self, text: str) -> str:
-        text = text.replace("\n", " ")
-        text = self._remove_emoji(text)
-        text = re.sub(r"\*\*|\*|__|_|`", "", text)
-        if len(text) > self.config.max_answer_length:
-            text = text[:self.config.max_answer_length] + "。"
-        return text
-
-# 3. 工具输出格式标准化
-# nano_agent/tools/standard_output.py
-
-class OutputFormat(Enum):
-    STRUCTURE = "structure"    # 结构信息（文件、类、函数）
-    LIST = "list"              # 列表信息（文件列表、搜索结果）
-    STATUS = "status"          # 状态信息（成功/失败、计数）
-    CONTENT = "content"        # 内容信息（代码片段、文本）
-    ERROR = "error"            # 错误信息
-
-@dataclass
-class StandardToolOutput:
-    format: OutputFormat
-    summary: str              # 一句话摘要（<50字）
-    success: bool
-    data: dict[str, Any] | None = None
-    key_info: list[str] | None = None  # 最多 5 条
-    errors: list[str] | None = None
-    stats: dict[str, int] | None = None
-
-    def to_llm_message(self) -> str:
-        """转换为给 LLM 的精简消息"""
-        lines = [f"[{self.format.value}] {self.summary}"]
-        if self.key_info:
-            lines.append("关键信息: " + ", ".join(self.key_info[:3]))
-        if self.errors:
-            lines.append("错误: " + "; ".join(self.errors[:2]))
-        return "\n".join(lines)
-
-# file_read 标准化输出示例
-{
-    "format": "structure",
-    "summary": "DataProcessor 类，提供验证、转换、清洗功能",
-    "success": true,
-    "data": {
-        "imports": ["os", "sys", "json", "logging"],
-        "classes": [{"name": "DataProcessor", "methods": ["process", "validate"]}],
-        "functions": []
-    },
-    "key_info": ["主类: DataProcessor", "方法: process, validate"],
-    "stats": {"class_count": 1, "method_count": 2}
-}
-
-# 4. 多轮对话增量缓存
-# 扩展 nano_agent/agent/cache.py
-
-class ToolResultCache:
-    def __init__(self, config: CacheConfig):
-        self._cache: dict[str, tuple[ToolResult, float]] = {}
-        self._persistent_path = config.persistent_path  # 新增：持久化路径
-
-    def save_to_disk(self) -> None:
-        """保存缓存到磁盘"""
-        import json
-        with open(self._persistent_path, 'w') as f:
-            json.dump(self._cache, f)
-
-    def load_from_disk(self) -> None:
-        """从磁盘加载缓存"""
-        import json
-        if os.path.exists(self._persistent_path):
-            with open(self._persistent_path, 'r') as f:
-                self._cache = json.load(f)
-
-    def invalidate_by_mtime(self, path: str, mtime: float) -> None:
-        """基于文件修改时间失效缓存"""
-        for key in list(self._cache.keys()):
-            if path in key:
-                del self._cache[key]
-
-# 5. 语义压缩
-# nano_agent/agent/semantic_compressor.py
-
-class SemanticCompressor:
-    """语义压缩 - 合并相似历史消息"""
-
-    def __init__(self, embedding_model: str = "text-embedding-3-small"):
-        self.embedding_model = embedding_model
-        self._embeddings_cache: dict[str, list[float]] = {}
-
-    def compress(self, messages: list[dict], threshold: float = 0.85) -> list[dict]:
-        """合并相似消息"""
-        if len(messages) < 5:
-            return messages
-
-        # 计算消息 embedding
-        embeddings = [self._get_embedding(m.get("content", "")) for m in messages]
-
-        # 找出相似消息组
-        groups = self._find_similar_groups(embeddings, threshold)
-
-        # 合并每组为一条摘要消息
-        compressed = []
-        for group in groups:
-            if len(group) > 1:
-                merged = self._merge_messages([messages[i] for i in group])
-                compressed.append(merged)
-            else:
-                compressed.append(messages[group[0]])
-
-        return compressed
-
-    def _get_embedding(self, text: str) -> list[float]:
-        """获取文本 embedding"""
-        if text in self._embeddings_cache:
-            return self._embeddings_cache[text]
-        # 调用 embedding API
-        ...
-
-    def _find_similar_groups(self, embeddings: list, threshold: float) -> list[list[int]]:
-        """找出相似消息组"""
-        groups = []
-        used = set()
-        for i, emb1 in enumerate(embeddings):
-            if i in used:
-                continue
-            group = [i]
-            for j, emb2 in enumerate(embeddings[i+1:], i+1):
-                if j not in used and self._cosine_similarity(emb1, emb2) > threshold:
-                    group.append(j)
-                    used.add(j)
-            groups.append(group)
-        return groups
-```
-
 **预期效果**:
 
 | 优化项 | 场景 | Token 节省 |
@@ -1901,54 +1809,6 @@ class SemanticCompressor:
 - P1: 激进输出精简、工具输出标准化 - 适用范围广
 - P2: 多轮对话缓存 - 需要持久化支持
 - P3: 语义压缩 - 需要 embedding API，依赖较重
-
----
-
-### v0.7.10 - 柔化硬限制 ✅
-
-**目标**: 将 ReAct 循环的硬限制柔化为动态软限制，避免过早终止。
-
-**背景**:
-ReAct 循环有多层硬限制（迭代次数、Token 预算、重复调用检测），这些限制经常过早触发终止。例如：预算归零时"突然猝死"，不给收尾机会；重复调用阈值不可配置；终止原因无记录。
-
-**任务列表**:
-
-**Phase 0: TerminationReason**:
-- [x] 添加 `TerminationReason` 枚举到 `types.py`
-- [x] 添加 `termination_reason` 字段到 `ExecutionResult`
-- [x] 所有 8 个退出路径设置对应的终止原因
-
-**Phase 1: 智能重复检测**:
-- [x] 新建 `DuplicateDetector` 类 (`duplicate.py`)
-- [x] 支持可配置 threshold (`duplicate_threshold`)
-- [x] 支持 deep_equal 模式 (`duplicate_deep_equal`)
-- [x] 替换 `react.py` 内联重复检测逻辑
-- [x] 配置加载器解析新字段
-
-**Phase 2: 预算收尾轮**:
-- [x] 添加 wrapup 配置到 `TokenBudgetConfig`
-- [x] 实现 `should_wrapup()` 方法
-- [x] 在 `react.py` 循环中插入收尾逻辑
-- [x] 配置加载器解析 wrapup 字段
-- [x] 更新 `docs/constraints.md`
-
-**新增/修改文件**:
-```
-nano_agent/agent/duplicate.py          # 新建
-nano_agent/agent/types.py              # TerminationReason, AgentEvent
-nano_agent/agent/react.py              # DuplicateDetector, wrap-up logic
-nano_agent/agent/token_budget.py       # wrapup config + should_wrapup()
-nano_agent/config/schema.py            # 新配置字段
-nano_agent/config/loader.py            # smart_optimization 解析
-tests/test_duplicate.py                # 15 tests
-tests/test_budget_wrapup.py            # 13 tests
-docs/constraints.md                    # 文档更新
-```
-
-**后续规划** (本轮不做):
-- Phase 3: 增量感知迭代控制（stall detection）
-- Phase 4: 置信度验证触发
-- Phase 5: 按复杂度分配预算 profile
 
 ---
 
@@ -2326,8 +2186,9 @@ persona:
 | v0.7.6 | 模块化提示词系统 ✅ | PromptBuilder、17 个模块、Excel 配置、稳定缓存 |
 | v0.7.7 | Prefix Caching 优化 ✅ | AnthropicLLM、cache_control、稳定/动态分离、enable_caching |
 | v0.7.8 | Token 优化增强 ✅ | Tool Caching、Dynamic Module、Budget 与 LLMUsage 集成 |
-| v0.7.9 | Token 效率深度优化 | 预判机制、激进输出精简、工具输出标准化、多轮缓存、语义压缩 |
-| v0.7.10 | 柔化硬限制 | TerminationReason、可配置重复检测、预算收尾轮 |
+| v0.7.9 | Agent/Monitoring/CLI 解耦 ✅ | RawData 容器、Tracker 解耦 API、SkippedToolCall、/usage、/context |
+| v0.7.10 | 柔化硬限制 ✅ | TerminationReason、DuplicateDetector、预算收尾轮 |
+| v0.7.11 | Token 效率深度优化 | 预判机制、激进输出精简、工具输出标准化、多轮缓存、语义压缩 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.8.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
 | v0.9.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
