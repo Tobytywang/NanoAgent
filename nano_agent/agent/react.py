@@ -110,6 +110,7 @@ class ReActAgent(BaseAgent):
         compressor_config: CompressorConfig | None = None,
         smart_optimization_config: SmartOptimizationConfig | None = None,
         prompt_config: PromptConfig | None = None,
+        llm_config=None,
     ):
         """
         Initialize the ReAct agent.
@@ -200,7 +201,8 @@ class ReActAgent(BaseAgent):
             memory=memory,
             llm=llm,
             config=context_config,
-            verbose=verbose
+            verbose=verbose,
+            llm_config=llm_config,
         ) if context_config else None
 
         # Confirmation manager

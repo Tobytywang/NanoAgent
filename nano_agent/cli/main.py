@@ -254,6 +254,7 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
 
     # Create LLM
     llm = create_llm_from_config(config.llm)
+    config.llm.set_llm_client(llm)
     builder.with_llm_instance(llm)
 
     # Create memory and set LLM for auto-extraction

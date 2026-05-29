@@ -3,7 +3,7 @@ Configuration data structures.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 
 # Default context lengths for common models (in tokens)
@@ -39,6 +39,27 @@ MODEL_CONTEXT_LENGTHS = {
     "codellama": 16384,
 }
 
+# Separator characters used in model versioning (e.g., "llama3.1", "gpt-4o-2024-08-06")
+_MODEL_SEPARATORS = {".", "-", "_"}
+
+# Conservative fallback — underestimating is safe (wastes some context),
+# overestimating is dangerous (context overflow / API error)
+CONSERVATIVE_CONTEXT_FALLBACK = 8192
+
+
+def _model_prefix_matches(model_name: str, key: str) -> bool:
+    """Check if model_name starts with key followed by a separator or end of string.
+
+    This prevents 'llama3' from matching 'llama3.1' — the key 'llama3'
+    must be followed by a separator char or the string must end there.
+    """
+    if not model_name.startswith(key):
+        return False
+    remainder = model_name[len(key):]
+    if not remainder:
+        return True
+    return remainder[0] in _MODEL_SEPARATORS
+
 
 @dataclass
 class LLMConfig:
@@ -50,31 +71,53 @@ class LLMConfig:
     api_key_env: str = "OPENAI_API_KEY"
     timeout: int = 120
     temperature: float = 0.7
-    context_length: int | None = None  # Override context length (auto-detected if None)
+    context_length: int | None = None
+    _llm_client: Any = field(default=None, repr=False)
+
+    def set_llm_client(self, client: Any) -> None:
+        """Set the LLM client instance for API-based context length queries."""
+        self._llm_client = client  # Override context length (auto-detected if None)
 
     def get_context_length(self) -> int:
         """
         Get the context length for the current model.
 
+        Four-layer fallback chain:
+        1. User-configured override (context_length field)
+        2. API query (via LLM client's query_context_length)
+        3. Lookup table (exact match, then prefix match)
+        4. Conservative fallback (8192)
+
         Returns:
             Context length in tokens
         """
-        # Use override if set
+        # Layer 1: User override
         if self.context_length is not None:
             return self.context_length
 
-        # Try exact match
+        # Layer 2: API query
+        if self._llm_client is not None:
+            try:
+                result = self._llm_client.query_context_length()
+                if result is not None:
+                    return result
+            except Exception:
+                pass
+
+        # Layer 3: Lookup table
         model_lower = self.model.lower()
+
+        # Exact match
         if model_lower in MODEL_CONTEXT_LENGTHS:
             return MODEL_CONTEXT_LENGTHS[model_lower]
 
-        # Try partial match (e.g., "gpt-4o-2024-08-06" -> "gpt-4o")
+        # Prefix match (prevents llama3 from matching llama3.1)
         for key, length in MODEL_CONTEXT_LENGTHS.items():
-            if key in model_lower or model_lower.startswith(key):
+            if _model_prefix_matches(model_lower, key):
                 return length
 
-        # Default fallback (128k for modern models)
-        return 128000
+        # Layer 4: Conservative fallback
+        return CONSERVATIVE_CONTEXT_FALLBACK
 
 
 @dataclass
