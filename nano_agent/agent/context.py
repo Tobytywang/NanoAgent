@@ -95,21 +95,14 @@ class ContextManager:
         memory: "BaseMemory",
         llm,
         config,
-        verbose: bool = False
+        verbose: bool = False,
+        llm_config=None,
     ):
-        """
-        Initialize context manager.
-
-        Args:
-            memory: Memory system instance
-            llm: LLM client for generating summaries
-            config: ContextConfig instance
-            verbose: Whether to print debug information
-        """
         self.memory = memory
         self.llm = llm
         self.config = config
         self.verbose = verbose
+        self._llm_config = llm_config
         self.compress_failures = 0
         self._round = 0
 
@@ -127,7 +120,13 @@ class ContextManager:
 
         # Get effective max context tokens
         if max_context_tokens is None:
-            max_context_tokens = self.config.max_context_tokens or 128000
+            if self.config.max_context_tokens is not None:
+                max_context_tokens = self.config.max_context_tokens
+            elif self._llm_config is not None:
+                max_context_tokens = self._llm_config.get_context_length()
+            else:
+                from ..config.schema import CONSERVATIVE_CONTEXT_FALLBACK
+                max_context_tokens = CONSERVATIVE_CONTEXT_FALLBACK
 
         messages = self.memory.get_all()
         tokens = estimate_tokens(messages)
