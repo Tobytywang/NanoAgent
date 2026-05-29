@@ -185,6 +185,10 @@ class AgentBuilder:
         if self._skill_registry is None:
             self._skill_registry = SkillRegistry()
 
+        # Inject LLM client into config so get_context_length() can query API
+        if hasattr(self.config, 'llm'):
+            self.config.llm.set_llm_client(self._llm)
+
         # Create agent
         agent = ReActAgent(
             llm=self._llm,
