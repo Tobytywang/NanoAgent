@@ -119,6 +119,31 @@ class OpenAICompatibleLLM(BaseLLM):
             "Authorization": f"Bearer {self.api_key}"
         }
 
+    def query_context_length(self) -> int | None:
+        """Query the model's context window from OpenAI-compatible /models endpoint."""
+        try:
+            import requests
+
+            base_url = self.base_url.rstrip("/")
+            url = f"{base_url}/models/{self.model}"
+            headers = self._get_headers()
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                # OpenAI format: data.context_window or data.metadata.context_window
+                context_window = data.get("context_window")
+                if context_window is not None:
+                    return int(context_window)
+                # Some providers nest it in metadata
+                metadata = data.get("metadata", {})
+                if isinstance(metadata, dict):
+                    context_window = metadata.get("context_window")
+                    if context_window is not None:
+                        return int(context_window)
+        except Exception:
+            pass
+        return None
+
     def chat(
         self,
         messages: list[Message] | list[dict],
