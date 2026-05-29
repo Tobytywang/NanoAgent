@@ -41,6 +41,14 @@ class BaseLLM(ABC):
         """Initialize the LLM client."""
         pass
 
+    def query_context_length(self) -> int | None:
+        """Query the model's actual context length from the API.
+
+        Returns:
+            Context length in tokens, or None if query failed/unavailable.
+        """
+        return None
+
     @abstractmethod
     def chat(
         self,
