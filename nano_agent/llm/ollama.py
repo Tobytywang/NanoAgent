@@ -93,6 +93,33 @@ class OllamaLLM(BaseLLM):
             }
         }
 
+    def query_context_length(self) -> int | None:
+        """Query the model's actual context length from Ollama /api/show endpoint."""
+        try:
+            import requests
+
+            base_url = self.base_url.rstrip("/")
+            response = requests.post(
+                f"{base_url}/api/show",
+                json={"name": self.model},
+                timeout=5,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                # Check parameters.num_ctx first (user override)
+                params = data.get("parameters", {})
+                num_ctx = params.get("num_ctx")
+                if num_ctx is not None:
+                    return int(num_ctx)
+                # Fallback: check model_info for context_length
+                model_info = data.get("model_info", {})
+                for key, value in model_info.items():
+                    if "context_length" in key:
+                        return int(value)
+        except Exception:
+            pass
+        return None
+
     def chat(
         self,
         messages: list[Message] | list[dict],
