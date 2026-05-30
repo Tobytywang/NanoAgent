@@ -101,6 +101,72 @@ class MyTool(BaseTool):
 agent.add_tool(MyTool())
 ```
 
+### ContextManager
+
+上下文压力检测与三层压缩管理器。
+
+```python
+from nano_agent.agent.context import ContextManager, ContextConfig
+
+config = ContextConfig(
+    max_context_tokens=None,       # 最大上下文 token（None 时从 LLM 配置获取）
+    pressure_threshold_low=0.70,   # 轻量清理阈值
+    pressure_threshold_mid=0.85,   # 摘要标记阈值
+    pressure_threshold_high=0.95,  # 模型压缩阈值
+)
+
+cm = ContextManager(memory=memory, llm=llm, config=config)
+```
+
+#### `check_and_compress(max_context_tokens=None, last_prompt_tokens=None) -> bool`
+
+检查上下文压力并执行压缩。
+
+```python
+# 使用估算 token（首次迭代）
+cm.check_and_compress()
+
+# 使用上次 LLM 调用的真实 prompt_tokens（v0.7.12）
+cm.check_and_compress(last_prompt_tokens=3500)
+```
+
+**参数**:
+- `max_context_tokens`: 覆盖最大上下文 token 数
+- `last_prompt_tokens`: 上次 LLM 调用返回的真实 `usage.prompt_tokens`。提供时直接用于压力计算，避免 `estimate_tokens()` 偏差
+
+### MessageCompressor
+
+消息压缩器，将旧消息摘要为一条系统消息。
+
+```python
+from nano_agent.agent.compressor import MessageCompressor, CompressorConfig
+
+config = CompressorConfig(
+    enabled=True,                # 是否启用压缩
+    threshold_tokens=2000,       # 压缩触发阈值
+    keep_recent=3,               # 保留最近 N 轮对话
+    summary_max_tokens=500,      # 摘要最大 token 数
+)
+
+comp = MessageCompressor(config=config)
+```
+
+#### `should_compress(messages, last_prompt_tokens=None) -> bool`
+
+判断是否需要压缩。
+
+**参数**:
+- `messages`: 消息列表
+- `last_prompt_tokens`: 上次 LLM 调用的真实 `usage.prompt_tokens`（v0.7.12）。提供时直接与阈值比较
+
+#### `compress(messages, last_prompt_tokens=None) -> list`
+
+压缩旧消息，返回压缩后的消息列表。
+
+**参数**:
+- `messages`: 消息列表
+- `last_prompt_tokens`: 透传给 `should_compress()`
+
 ---
 
 ## LLM
@@ -700,6 +766,8 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.12 | 决策点真实 Token（`last_prompt_tokens` 参数、偏差日志） |
+| v0.7.11 | 模型上下文窗口准确性（API 查询 + fallback 链） |
 | v0.7.10 | 柔化硬限制（TerminationReason、智能重复检测、预算收尾轮） |
 | v0.5.0 | PyPI 发布准备，API 文档 |
 | v0.4.1 | WebSearchTool 工具 |
