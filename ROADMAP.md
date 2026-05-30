@@ -1718,7 +1718,7 @@ docs/constraints.md                    # 文档更新
 
 ---
 
-### v0.7.11 - 模型上下文窗口准确性
+### v0.7.11 - 模型上下文窗口准确性 ✅
 
 **目标**: 修复所有百分比决策的分母 —— 模型上下文窗口长度。
 
@@ -1729,13 +1729,13 @@ docs/constraints.md                    # 文档更新
 
 **任务列表**:
 
-- [ ] 重构 `LLMConfig.get_context_length()` - 支持 API 查询 + 配置覆盖 + fallback 链
-- [ ] 实现 Ollama `/api/show` 端点查询 - 获取模型实际 `context_length`
-- [ ] 实现 OpenAI `/models` 端点查询 - 获取模型 `context_window`
-- [ ] 修复部分匹配逻辑 - 防止 `llama3` 匹配 `llama3.1` 的不同长度
-- [ ] 实现 fallback 链 - API 查询 → 精确匹配 → 配置覆盖 → 保守默认 (8192)
-- [ ] 统一 `ContextManager` 的默认值 - 使用 `LLMConfig.get_context_length()` 而非硬编码 128000
-- [ ] 配置支持 - `llm.context_length` 显式覆盖优先
+- [x] 重构 `LLMConfig.get_context_length()` - 支持 API 查询 + 配置覆盖 + fallback 链
+- [x] 实现 Ollama `/api/show` 端点查询 - 获取模型实际 `context_length`
+- [x] 实现 OpenAI `/models` 端点查询 - 获取模型 `context_window`
+- [x] 修复部分匹配逻辑 - 防止 `llama3` 匹配 `llama3.1` 的不同长度
+- [x] 实现 fallback 链 - API 查询 → 精确匹配 → 配置覆盖 → 保守默认 (8192)
+- [x] 统一 `ContextManager` 的默认值 - 使用 `LLMConfig.get_context_length()` 而非硬编码 128000
+- [x] 配置支持 - `llm.context_length` 显式覆盖优先
 
 **新增文件**:
 ```
@@ -1761,7 +1761,7 @@ nano_agent/agent/context.py          # 统一默认值
 
 ---
 
-### v0.7.12 - 决策点真实 Token
+### v0.7.12 - 决策点真实 Token ✅
 
 **目标**: 上下文压力检测和压缩触发从估算切换到实际 prompt_tokens。
 
@@ -2518,7 +2518,7 @@ persona:
 | v0.7.8 | Token 优化增强 ✅ | Tool Caching、Dynamic Module、Budget 与 LLMUsage 集成 |
 | v0.7.9 | Agent/Monitoring/CLI 解耦 ✅ | RawData 容器、Tracker 解耦 API、SkippedToolCall、/usage、/context |
 | v0.7.10 | 柔化硬限制 ✅ | TerminationReason、DuplicateDetector、预算收尾轮 |
-| v0.7.11 | 模型上下文窗口准确性 | API 查询 + fallback 链，修复所有百分比决策的分母 |
+| v0.7.11 | 模型上下文窗口准确性 ✅ | API 查询 + fallback 链，修复所有百分比决策的分母 |
 | v0.7.12 | 决策点真实 Token | 压缩/压力检测从估算切换到实际 prompt_tokens |
 | v0.7.13 | 统一截断比率与校准闭环 | 中文截断修复 + 校准公式修正 + 闭环生效 |
 | v0.7.14 | 预判机制 | 简单问题不走 ReAct，节省 ~90% token |

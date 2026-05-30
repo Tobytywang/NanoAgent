@@ -106,12 +106,19 @@ class ContextManager:
         self.compress_failures = 0
         self._round = 0
 
-    def check_and_compress(self, max_context_tokens: int | None = None) -> bool:
+    def check_and_compress(
+        self,
+        max_context_tokens: int | None = None,
+        last_prompt_tokens: int | None = None,
+    ) -> bool:
         """
         Check context pressure and execute compression if needed.
 
         Args:
             max_context_tokens: Override max context tokens (uses config if None)
+            last_prompt_tokens: Real prompt_tokens from previous LLM call (v0.7.12).
+                If provided, use this instead of estimate_tokens().
+                If None (first iteration), fall back to estimate_tokens().
 
         Returns:
             True if compression was performed, False otherwise
@@ -129,11 +136,19 @@ class ContextManager:
                 max_context_tokens = CONSERVATIVE_CONTEXT_FALLBACK
 
         messages = self.memory.get_all()
-        tokens = estimate_tokens(messages)
+
+        # v0.7.12: Use real prompt_tokens if available, otherwise estimate
+        if last_prompt_tokens is not None:
+            tokens = last_prompt_tokens
+            token_source = "real"
+        else:
+            tokens = estimate_tokens(messages)
+            token_source = "estimated"
+
         ratio = tokens / max_context_tokens
 
         if self.verbose:
-            print(f"[Context] Tokens: {tokens}/{max_context_tokens} ({ratio:.1%})")
+            print(f"[Context] Tokens: {tokens}/{max_context_tokens} ({ratio:.1%}) [{token_source}]")
 
         if ratio < self.config.pressure_threshold_low:
             return False

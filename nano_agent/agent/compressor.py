@@ -32,12 +32,17 @@ class MessageCompressor:
         self.config = config or CompressorConfig()
         self._compression_count: int = 0
 
-    def should_compress(self, messages: list) -> bool:
+    def should_compress(
+        self, messages: list, last_prompt_tokens: int | None = None
+    ) -> bool:
         """
         Check if messages should be compressed.
 
         Args:
             messages: List of message dicts
+            last_prompt_tokens: Real prompt_tokens from previous LLM call (v0.7.12).
+                If provided, use this instead of estimate_tokens().
+                If None (first iteration), fall back to estimate_tokens().
 
         Returns:
             True if compression is needed
@@ -45,22 +50,29 @@ class MessageCompressor:
         if not self.config.enabled:
             return False
 
-        # Estimate current token count
-        tokens = estimate_tokens(messages)
+        # v0.7.12: Use real prompt_tokens if available, otherwise estimate
+        if last_prompt_tokens is not None:
+            tokens = last_prompt_tokens
+        else:
+            tokens = estimate_tokens(messages)
 
         return tokens > self.config.threshold_tokens
 
-    def compress(self, messages: list) -> list:
+    def compress(
+        self, messages: list, last_prompt_tokens: int | None = None
+    ) -> list:
         """
         Compress old messages into a summary.
 
         Args:
             messages: List of message dicts
+            last_prompt_tokens: Real prompt_tokens from previous LLM call (v0.7.12).
+                Passed through to should_compress().
 
         Returns:
             Compressed message list
         """
-        if not self.should_compress(messages):
+        if not self.should_compress(messages, last_prompt_tokens=last_prompt_tokens):
             return messages
 
         # Keep system message

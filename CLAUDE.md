@@ -107,6 +107,7 @@ output_style:
 - Check coverage after bug fixes or feature changes
 - Run tests after resolving merge conflicts
 - **发现 BUG 后必须补充测试** - 防止回归，参见 [BUGLIST.md](BUGLIST.md)
+- **新增测试后必须更新 `tests/test_cases.xlsx`** - 将测试类、测试点、测试内容补充到 Excel 记录中
 
 > **详细测试规划**: 参见 [ROADMAP.md - 测试系统规划](ROADMAP.md#测试系统规划与功能版本并行)
 

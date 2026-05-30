@@ -223,6 +223,9 @@ class ReActAgent(BaseAgent):
         )
         self._wrapup_issued = False
 
+        # Real token tracking for v0.7.12 decision points
+        self._last_prompt_tokens: int | None = None
+
         # Prompt builder (v0.7.6)
         self._prompt_builder: PromptBuilder | None = None
         self._stable_system_prompt: str = ""
@@ -554,6 +557,9 @@ class ReActAgent(BaseAgent):
         self._duplicate_detector.reset()
         self._wrapup_issued = False
 
+        # Reset real token tracking for v0.7.12
+        self._last_prompt_tokens = None
+
         # Add user message to memory
         self.memory.add_user_message(user_input)
 
@@ -572,17 +578,17 @@ class ReActAgent(BaseAgent):
         """
         self.events.emit(AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1})
 
-        # Context pressure check and compression (existing context manager)
+        # v0.7.12: Context pressure check using real tokens from previous iteration
         if self.context_manager:
-            self.context_manager.check_and_compress()
+            self.context_manager.check_and_compress(last_prompt_tokens=self._last_prompt_tokens)
 
         # Get context and tools
         messages = self.memory.get_all()
 
-        # Apply message compression if needed
-        if self.compressor.should_compress(messages):
+        # v0.7.12: Apply message compression using real tokens from previous iteration
+        if self.compressor.should_compress(messages, last_prompt_tokens=self._last_prompt_tokens):
             original_count = len(messages)
-            messages = self.compressor.compress(messages)
+            messages = self.compressor.compress(messages, last_prompt_tokens=self._last_prompt_tokens)
             if self.verbose and len(messages) < original_count:
                 print(f"[Compressor] Reduced {original_count} messages to {len(messages)}")
 
@@ -621,6 +627,17 @@ class ReActAgent(BaseAgent):
 
         # Update token count
         self._total_tokens += usage.total_tokens
+
+        # v0.7.12: Store real prompt_tokens for next iteration's decision
+        if usage.prompt_tokens > 0:
+            self._last_prompt_tokens = usage.prompt_tokens
+
+            # Log deviation between estimate and real (for future calibration)
+            from .token_utils import estimate_tokens
+            estimated = estimate_tokens(messages)
+            deviation_pct = abs(usage.prompt_tokens - estimated) / max(estimated, 1) * 100
+            if self.verbose and deviation_pct > 10:
+                print(f"[Token] Estimated: {estimated}, Real: {usage.prompt_tokens}, Deviation: {deviation_pct:.1f}%")
 
         # Verbose output
         if self.verbose and response_text:
