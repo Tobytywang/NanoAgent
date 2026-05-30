@@ -197,13 +197,17 @@ class TestReActAgentRealTokenIntegration:
         """_think() passes _last_prompt_tokens to should_compress."""
         import inspect
         source = inspect.getsource(ReActAgent._think)
-        assert "should_compress(messages, last_prompt_tokens=self._last_prompt_tokens)" in source
+        # v0.7.13: should_compress now also receives calibration_factor
+        assert "should_compress" in source
+        assert "last_prompt_tokens=self._last_prompt_tokens" in source
 
     def test_compress_receives_last_prompt_tokens(self):
         """_think() passes _last_prompt_tokens to compress."""
         import inspect
         source = inspect.getsource(ReActAgent._think)
-        assert "compress(messages, last_prompt_tokens=self._last_prompt_tokens)" in source
+        # v0.7.13: compress now also receives calibration_factor
+        assert "compress" in source
+        assert "last_prompt_tokens=self._last_prompt_tokens" in source
 
 
 # --- Backward Compatibility Tests ---

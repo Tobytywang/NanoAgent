@@ -118,7 +118,7 @@ config = ContextConfig(
 cm = ContextManager(memory=memory, llm=llm, config=config)
 ```
 
-#### `check_and_compress(max_context_tokens=None, last_prompt_tokens=None) -> bool`
+#### `check_and_compress(max_context_tokens=None, last_prompt_tokens=None, calibration_factor=1.0) -> bool`
 
 检查上下文压力并执行压缩。
 
@@ -133,6 +133,7 @@ cm.check_and_compress(last_prompt_tokens=3500)
 **参数**:
 - `max_context_tokens`: 覆盖最大上下文 token 数
 - `last_prompt_tokens`: 上次 LLM 调用返回的真实 `usage.prompt_tokens`。提供时直接用于压力计算，避免 `estimate_tokens()` 偏差
+- `calibration_factor`: 估算校准系数（v0.7.13）。当 `last_prompt_tokens` 未提供时，`estimate_tokens()` 的结果会乘以此系数，默认 1.0
 
 ### MessageCompressor
 
@@ -151,21 +152,89 @@ config = CompressorConfig(
 comp = MessageCompressor(config=config)
 ```
 
-#### `should_compress(messages, last_prompt_tokens=None) -> bool`
+#### `should_compress(messages, last_prompt_tokens=None, calibration_factor=1.0) -> bool`
 
 判断是否需要压缩。
 
 **参数**:
 - `messages`: 消息列表
 - `last_prompt_tokens`: 上次 LLM 调用的真实 `usage.prompt_tokens`（v0.7.12）。提供时直接与阈值比较
+- `calibration_factor`: 估算校准系数（v0.7.13）。当 `last_prompt_tokens` 未提供时，校准后的估算值与阈值比较
 
-#### `compress(messages, last_prompt_tokens=None) -> list`
+#### `compress(messages, last_prompt_tokens=None, calibration_factor=1.0) -> list`
 
 压缩旧消息，返回压缩后的消息列表。
 
 **参数**:
 - `messages`: 消息列表
 - `last_prompt_tokens`: 透传给 `should_compress()`
+- `calibration_factor`: 透传给 `should_compress()`
+
+### Token 估算工具（token_utils）
+
+```python
+from nano_agent.agent.token_utils import estimate_tokens, estimate_text_tokens, calculate_max_chars
+```
+
+#### `estimate_tokens(messages, calibration_factor=1.0) -> int`
+
+估算消息列表的 token 数。支持中英混合文本。
+
+**参数**:
+- `messages`: 消息列表，每个元素为 `{"role": ..., "content": ...}` 字典
+- `calibration_factor`: 估算校准系数（v0.7.13），乘以估算结果，默认 1.0
+
+**估算规则**:
+- 英文：~4 字符 = 1 token
+- 中文：~1.5 字符 = 1 token
+- 每条消息额外 4 token 开销
+
+#### `estimate_text_tokens(text, calibration_factor=1.0) -> int`
+
+估算单个文本字符串的 token 数。支持中英混合文本。
+
+**参数**:
+- `text`: 待估算的文本
+- `calibration_factor`: 估算校准系数（v0.7.13），乘以估算结果，默认 1.0
+
+#### `calculate_max_chars(text, max_tokens) -> int`
+
+给定 token 预算，反算最多能保留的字符数。使用二分查找，支持中英混合文本（v0.7.13）。
+
+**参数**:
+- `text`: 待截断的文本
+- `max_tokens`: token 预算上限
+
+**返回**: 最多能保留的字符数
+
+### Token 预算管理（token_budget）
+
+```python
+from nano_agent.agent.token_budget import TokenBudget, TokenBudgetConfig, CalibrationData
+```
+
+#### `CalibrationData`
+
+校准数据点（v0.7.13）。
+
+```python
+@dataclass
+class CalibrationData:
+    estimated: int  # 估算的 prompt_tokens
+    actual: int     # 实际的 prompt_tokens
+```
+
+#### `TokenBudget.record_calibration_data(estimated, actual)`
+
+记录校准数据点并触发校准更新（v0.7.13）。由 `react.py._think()` 在每次 LLM 调用后调用。
+
+**参数**:
+- `estimated`: `estimate_tokens()` 的估算值
+- `actual`: LLM 返回的 `usage.prompt_tokens`
+
+#### `TokenBudget.get_calibration_factor() -> float`
+
+获取当前校准系数。校准系数 = `avg(actual / estimated)`，clamp 到 [0.5, 2.0]。需 ≥3 个采样点才更新。
 
 ---
 
@@ -766,6 +835,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.13 | 统一截断比率与校准闭环（`calculate_max_chars`、`calibration_factor` 参数、`CalibrationData`） |
 | v0.7.12 | 决策点真实 Token（`last_prompt_tokens` 参数、偏差日志） |
 | v0.7.11 | 模型上下文窗口准确性（API 查询 + fallback 链） |
 | v0.7.10 | 柔化硬限制（TerminationReason、智能重复检测、预算收尾轮） |

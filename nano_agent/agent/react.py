@@ -579,16 +579,28 @@ class ReActAgent(BaseAgent):
         self.events.emit(AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1})
 
         # v0.7.12: Context pressure check using real tokens from previous iteration
+        # v0.7.13: Pass calibration factor for more accurate estimation
+        calibration_factor = self.token_budget.get_calibration_factor()
         if self.context_manager:
-            self.context_manager.check_and_compress(last_prompt_tokens=self._last_prompt_tokens)
+            self.context_manager.check_and_compress(
+                last_prompt_tokens=self._last_prompt_tokens,
+                calibration_factor=calibration_factor,
+            )
 
         # Get context and tools
         messages = self.memory.get_all()
 
         # v0.7.12: Apply message compression using real tokens from previous iteration
-        if self.compressor.should_compress(messages, last_prompt_tokens=self._last_prompt_tokens):
+        # v0.7.13: Pass calibration factor
+        if self.compressor.should_compress(
+            messages, last_prompt_tokens=self._last_prompt_tokens,
+            calibration_factor=calibration_factor
+        ):
             original_count = len(messages)
-            messages = self.compressor.compress(messages, last_prompt_tokens=self._last_prompt_tokens)
+            messages = self.compressor.compress(
+                messages, last_prompt_tokens=self._last_prompt_tokens,
+                calibration_factor=calibration_factor,
+            )
             if self.verbose and len(messages) < original_count:
                 print(f"[Compressor] Reduced {original_count} messages to {len(messages)}")
 
@@ -629,12 +641,17 @@ class ReActAgent(BaseAgent):
         self._total_tokens += usage.total_tokens
 
         # v0.7.12: Store real prompt_tokens for next iteration's decision
+        # v0.7.13: Record calibration data (actual vs estimated)
         if usage.prompt_tokens > 0:
             self._last_prompt_tokens = usage.prompt_tokens
 
-            # Log deviation between estimate and real (for future calibration)
             from .token_utils import estimate_tokens
             estimated = estimate_tokens(messages)
+            self.token_budget.record_calibration_data(
+                estimated=estimated, actual=usage.prompt_tokens
+            )
+
+            # Log deviation for observability
             deviation_pct = abs(usage.prompt_tokens - estimated) / max(estimated, 1) * 100
             if self.verbose and deviation_pct > 10:
                 print(f"[Token] Estimated: {estimated}, Real: {usage.prompt_tokens}, Deviation: {deviation_pct:.1f}%")
@@ -845,8 +862,8 @@ class ReActAgent(BaseAgent):
 
         # Truncate long output based on output style config
         max_tokens = self.output_style_config.tool_output_max_tokens
-        # Rough estimate: 1 token ~ 4 characters for English
-        max_chars = max_tokens * 4
+        from .token_utils import calculate_max_chars
+        max_chars = calculate_max_chars(result_content, max_tokens)
         if len(result_content) > max_chars:
             result_content = result_content[:max_chars] + "\n... [输出已截断]"
 

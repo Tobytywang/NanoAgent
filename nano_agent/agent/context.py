@@ -110,6 +110,7 @@ class ContextManager:
         self,
         max_context_tokens: int | None = None,
         last_prompt_tokens: int | None = None,
+        calibration_factor: float = 1.0,
     ) -> bool:
         """
         Check context pressure and execute compression if needed.
@@ -119,6 +120,8 @@ class ContextManager:
             last_prompt_tokens: Real prompt_tokens from previous LLM call (v0.7.12).
                 If provided, use this instead of estimate_tokens().
                 If None (first iteration), fall back to estimate_tokens().
+            calibration_factor: Multiplier to correct estimation bias (v0.7.13).
+                Applied only when falling back to estimate_tokens().
 
         Returns:
             True if compression was performed, False otherwise
@@ -142,8 +145,8 @@ class ContextManager:
             tokens = last_prompt_tokens
             token_source = "real"
         else:
-            tokens = estimate_tokens(messages)
-            token_source = "estimated"
+            tokens = estimate_tokens(messages, calibration_factor)
+            token_source = "calibrated" if calibration_factor != 1.0 else "estimated"
 
         ratio = tokens / max_context_tokens
 

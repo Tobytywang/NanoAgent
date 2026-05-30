@@ -14,6 +14,11 @@ NEW in v0.7.8:
 - Configurable warning modes (silent/console/event)
 - Warning interval to prevent spam
 - LLM-based summary generation option
+
+NEW in v0.7.13:
+- Corrected calibration formula: actual/estimated instead of budget burn rate
+- Calibration data tracked separately from usage history
+- record_calibration_data() for feeding actual vs estimated pairs
 """
 
 from dataclasses import dataclass, field
@@ -21,6 +26,14 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from nano_agent.llm.base import LLMUsage
+
+
+@dataclass
+class CalibrationData:
+    """Single calibration data point: estimated vs actual prompt_tokens."""
+
+    estimated: int  # Estimated prompt_tokens from estimate_tokens()
+    actual: int     # Actual prompt_tokens from LLM response
 
 
 @dataclass
@@ -84,6 +97,7 @@ class TokenBudget:
 
         # Calibration support
         self._usage_history: list["LLMUsage"] = []
+        self._calibration_data: list[CalibrationData] = []
         self._calibration_factor: float = 1.0
 
         # Warning state tracking (v0.7.8)
@@ -102,45 +116,67 @@ class TokenBudget:
         self._total_consumed += tokens
 
     def consume_usage(self, usage: "LLMUsage") -> None:
-        """
-        Consume tokens from LLMUsage and record for calibration.
+        """Record actual usage from an LLM call.
 
         Args:
-            usage: LLMUsage object from LLM response
+            usage: LLMUsage object with actual token counts
         """
-        # Record usage for calibration
         self._usage_history.append(usage)
 
         # Keep only the last N entries
         if len(self._usage_history) > self.config.calibration_window:
-            self._usage_history = self._usage_history[-self.config.calibration_window :]
+            self._usage_history = self._usage_history[-self.config.calibration_window:]
 
         # Consume tokens
         self.consume(usage.total_tokens)
 
-        # Update calibration factor
-        self._update_calibration()
-
     def _update_calibration(self) -> None:
-        """Update calibration factor based on usage history."""
+        """Update calibration factor based on actual vs estimated token ratios.
+
+        v0.7.13: Corrected formula.
+        Old: avg(total_tokens) / (initial_budget / 10) - measured budget burn rate.
+        New: avg(actual / estimated) - measures estimation accuracy.
+        """
         if not self.config.calibration_enabled:
             return
 
-        if len(self._usage_history) < self.config.min_calibration_samples:
+        if len(self._calibration_data) < self.config.min_calibration_samples:
             return
 
-        # Calculate average actual tokens per call
-        avg_actual = sum(u.total_tokens for u in self._usage_history) / len(
-            self._usage_history
+        # Compute average ratio: actual / estimated
+        ratios = [
+            d.actual / max(d.estimated, 1) for d in self._calibration_data
+        ]
+        avg_ratio = sum(ratios) / len(ratios)
+
+        # Clamp to [0.5, 2.0] to prevent extreme values
+        self._calibration_factor = max(0.5, min(2.0, avg_ratio))
+
+    def record_calibration_data(self, estimated: int, actual: int) -> None:
+        """Record a calibration data point and trigger calibration update.
+
+        Called from react.py _think() after each LLM call, comparing
+        estimate_tokens() output with actual usage.prompt_tokens.
+
+        Args:
+            estimated: Token count from estimate_tokens()
+            actual: Real prompt_tokens from LLM response
+        """
+        if not self.config.calibration_enabled:
+            return
+
+        self._calibration_data.append(
+            CalibrationData(estimated=estimated, actual=actual)
         )
 
-        # Calculate calibration factor
-        # If actual usage is higher than expected, factor > 1
-        # If actual usage is lower than expected, factor < 1
-        if self.initial_budget > 0:
-            expected_per_call = self.initial_budget / 10  # Assume ~10 calls expected
-            if expected_per_call > 0:
-                self._calibration_factor = avg_actual / expected_per_call
+        # Keep only the most recent data within the window
+        if len(self._calibration_data) > self.config.calibration_window:
+            self._calibration_data = self._calibration_data[
+                -self.config.calibration_window :
+            ]
+
+        # Trigger calibration update
+        self._update_calibration()
 
     def get_calibration_factor(self) -> float:
         """
@@ -296,6 +332,7 @@ class TokenBudget:
         self.remaining = self.initial_budget
         self._total_consumed = 0
         self._usage_history = []
+        self._calibration_data = []
         self._calibration_factor = 1.0
         # Reset warning state (v0.7.8)
         self._last_warning_level = -1
@@ -321,6 +358,7 @@ class TokenBudget:
             "calibration_factor": self._calibration_factor,
             "average_usage": self.get_average_usage(),
             "samples_collected": len(self._usage_history),
+            "calibration_samples": len(self._calibration_data),
             # Warning state (v0.7.8)
             "warnings_issued": self._warnings_issued,
             "last_warning_level": self._last_warning_level,

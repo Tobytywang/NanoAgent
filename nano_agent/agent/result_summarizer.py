@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 import re
 from typing import Optional
 
+from .token_utils import estimate_text_tokens, calculate_max_chars
+
 
 @dataclass
 class SummarizerConfig:
@@ -63,17 +65,25 @@ class ToolResultSummarizer:
             return output
 
         if tool_name == "file_read":
-            return self._summarize_file_read(output)
+            result = self._summarize_file_read(output)
         elif tool_name == "shell_execute":
-            return self._summarize_shell(output)
+            result = self._summarize_shell(output)
         elif tool_name == "file_search":
-            return self._summarize_file_search(output)
+            result = self._summarize_file_search(output)
         elif tool_name == "python_execute":
-            return self._summarize_python(output)
+            result = self._summarize_python(output)
         elif tool_name == "web_search":
-            return self._summarize_web_search(output)
+            result = self._summarize_web_search(output)
         else:
-            return self._summarize_generic(output)
+            result = self._summarize_generic(output)
+
+        # v0.7.13: Enforce max_summary_tokens budget
+        if self.config.max_summary_tokens > 0:
+            max_chars = calculate_max_chars(result, self.config.max_summary_tokens)
+            if len(result) > max_chars:
+                result = result[:max_chars] + "\n... [摘要已截断]"
+
+        return result
 
     def _summarize_file_read(self, output: str) -> str:
         """
@@ -382,7 +392,7 @@ class ToolResultSummarizer:
         """
         Estimate token count for text.
 
-        Rough estimate: 1 token ~ 4 characters for English.
+        Uses the unified estimate_text_tokens() which supports Chinese/English mixed text.
 
         Args:
             text: Text to estimate
@@ -390,4 +400,4 @@ class ToolResultSummarizer:
         Returns:
             Estimated token count
         """
-        return len(text) // 4
+        return estimate_text_tokens(text)

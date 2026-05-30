@@ -7,7 +7,7 @@ Compresses old messages into summaries to keep prompt size manageable.
 import time
 from dataclasses import dataclass, field
 
-from ..agent.token_utils import estimate_tokens
+from ..agent.token_utils import estimate_tokens, calculate_max_chars
 
 
 @dataclass
@@ -33,7 +33,8 @@ class MessageCompressor:
         self._compression_count: int = 0
 
     def should_compress(
-        self, messages: list, last_prompt_tokens: int | None = None
+        self, messages: list, last_prompt_tokens: int | None = None,
+        calibration_factor: float = 1.0
     ) -> bool:
         """
         Check if messages should be compressed.
@@ -43,6 +44,7 @@ class MessageCompressor:
             last_prompt_tokens: Real prompt_tokens from previous LLM call (v0.7.12).
                 If provided, use this instead of estimate_tokens().
                 If None (first iteration), fall back to estimate_tokens().
+            calibration_factor: Multiplier to correct estimation bias (v0.7.13).
 
         Returns:
             True if compression is needed
@@ -54,12 +56,13 @@ class MessageCompressor:
         if last_prompt_tokens is not None:
             tokens = last_prompt_tokens
         else:
-            tokens = estimate_tokens(messages)
+            tokens = estimate_tokens(messages, calibration_factor)
 
         return tokens > self.config.threshold_tokens
 
     def compress(
-        self, messages: list, last_prompt_tokens: int | None = None
+        self, messages: list, last_prompt_tokens: int | None = None,
+        calibration_factor: float = 1.0
     ) -> list:
         """
         Compress old messages into a summary.
@@ -68,11 +71,13 @@ class MessageCompressor:
             messages: List of message dicts
             last_prompt_tokens: Real prompt_tokens from previous LLM call (v0.7.12).
                 Passed through to should_compress().
+            calibration_factor: Multiplier to correct estimation bias (v0.7.13).
 
         Returns:
             Compressed message list
         """
-        if not self.should_compress(messages, last_prompt_tokens=last_prompt_tokens):
+        if not self.should_compress(messages, last_prompt_tokens=last_prompt_tokens,
+                                    calibration_factor=calibration_factor):
             return messages
 
         # Keep system message
@@ -150,9 +155,10 @@ class MessageCompressor:
 
         summary_text = "[历史摘要] " + " | ".join(summary_parts)
 
-        # Truncate if too long
-        if len(summary_text) > self.config.summary_max_tokens * 4:  # Rough char estimate
-            summary_text = summary_text[:self.config.summary_max_tokens * 4] + "..."
+        # Truncate if too long (v0.7.13: use calculate_max_chars for Chinese support)
+        max_chars = calculate_max_chars(summary_text, self.config.summary_max_tokens)
+        if len(summary_text) > max_chars:
+            summary_text = summary_text[:max_chars] + "..."
 
         return {
             "role": "system",

@@ -153,14 +153,15 @@ class TestTokenBudgetLLMUsageIntegration:
 
 
 class TestTokenBudgetCalibration:
-    """Test TokenBudget calibration functionality."""
+    """Test TokenBudget calibration functionality (v0.7.13: corrected formula)."""
 
     def test_calibration_disabled(self):
         """Test that calibration is skipped when disabled."""
         config = TokenBudgetConfig(calibration_enabled=False)
         budget = TokenBudget(config)
-        usage = LLMUsage(total_tokens=500)
-        budget.consume_usage(usage)
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.record_calibration_data(estimated=100, actual=120)
         assert budget.get_calibration_factor() == 1.0
 
     def test_calibration_needs_min_samples(self):
@@ -168,48 +169,48 @@ class TestTokenBudgetCalibration:
         config = TokenBudgetConfig(min_calibration_samples=3)
         budget = TokenBudget(config)
         # Only 2 samples
-        budget.consume_usage(LLMUsage(total_tokens=100))
-        budget.consume_usage(LLMUsage(total_tokens=200))
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.record_calibration_data(estimated=100, actual=120)
         assert budget.get_calibration_factor() == 1.0  # Not enough samples
 
     def test_calibration_with_enough_samples(self):
-        """Test calibration with enough samples."""
-        config = TokenBudgetConfig(
-            initial_budget=1000,  # Expected ~100 per call (1000/10)
-            min_calibration_samples=3,
-        )
+        """Test calibration with enough samples using corrected formula."""
+        config = TokenBudgetConfig(min_calibration_samples=3)
         budget = TokenBudget(config)
-        # Actual usage is ~200 per call
-        budget.consume_usage(LLMUsage(total_tokens=200))
-        budget.consume_usage(LLMUsage(total_tokens=200))
-        budget.consume_usage(LLMUsage(total_tokens=200))
-        # Calibration factor should be ~2.0 (200/100)
+        # Actual is 20% higher than estimated → factor should be ~1.2
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.record_calibration_data(estimated=100, actual=120)
         factor = budget.get_calibration_factor()
-        assert factor > 1.5  # Should indicate higher than expected usage
+        assert abs(factor - 1.2) < 0.01
 
     def test_calibration_factor_lower_usage(self):
-        """Test calibration when actual usage is lower than expected."""
-        config = TokenBudgetConfig(
-            initial_budget=1000,
-            min_calibration_samples=3,
-        )
+        """Test calibration when actual is lower than estimated."""
+        config = TokenBudgetConfig(min_calibration_samples=3)
         budget = TokenBudget(config)
-        # Actual usage is ~50 per call (lower than expected 100)
-        budget.consume_usage(LLMUsage(total_tokens=50))
-        budget.consume_usage(LLMUsage(total_tokens=50))
-        budget.consume_usage(LLMUsage(total_tokens=50))
+        # Actual is 50% of estimated → factor should be ~0.5 (clamped)
+        budget.record_calibration_data(estimated=100, actual=50)
+        budget.record_calibration_data(estimated=100, actual=50)
+        budget.record_calibration_data(estimated=100, actual=50)
         factor = budget.get_calibration_factor()
-        assert factor < 1.0  # Should indicate lower than expected usage
+        assert factor == 0.5  # Clamped to lower bound
 
     def test_reset_clears_calibration(self):
         """Test that reset clears calibration data."""
         budget = TokenBudget()
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.record_calibration_data(estimated=100, actual=120)
+        budget.reset()
+        assert len(budget._calibration_data) == 0
+        assert budget.get_calibration_factor() == 1.0
+
+    def test_old_consume_usage_still_works(self):
+        """consume_usage() still records usage history (backward compat)."""
+        budget = TokenBudget()
         budget.consume_usage(LLMUsage(total_tokens=100))
         budget.consume_usage(LLMUsage(total_tokens=200))
-        budget.consume_usage(LLMUsage(total_tokens=300))
-        budget.reset()
-        assert len(budget.get_usage_history()) == 0
-        assert budget.get_calibration_factor() == 1.0
+        assert len(budget.get_usage_history()) == 2
 
 
 class TestTokenBudgetStatus:

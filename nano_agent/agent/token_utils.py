@@ -5,7 +5,7 @@ Provides simple heuristic-based token counting for context management.
 """
 
 
-def estimate_tokens(messages: list[dict]) -> int:
+def estimate_tokens(messages: list[dict], calibration_factor: float = 1.0) -> int:
     """
     Estimate token count for a list of messages.
 
@@ -16,6 +16,7 @@ def estimate_tokens(messages: list[dict]) -> int:
 
     Args:
         messages: List of message dictionaries with 'role' and 'content' keys
+        calibration_factor: Multiplier to correct systematic estimation bias (default 1.0)
 
     Returns:
         Estimated total token count
@@ -41,15 +42,16 @@ def estimate_tokens(messages: list[dict]) -> int:
         # Add message overhead (role, formatting, etc.)
         total += int(tokens) + 4
 
-    return total
+    return int(total * calibration_factor)
 
 
-def estimate_text_tokens(text: str) -> int:
+def estimate_text_tokens(text: str, calibration_factor: float = 1.0) -> int:
     """
     Estimate token count for a single text string.
 
     Args:
         text: Text string to estimate
+        calibration_factor: Multiplier to correct systematic estimation bias (default 1.0)
 
     Returns:
         Estimated token count
@@ -66,4 +68,34 @@ def estimate_text_tokens(text: str) -> int:
     # Token estimation
     tokens = chinese_chars / 1.5 + other_chars / 4
 
-    return int(tokens)
+    return int(tokens * calibration_factor)
+
+
+def calculate_max_chars(text: str, max_tokens: int) -> int:
+    """
+    Given a token budget, calculate the maximum number of characters to keep.
+
+    Uses binary search to find the largest character count where
+    estimated tokens <= max_tokens. Supports Chinese/English mixed text.
+
+    Args:
+        text: Text to potentially truncate
+        max_tokens: Token budget limit
+
+    Returns:
+        Maximum number of characters that fit within the token budget
+    """
+    if not text or max_tokens <= 0:
+        return 0
+    if estimate_text_tokens(text) <= max_tokens:
+        return len(text)
+
+    # Binary search for the right truncation point
+    left, right = 0, len(text)
+    while left < right:
+        mid = (left + right + 1) // 2
+        if estimate_text_tokens(text[:mid]) <= max_tokens:
+            left = mid
+        else:
+            right = mid - 1
+    return left
