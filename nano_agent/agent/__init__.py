@@ -21,6 +21,7 @@ from .token_utils import estimate_tokens, estimate_text_tokens
 from .token_budget import TokenBudget, TokenBudgetConfig
 from .router import QueryRouter, QueryComplexity, RoutingResult
 from .confidence import ConfidenceParser, ConfidenceResult
+from .prejudgment import QueryPrejudgment, PrejudgmentResult
 
 __all__ = [
     # Base
@@ -65,4 +66,6 @@ __all__ = [
     # Confidence parser (v0.7.5)
     "ConfidenceParser",
     "ConfidenceResult",
+    "QueryPrejudgment",
+    "PrejudgmentResult",
 ]

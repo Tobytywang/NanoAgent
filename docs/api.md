@@ -236,6 +236,32 @@ class CalibrationData:
 
 获取当前校准系数。校准系数 = `avg(actual / estimated)`，clamp 到 [0.5, 2.0]。需 ≥3 个采样点才更新。
 
+### QueryPrejudgment
+
+v0.7.14 预判机制。在 ReAct 循环前用极简提示词（~50 tokens）判断查询复杂度，简单问题直接回答，节省 ~90% token。
+
+```python
+from nano_agent.agent import QueryPrejudgment, PrejudgmentResult
+
+prejudgment = QueryPrejudgment(
+    llm=llm,                      # LLM 实例
+    simple_prompt="",             # 可选自定义 SIMPLE 回答提示词
+    max_answer_tokens=300,        # SIMPLE 回答最大 token 数
+)
+
+result = prejudgment.prejudge("Python 的 GIL 是什么")
+# result.complexity → QueryComplexity.SIMPLE
+# result.answer → "GIL 是全局解释器锁..."
+# result.prejudgment_tokens → 50
+```
+
+**触发条件**: 仅当 QueryRouter 返回默认 COMPLEX（reason 含 "defaulting to complex"）时触发。正则匹配到的 SIMPLE/MODERATE/COMPLEX 不触发。
+
+**配置** (SmartOptimizationConfig):
+- `prejudgment_enabled: bool = False` — 默认关闭
+- `prejudgment_simple_prompt: str = ""` — 自定义 SIMPLE 回答提示词
+- `prejudgment_max_answer_tokens: int = 300` — SIMPLE 回答最大 token 数
+
 ---
 
 ## LLM
@@ -835,6 +861,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.14 | 预判机制（`QueryPrejudgment`、`PrejudgmentResult`、两级路由：规则优先 + LLM 补充） |
 | v0.7.13 | 统一截断比率与校准闭环（`calculate_max_chars`、`calibration_factor` 参数、`CalibrationData`） |
 | v0.7.12 | 决策点真实 Token（`last_prompt_tokens` 参数、偏差日志） |
 | v0.7.11 | 模型上下文窗口准确性（API 查询 + fallback 链） |

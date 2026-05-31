@@ -1864,12 +1864,12 @@ nano_agent/agent/result_summarizer.py # 统一到 estimate_text_tokens()
 
 **任务列表**:
 
-- [ ] 实现 `QueryPrejudgment` 类 - 预判问题复杂度
-- [ ] 定义极简预判提示词 - ~50 tokens
-- [ ] 实现简单问题直接回答 - 不走 ReAct 循环
-- [ ] 实现中等复杂度限制 - 最多 1 次工具调用
-- [ ] 与现有 QueryRouter 协同 - 规则优先，LLM 补充
-- [ ] 配置支持 - `prejudgment.enabled`、`prejudgment.simple_prompt`
+- [x] 实现 `QueryPrejudgment` 类 - 预判问题复杂度
+- [x] 定义极简预判提示词 - ~50 tokens
+- [x] 实现简单问题直接回答 - 不走 ReAct 循环
+- [x] 实现中等复杂度限制 - 最多 1 次工具调用
+- [x] 与现有 QueryRouter 协同 - 规则优先，LLM 补充
+- [x] 配置支持 - `prejudgment.enabled`、`prejudgment.simple_prompt`
 
 **新增文件**:
 ```
@@ -2521,7 +2521,7 @@ persona:
 | v0.7.11 | 模型上下文窗口准确性 ✅ | API 查询 + fallback 链，修复所有百分比决策的分母 |
 | v0.7.12 | 决策点真实 Token ✅ | 压缩/压力检测从估算切换到实际 prompt_tokens |
 | v0.7.13 | 统一截断比率与校准闭环 ✅ | calculate_max_chars、calibration_factor 参数、校准公式修正 |
-| v0.7.14 | 预判机制 | 简单问题不走 ReAct，节省 ~90% token |
+| v0.7.14 | 预判机制 ✅ | 简单问题不走 ReAct，节省 ~90% token |
 | v0.7.15 | 激进输出精简与工具输出标准化 | LLM 输出精简 + 工具结果结构化 |
 | v0.7.16 | 复杂度预算 Profile 与 Stall Detection | 小任务不浪费 + 无进展转向 |
 | v0.7.17 | 多轮缓存与 Tool Offloading | 跨轮次缓存 + 大结果 offload |

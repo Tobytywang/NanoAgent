@@ -1858,6 +1858,15 @@ def _show_config(config, agent) -> None:
     print(format_line("Style:", config.output_style.style))
     print(format_line("Max Tool Output:", f"{config.output_style.tool_output_max_tokens} tokens"))
 
+    # Smart Optimization 配置 (v0.7.14)
+    print("\n## 智能优化")
+    print(format_line("置信度早停:", str(config.smart_optimization.confidence_enabled)))
+    print(format_line("Token 预算:", str(config.smart_optimization.budget_enabled)))
+    print(format_line("查询路由:", str(config.smart_optimization.routing_enabled)))
+    print(format_line("预判机制:", str(config.smart_optimization.prejudgment_enabled)))
+    if config.smart_optimization.prejudgment_enabled:
+        print(format_line("  最大回答 Token:", str(config.smart_optimization.prejudgment_max_answer_tokens)))
+
     # Prompt 配置 (v0.7.6)
     print("\n## Prompt 设置")
     print(format_line("Source:", config.prompt.source))
@@ -2579,6 +2588,16 @@ def _init_config_file(config, force: bool = False) -> None:
             "token_budget": config.prompt.token_budget,
             "include_environment": config.prompt.include_environment,
             "include_git_status": config.prompt.include_git_status,
+        },
+        "smart_optimization": {
+            "confidence_enabled": config.smart_optimization.confidence_enabled,
+            "confidence_threshold": config.smart_optimization.confidence_threshold,
+            "budget_enabled": config.smart_optimization.budget_enabled,
+            "initial_budget": config.smart_optimization.initial_budget,
+            "routing_enabled": config.smart_optimization.routing_enabled,
+            "prejudgment_enabled": config.smart_optimization.prejudgment_enabled,
+            "prejudgment_simple_prompt": config.smart_optimization.prejudgment_simple_prompt,
+            "prejudgment_max_answer_tokens": config.smart_optimization.prejudgment_max_answer_tokens,
         },
     }
 

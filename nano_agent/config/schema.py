@@ -317,6 +317,11 @@ class SmartOptimizationConfig:
     routing_moderate_single_tool: bool = True  # Allow max 1 tool for moderate queries
     routing_complex_full_loop: bool = True  # Full ReAct loop for complex queries
 
+    # === Prejudgment Mechanism (v0.7.14) ===
+    prejudgment_enabled: bool = False  # Enable LLM-based query prejudgment
+    prejudgment_simple_prompt: str = ""  # Optional custom prompt for SIMPLE responses
+    prejudgment_max_answer_tokens: int = 300  # Max tokens for SIMPLE direct answer
+
     # === Tool Result Processing ===
     tool_processor_enabled: bool = True  # Enable intelligent tool result processing
     tool_processor_max_output_tokens: int = 300  # Max tokens for processed tool output

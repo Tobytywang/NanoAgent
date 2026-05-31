@@ -27,6 +27,7 @@ from .compressor import MessageCompressor, CompressorConfig
 from .token_budget import TokenBudget, TokenBudgetConfig
 from .router import QueryRouter, QueryComplexity
 from .confidence import ConfidenceParser
+from .prejudgment import QueryPrejudgment
 from .prompt_builder import PromptBuilder
 from .duplicate import DuplicateDetector
 from ..llm.messages import ToolCall
@@ -195,6 +196,16 @@ class ReActAgent(BaseAgent):
             )
         else:
             self.confidence_parser = None
+
+        # Query prejudgment (v0.7.14)
+        if self.smart_optimization_config.prejudgment_enabled:
+            self.query_prejudgment = QueryPrejudgment(
+                llm=llm,
+                simple_prompt=self.smart_optimization_config.prejudgment_simple_prompt,
+                max_answer_tokens=self.smart_optimization_config.prejudgment_max_answer_tokens,
+            )
+        else:
+            self.query_prejudgment = None
 
         # Context manager
         self.context_manager = ContextManager(
@@ -388,7 +399,8 @@ class ReActAgent(BaseAgent):
         # Prepare execution
         self._prepare_run(user_input, session_id)
 
-        # Query routing (v0.7.5)
+        # Phase 1: Rule-based routing (QueryRouter, zero cost)
+        routing_result = None
         if self.query_router is not None:
             routing_result = self.query_router.classify(user_input)
             self._routing_max_tools = routing_result.suggested_max_tools
@@ -397,13 +409,35 @@ class ReActAgent(BaseAgent):
                 print(f"[Router] Complexity: {routing_result.complexity.value}, "
                       f"max_tools: {self._routing_max_tools}")
 
-            # Simple queries: direct answer without LLM
+            # Rule-based SIMPLE -> LLM-generated answer
             if routing_result.complexity == QueryComplexity.SIMPLE:
-                response = self._answer_simple_question(user_input)
+                response = self._answer_simple_via_llm(user_input)
                 self.tracker.end_run(response)
                 return self._build_result(response, 0, success=True,
                                           termination_reason=TerminationReason.COMPLETED.value)
-        # Pre-check: simple questions can be answered directly (legacy)
+
+        # Phase 2: LLM-based prejudgment (only when router defaulted to COMPLEX)
+        if self.query_prejudgment is not None:
+            should_prejudge = (
+                routing_result is None
+                or (routing_result.complexity == QueryComplexity.COMPLEX
+                    and "defaulting to complex" in routing_result.reason.lower())
+            )
+            if should_prejudge:
+                prejudgment_result = self.query_prejudgment.prejudge(user_input)
+                if self.verbose:
+                    print(f"[Prejudgment] Complexity: {prejudgment_result.complexity.value}, "
+                          f"tokens: {prejudgment_result.prejudgment_tokens}")
+
+                if prejudgment_result.complexity == QueryComplexity.SIMPLE:
+                    response = prejudgment_result.answer or self._answer_simple_via_llm(user_input)
+                    self.tracker.end_run(response)
+                    return self._build_result(response, 0, success=True,
+                                              termination_reason=TerminationReason.PREJUDGMENT_SIMPLE.value)
+                elif prejudgment_result.complexity == QueryComplexity.MODERATE:
+                    self._routing_max_tools = 1
+
+        # Legacy: concise mode simple question check
         if self.output_style_config.style == "concise" and _is_simple_question(user_input):
             # Direct answer for simple questions (skip tool calls)
             response = self._answer_simple_question(user_input)
@@ -872,6 +906,22 @@ class ReActAgent(BaseAgent):
             content=result_content,
             tool_name=tool_call.name
         )
+
+    def _answer_simple_via_llm(self, user_input: str) -> str:
+        """Answer simple questions via lightweight LLM call (no tools, no history)."""
+        simple_prompt = (
+            self.smart_optimization_config.prejudgment_simple_prompt
+            or "Answer briefly and directly in the user's language."
+        )
+        messages = [
+            {"role": "system", "content": simple_prompt},
+            {"role": "user", "content": user_input},
+        ]
+        try:
+            response, _, _ = self.llm.chat(messages=messages, tools=None, system_stable=None)
+            return response
+        except Exception:
+            return self._answer_simple_question(user_input)
 
     def _answer_simple_question(self, user_input: str) -> str:
         """

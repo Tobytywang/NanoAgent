@@ -22,6 +22,7 @@ class TerminationReason(str, Enum):
     CONFIDENCE_VERIFIED = "confidence_verified"
     ROUTING_LIMIT = "routing_limit"
     DUPLICATE_BLOCKED = "duplicate_blocked"
+    PREJUDGMENT_SIMPLE = "prejudgment_simple"
 
 
 @dataclass(frozen=True)
