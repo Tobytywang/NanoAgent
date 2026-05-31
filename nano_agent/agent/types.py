@@ -81,6 +81,7 @@ class AgentEvent(Enum):
     CONFIRMATION_REQUIRED = "confirmation_required"
     BUDGET_WRAPUP = "budget_wrapup"
     DUPLICATE_BLOCKED = "duplicate_blocked"
+    STALL_DETECTED = "stall_detected"
 
 
 class RiskLevel(Enum):

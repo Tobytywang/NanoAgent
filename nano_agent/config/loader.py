@@ -194,6 +194,14 @@ class ConfigLoader:
             budget_wrapup_threshold=data.get("budget_wrapup_threshold", 0.1),
             budget_wrapup_free_round=data.get("budget_wrapup_free_round", True),
             budget_wrapup_max_tokens=data.get("budget_wrapup_max_tokens", 2000),
+            complexity_budget_enabled=data.get("complexity_budget_enabled", True),
+            complexity_budget_simple_ratio=data.get("complexity_budget_simple_ratio", 0.15),
+            complexity_budget_moderate_ratio=data.get("complexity_budget_moderate_ratio", 0.5),
+            complexity_budget_complex_ratio=data.get("complexity_budget_complex_ratio", 1.0),
+            stall_detection_enabled=data.get("stall_detection_enabled", True),
+            stall_patience=data.get("stall_patience", 3),
+            stall_similarity_threshold=data.get("stall_similarity_threshold", 0.7),
+            stall_hint_injection=data.get("stall_hint_injection", True),
         )
 
     @classmethod
@@ -319,6 +327,14 @@ class ConfigLoader:
                 "budget_wrapup_threshold": config.smart_optimization.budget_wrapup_threshold,
                 "budget_wrapup_free_round": config.smart_optimization.budget_wrapup_free_round,
                 "budget_wrapup_max_tokens": config.smart_optimization.budget_wrapup_max_tokens,
+                "complexity_budget_enabled": config.smart_optimization.complexity_budget_enabled,
+                "complexity_budget_simple_ratio": config.smart_optimization.complexity_budget_simple_ratio,
+                "complexity_budget_moderate_ratio": config.smart_optimization.complexity_budget_moderate_ratio,
+                "complexity_budget_complex_ratio": config.smart_optimization.complexity_budget_complex_ratio,
+                "stall_detection_enabled": config.smart_optimization.stall_detection_enabled,
+                "stall_patience": config.smart_optimization.stall_patience,
+                "stall_similarity_threshold": config.smart_optimization.stall_similarity_threshold,
+                "stall_hint_injection": config.smart_optimization.stall_hint_injection,
             },
             "aggressive_output": {
                 "enabled": config.aggressive_output.enabled,

@@ -26,6 +26,7 @@ class RoutingResult:
     complexity: QueryComplexity
     reason: str
     suggested_max_tools: int  # -1 means unlimited
+    suggested_budget_ratio: float = 1.0  # 0.0-1.0, ratio of full budget
 
 
 class QueryRouter:
@@ -82,6 +83,9 @@ class QueryRouter:
         custom_simple_patterns: list[str] | None = None,
         custom_moderate_patterns: list[str] | None = None,
         custom_complex_patterns: list[str] | None = None,
+        simple_budget_ratio: float = 0.15,
+        moderate_budget_ratio: float = 0.5,
+        complex_budget_ratio: float = 1.0,
     ):
         """
         Initialize query router.
@@ -93,10 +97,16 @@ class QueryRouter:
             custom_simple_patterns: Additional simple patterns
             custom_moderate_patterns: Additional moderate patterns
             custom_complex_patterns: Additional complex patterns
+            simple_budget_ratio: Budget ratio for SIMPLE queries (default 0.15 = 15%)
+            moderate_budget_ratio: Budget ratio for MODERATE queries (default 0.5 = 50%)
+            complex_budget_ratio: Budget ratio for COMPLEX queries (default 1.0 = 100%)
         """
         self.enabled = enabled
         self.simple_direct = simple_direct
         self.moderate_single_tool = moderate_single_tool
+        self.simple_budget_ratio = simple_budget_ratio
+        self.moderate_budget_ratio = moderate_budget_ratio
+        self.complex_budget_ratio = complex_budget_ratio
 
         # Compile patterns
         self._simple_patterns = [
@@ -141,6 +151,7 @@ class QueryRouter:
                 complexity=QueryComplexity.COMPLEX,
                 reason="Routing disabled",
                 suggested_max_tools=-1,
+                suggested_budget_ratio=self.complex_budget_ratio,
             )
 
         query_stripped = query.strip()
@@ -153,6 +164,7 @@ class QueryRouter:
                         complexity=QueryComplexity.SIMPLE,
                         reason=f"Matched simple pattern: {pattern.pattern}",
                         suggested_max_tools=0,
+                        suggested_budget_ratio=self.simple_budget_ratio,
                     )
 
             # Check very short English-only inputs
@@ -161,6 +173,7 @@ class QueryRouter:
                     complexity=QueryComplexity.SIMPLE,
                     reason=f"Matched short pattern: {self._simple_short_pattern.pattern}",
                     suggested_max_tools=0,
+                    suggested_budget_ratio=self.simple_budget_ratio,
                 )
 
         # Check complex patterns (prioritize over moderate)
@@ -170,6 +183,7 @@ class QueryRouter:
                     complexity=QueryComplexity.COMPLEX,
                     reason=f"Matched complex pattern: {pattern.pattern}",
                     suggested_max_tools=-1,
+                    suggested_budget_ratio=self.complex_budget_ratio,
                 )
 
         # Check moderate patterns
@@ -180,6 +194,7 @@ class QueryRouter:
                         complexity=QueryComplexity.MODERATE,
                         reason=f"Matched moderate pattern: {pattern.pattern}",
                         suggested_max_tools=1,
+                        suggested_budget_ratio=self.moderate_budget_ratio,
                     )
 
         # Default to complex for unknown queries
@@ -187,6 +202,7 @@ class QueryRouter:
             complexity=QueryComplexity.COMPLEX,
             reason="No specific pattern matched, defaulting to complex",
             suggested_max_tools=-1,
+            suggested_budget_ratio=self.complex_budget_ratio,
         )
 
     def is_simple(self, query: str) -> bool:

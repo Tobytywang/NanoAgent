@@ -320,6 +320,23 @@ class TokenBudget:
             return False
         return self.remaining / self.initial_budget <= self.config.wrapup_threshold
 
+    def set_budget_ratio(self, ratio: float, base_budget: int) -> None:
+        """Adjust budget based on complexity ratio.
+
+        Resets budget to base_budget * ratio, clears consumption and
+        warning state so the new query starts fresh.
+
+        Args:
+            ratio: Budget ratio (0.0-1.0) based on query complexity
+            base_budget: Full budget amount to scale from
+        """
+        self.initial_budget = int(base_budget * max(ratio, 0.05))
+        self.remaining = self.initial_budget
+        self._total_consumed = 0
+        self._last_warning_level = -1
+        self._warnings_issued = 0
+        self._last_warning_iteration = 0
+
     def reset(self, new_budget: int | None = None) -> None:
         """
         Reset the budget.

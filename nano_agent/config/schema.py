@@ -357,6 +357,18 @@ class SmartOptimizationConfig:
     budget_wrapup_free_round: bool = True  # Wrap-up round doesn't consume budget
     budget_wrapup_max_tokens: int = 2000  # Max tokens for wrap-up LLM call
 
+    # === Complexity Budget Profile (v0.7.16) ===
+    complexity_budget_enabled: bool = True  # Adjust budget by query complexity
+    complexity_budget_simple_ratio: float = 0.15  # 15% of full budget for SIMPLE
+    complexity_budget_moderate_ratio: float = 0.5  # 50% of full budget for MODERATE
+    complexity_budget_complex_ratio: float = 1.0  # 100% of full budget for COMPLEX
+
+    # === Stall Detection (v0.7.16) ===
+    stall_detection_enabled: bool = True  # Enable stall detection
+    stall_patience: int = 3  # Consecutive similar iterations before stall
+    stall_similarity_threshold: float = 0.7  # Signature similarity threshold
+    stall_hint_injection: bool = True  # Inject redirect hint when stalled
+
 
 @dataclass
 class PromptConfig:

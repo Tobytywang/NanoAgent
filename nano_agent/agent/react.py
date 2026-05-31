@@ -30,6 +30,7 @@ from .confidence import ConfidenceParser
 from .prejudgment import QueryPrejudgment
 from .prompt_builder import PromptBuilder
 from .duplicate import DuplicateDetector
+from .stall_detector import StallDetector, StallConfig
 from .output_simplifier import OutputSimplifier
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
@@ -197,6 +198,9 @@ class ReActAgent(BaseAgent):
                 enabled=True,
                 simple_direct=self.smart_optimization_config.routing_simple_direct,
                 moderate_single_tool=self.smart_optimization_config.routing_moderate_single_tool,
+                simple_budget_ratio=self.smart_optimization_config.complexity_budget_simple_ratio,
+                moderate_budget_ratio=self.smart_optimization_config.complexity_budget_moderate_ratio,
+                complex_budget_ratio=self.smart_optimization_config.complexity_budget_complex_ratio,
             )
         else:
             self.query_router = None
@@ -244,6 +248,14 @@ class ReActAgent(BaseAgent):
             threshold=self.smart_optimization_config.duplicate_threshold,
             deep_equal=self.smart_optimization_config.duplicate_deep_equal,
         )
+
+        # Stall detection (v0.7.16)
+        self._stall_detector = StallDetector(StallConfig(
+            enabled=self.smart_optimization_config.stall_detection_enabled,
+            patience=self.smart_optimization_config.stall_patience,
+            similarity_threshold=self.smart_optimization_config.stall_similarity_threshold,
+            hint_injection=self.smart_optimization_config.stall_hint_injection,
+        ))
         self._wrapup_issued = False
 
         # Real token tracking for v0.7.12 decision points
@@ -439,7 +451,20 @@ class ReActAgent(BaseAgent):
 
             if self.verbose:
                 print(f"[Router] Complexity: {routing_result.complexity.value}, "
-                      f"max_tools: {self._routing_max_tools}")
+                      f"max_tools: {self._routing_max_tools}, "
+                      f"budget_ratio: {routing_result.suggested_budget_ratio:.0%}")
+
+            # Adjust token budget based on complexity (v0.7.16)
+            if (self.token_budget is not None
+                    and self.smart_optimization_config.complexity_budget_enabled
+                    and routing_result.suggested_budget_ratio < 1.0):
+                base_budget = self.smart_optimization_config.initial_budget
+                self.token_budget.set_budget_ratio(
+                    routing_result.suggested_budget_ratio, base_budget
+                )
+                if self.verbose:
+                    print(f"[Router] Budget adjusted to {self.token_budget.initial_budget} "
+                          f"({routing_result.suggested_budget_ratio:.0%} of {base_budget})")
 
             # Rule-based SIMPLE -> LLM-generated answer
             if routing_result.complexity == QueryComplexity.SIMPLE:
@@ -597,6 +622,28 @@ class ReActAgent(BaseAgent):
 
             self.tracker.end_iteration()
 
+            # Stall detection (v0.7.16)
+            if self._stall_detector.config.enabled:
+                iter_tool_names = [tc.name for tc in merged_tool_calls]
+                iter_tool_results = []
+                for tc in merged_tool_calls:
+                    for rec in self._tool_call_records:
+                        if rec.get("tool") == tc.name:
+                            iter_tool_results.append(str(rec.get("result", "")))
+                            break
+                    else:
+                        iter_tool_results.append("")
+
+                self._stall_detector.record_iteration(iter_tool_names, iter_tool_results)
+                stall_result = self._stall_detector.check_stall()
+                if stall_result.is_stalled and stall_result.hint:
+                    self.events.emit(AgentEvent.STALL_DETECTED, {
+                        "stalled_iterations": stall_result.stalled_iterations,
+                    })
+                    self.memory.add_user_message(f"[System] {stall_result.hint}")
+                    if self.verbose:
+                        print(f"[Stall] Detected ({stall_result.stalled_iterations}x), hint injected")
+
         # Reached max iterations or budget exhausted
         response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
         self.tracker.end_run(response)
@@ -622,6 +669,9 @@ class ReActAgent(BaseAgent):
         # Reset duplicate detection state (v0.7.9)
         self._duplicate_detector.reset()
         self._wrapup_issued = False
+
+        # Reset stall detection state (v0.7.16)
+        self._stall_detector.reset()
 
         # Reset real token tracking for v0.7.12
         self._last_prompt_tokens = None
