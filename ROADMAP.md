@@ -1950,7 +1950,7 @@ nano_agent/tools/builtin/shell.py    # 标准化输出
 
 ---
 
-### v0.7.16 - 复杂度预算 Profile 与 Stall Detection
+### v0.7.16 - 复杂度预算 Profile 与 Stall Detection ✅
 
 **目标**: 小任务不浪费预算 + 无进展时转向。
 
@@ -1964,16 +1964,16 @@ nano_agent/tools/builtin/shell.py    # 标准化输出
 **任务列表**:
 
 **1. 复杂度预算 Profile (P1)**:
-- [ ] `QueryRouter.classify()` 结果传递给 `TokenBudget`
-- [ ] 按复杂度预设预算 - SIMPLE=15K / MODERATE=60K / COMPLEX=120K
-- [ ] 可配置预算映射表 - 非硬编码
-- [ ] `RoutingResult` 增加 `suggested_budget_ratio` 字段
+- [x] `QueryRouter.classify()` 结果传递给 `TokenBudget`
+- [x] 按复杂度预设预算 - SIMPLE=15K / MODERATE=60K / COMPLEX=120K
+- [x] 可配置预算映射表 - 非硬编码
+- [x] `RoutingResult` 增加 `suggested_budget_ratio` 字段
 
 **2. Stall Detection (P2)**:
-- [ ] 实现 `StallDetector` 类 - 检测迭代无进展
-- [ ] 定义进展度量 - 工具结果差异度、新信息量
-- [ ] 连续 N 次无进展时触发转向 - 注入提示让 LLM 换策略
-- [ ] 配置支持 - `stall_detection.enabled`、`stall_detection.patience`
+- [x] 实现 `StallDetector` 类 - 检测迭代无进展
+- [x] 定义进展度量 - 工具结果差异度、新信息量
+- [x] 连续 N 次无进展时触发转向 - 注入提示让 LLM 换策略
+- [x] 配置支持 - `stall_detection.enabled`、`stall_detection.patience`
 
 **新增文件**:
 ```
@@ -2523,7 +2523,7 @@ persona:
 | v0.7.13 | 统一截断比率与校准闭环 ✅ | calculate_max_chars、calibration_factor 参数、校准公式修正 |
 | v0.7.14 | 预判机制 ✅ | 简单问题不走 ReAct，节省 ~90% token |
 | v0.7.15 | 激进输出精简与工具输出标准化 ✅ | LLM 输出精简 + 工具结果结构化 |
-| v0.7.16 | 复杂度预算 Profile 与 Stall Detection | 小任务不浪费 + 无进展转向 |
+| v0.7.16 | 复杂度预算 Profile 与 Stall Detection ✅ | 小任务不浪费 + 无进展转向 |
 | v0.7.17 | 多轮缓存与 Tool Offloading | 跨轮次缓存 + 大结果 offload |
 | v0.7.18 | 估算审计与准确性增强 | 估算 vs 实际对比 + 估算准确性提升 |
 | v0.7.19 | 语义压缩 | 合并相似历史消息 |
