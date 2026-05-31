@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 from ..base import BaseTool, ToolResult
+from ..standard_output import StandardToolOutput, OutputFormat
 from ...agent.types import RiskLevel
 
 
@@ -57,9 +58,18 @@ class PythonExecutorTool(BaseTool):
 
             if result.returncode == 0:
                 output = result.stdout.strip()
+                standard_output = StandardToolOutput(
+                    format=OutputFormat.STATUS,
+                    data={
+                        "status": "success",
+                        "output": output[:500],
+                    },
+                    summary="Code executed successfully",
+                )
                 return ToolResult(
                     success=True,
-                    output=output or "Code executed successfully (no output)"
+                    output=output or "Code executed successfully (no output)",
+                    metadata={"standard_output": standard_output},
                 )
             else:
                 return ToolResult(

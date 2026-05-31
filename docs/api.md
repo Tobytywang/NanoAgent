@@ -262,6 +262,73 @@ result = prejudgment.prejudge("Python 的 GIL 是什么")
 - `prejudgment_simple_prompt: str = ""` — 自定义 SIMPLE 回答提示词
 - `prejudgment_max_answer_tokens: int = 300` — SIMPLE 回答最大 token 数
 
+### AggressiveOutputConfig & OutputSimplifier
+
+v0.7.15 激进输出精简。约束 LLM 回答长度，减少冗余格式（emoji、表格、列表）。
+
+```python
+from nano_agent.config.schema import AggressiveOutputConfig
+from nano_agent.agent import OutputSimplifier
+
+# 配置
+config = AggressiveOutputConfig(
+    enabled=True,
+    level="mild",              # mild / aggressive / extreme
+    max_response_sentences=3,  # 0=不限
+    strip_emoji=True,
+    strip_markdown_tables=True,
+    strip_markdown_lists=False,
+    max_response_chars=0,      # 0=不限
+)
+
+# 使用
+simplifier = OutputSimplifier(config)
+short = simplifier.simplify("Hello 🎉 world! This is a long response...")
+# → "Hello world! This is a long response..."
+
+# 工厂方法
+simplifier = OutputSimplifier.from_level("aggressive")  # 1 句话，无格式
+simplifier = OutputSimplifier.from_level("extreme")     # <200 字符
+```
+
+**三级预设**:
+| Level | 句数 | 表格 | 列表 | Emoji | 字符限制 |
+|-------|------|------|------|-------|---------|
+| mild | 3 | 删除 | 保留 | 删除 | 无 |
+| aggressive | 1 | 删除 | 删除 | 删除 | 无 |
+| extreme | 1 | 删除 | 删除 | 删除 | 200 |
+
+### StandardToolOutput & OutputFormat
+
+v0.7.15 工具输出标准化。工具返回结构化数据，减少 LLM 解析负担。
+
+```python
+from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+# 创建标准化输出
+sto = StandardToolOutput(
+    format=OutputFormat.LIST,
+    data={"items": [{"path": "a.py"}, {"path": "b.py"}], "total": 2},
+    summary="2 files",
+)
+
+# 转换为 LLM 消息
+message = sto.to_llm_message(detailed=False)
+# → "a.py\nb.py\nTotal: 2"
+```
+
+**OutputFormat 枚举**:
+- `STRUCTURE` — 键值对结构（file_read 结构信息）
+- `LIST` — 列表（file_search, web_search）
+- `STATUS` — 状态消息（shell, python_execute）
+- `CONTENT` — 带元数据的内容（file_read 正文）
+- `ERROR` — 错误信息
+
+**配置** (StandardizedOutputConfig):
+- `enabled: bool = True` — 默认启用
+- `detailed: bool = False` — 紧凑模式（默认）或详细模式
+
+
 ---
 
 ## LLM
@@ -861,6 +928,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.15 | 激进输出精简与工具输出标准化（`AggressiveOutputConfig`、`OutputSimplifier`、`StandardToolOutput`、`OutputFormat`） |
 | v0.7.14 | 预判机制（`QueryPrejudgment`、`PrejudgmentResult`、两级路由：规则优先 + LLM 补充） |
 | v0.7.13 | 统一截断比率与校准闭环（`calculate_max_chars`、`calibration_factor` 参数、`CalibrationData`） |
 | v0.7.12 | 决策点真实 Token（`last_prompt_tokens` 参数、偏差日志） |

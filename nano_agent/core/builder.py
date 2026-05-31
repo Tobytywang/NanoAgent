@@ -207,6 +207,8 @@ class AgentBuilder:
             smart_optimization_config=self.config.smart_optimization if hasattr(self.config, 'smart_optimization') else None,
             prompt_config=self.config.prompt if hasattr(self.config, 'prompt') else None,
             llm_config=self.config.llm,
+            aggressive_output_config=self.config.aggressive_output if hasattr(self.config, 'aggressive_output') else None,
+            standardized_output_config=self.config.standardized_output if hasattr(self.config, 'standardized_output') else None,
         )
 
         # Create orchestrator

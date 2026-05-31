@@ -1882,6 +1882,21 @@ def _show_config(config, agent) -> None:
         else:
             print(format_line("Stable Modules:", 'None'))
 
+    # Aggressive Output 配置 (v0.7.15)
+    print("\n## 激进输出简化")
+    print(format_line("Enabled:", str(config.aggressive_output.enabled)))
+    if config.aggressive_output.enabled:
+        print(format_line("Level:", config.aggressive_output.level))
+        print(format_line("Max Sentences:", str(config.aggressive_output.max_response_sentences) if config.aggressive_output.max_response_sentences > 0 else "auto"))
+        print(format_line("Strip Emoji:", str(config.aggressive_output.strip_emoji)))
+        print(format_line("Strip Tables:", str(config.aggressive_output.strip_markdown_tables)))
+        print(format_line("Strip Lists:", str(config.aggressive_output.strip_markdown_lists)))
+
+    # Standardized Output 配置 (v0.7.15)
+    print("\n## 标准化工具输出")
+    print(format_line("Enabled:", str(config.standardized_output.enabled)))
+    print(format_line("Detailed:", str(config.standardized_output.detailed)))
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -2598,6 +2613,14 @@ def _init_config_file(config, force: bool = False) -> None:
             "prejudgment_enabled": config.smart_optimization.prejudgment_enabled,
             "prejudgment_simple_prompt": config.smart_optimization.prejudgment_simple_prompt,
             "prejudgment_max_answer_tokens": config.smart_optimization.prejudgment_max_answer_tokens,
+        },
+        "aggressive_output": {
+            "enabled": config.aggressive_output.enabled,
+            "level": config.aggressive_output.level,
+        },
+        "standardized_output": {
+            "enabled": config.standardized_output.enabled,
+            "detailed": config.standardized_output.detailed,
         },
     }
 

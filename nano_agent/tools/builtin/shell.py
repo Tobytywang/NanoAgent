@@ -6,6 +6,7 @@ import subprocess
 import platform
 from typing import Literal
 from ..base import BaseTool, ToolResult
+from ..standard_output import StandardToolOutput, OutputFormat
 from ...agent.types import RiskLevel
 
 
@@ -81,11 +82,21 @@ class ShellTool(BaseTool):
                 output_parts.append(f"stderr:\n{result.stderr}")
 
             output = "\n".join(output_parts) or "Command completed (no output)"
-
+            standard_output = StandardToolOutput(
+                format=OutputFormat.STATUS,
+                data={
+                    "status": "success" if result.returncode == 0 else "error",
+                    "exit_code": result.returncode,
+                    "stdout": (result.stdout or "")[:500],
+                    "stderr": (result.stderr or "")[:500],
+                },
+                summary=f"Exit code: {result.returncode}",
+            )
             return ToolResult(
                 success=result.returncode == 0,
                 output=output,
-                error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
+                error=None if result.returncode == 0 else f"Exit code: {result.returncode}",
+                metadata={"standard_output": standard_output},
             )
         except subprocess.TimeoutExpired:
             return ToolResult(

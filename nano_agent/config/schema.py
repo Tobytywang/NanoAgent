@@ -231,6 +231,27 @@ class OutputStyleConfig:
 
 
 @dataclass
+class AggressiveOutputConfig:
+    """Aggressive output simplification configuration (v0.7.15)."""
+
+    enabled: bool = False
+    level: Literal["mild", "aggressive", "extreme"] = "mild"
+    max_response_sentences: int = 0   # 0=unlimited; mild=3, aggressive=1, extreme=1
+    strip_emoji: bool = True
+    strip_markdown_tables: bool = True
+    strip_markdown_lists: bool = False  # True for aggressive/extreme
+    max_response_chars: int = 0         # 0=unlimited; extreme=200
+
+
+@dataclass
+class StandardizedOutputConfig:
+    """Standardized tool output configuration (v0.7.15)."""
+
+    enabled: bool = True
+    detailed: bool = False  # True=full detail, False=compact
+
+
+@dataclass
 class ToolMergeConfig:
     """Tool merging configuration for token efficiency."""
 
@@ -397,3 +418,5 @@ class Config:
     project_file: ProjectFileConfig = field(default_factory=ProjectFileConfig)
     smart_optimization: SmartOptimizationConfig = field(default_factory=SmartOptimizationConfig)
     prompt: PromptConfig = field(default_factory=PromptConfig)
+    aggressive_output: AggressiveOutputConfig = field(default_factory=AggressiveOutputConfig)
+    standardized_output: StandardizedOutputConfig = field(default_factory=StandardizedOutputConfig)

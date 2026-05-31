@@ -172,6 +172,18 @@ Prevent vulnerabilities:
         category="output",
     ),
 
+    "aggressive_output": PromptModule(
+        name="aggressive_output",
+        description="激进输出简化",
+        content="",  # Dynamic content based on level
+        priority=41,
+        always_on=False,
+        token_estimate=40,
+        enabled=False,
+        is_stable=True,
+        category="output",
+    ),
+
     "language": PromptModule(
         name="language",
         description="语言设置",
@@ -230,16 +242,37 @@ Use `recall` tool to retrieve stored memories.""",
 }
 
 
+# Aggressive output content templates (v0.7.15)
+AGGRESSIVE_OUTPUT_CONTENTS = {
+    "mild": """## Output Constraints
+- No emojis unless explicitly requested
+- Keep responses to 2-3 sentences maximum
+- No Markdown tables; use inline descriptions
+- Reference: file_path:line_number""",
+    "aggressive": """## Output Constraints
+- Respond in exactly ONE sentence
+- No emojis, no Markdown formatting
+- No tables, no bullet lists, no numbered lists
+- If multiple points needed, use semicolons in one sentence
+- Reference: file_path:line_number""",
+    "extreme": """## Output Constraints
+- Respond in ONE short sentence (under 50 chars if possible)
+- No formatting of any kind
+- No explanations unless explicitly asked
+- Single word answers when possible""",
+}
+
+
 # Style 预设配置
 STYLE_PRESETS = {
     "concise": {
         "description": "简洁模式 (~150 tokens)",
-        "modules": ["core", "tools", "language"],
+        "modules": ["core", "tools", "output_style", "language"],
         "token_budget": 200,
     },
     "standard": {
         "description": "标准模式 (~800 tokens)",
-        "modules": ["core", "tools", "efficiency", "modification", "constitution", "risk_awareness", "language"],
+        "modules": ["core", "tools", "efficiency", "modification", "constitution", "risk_awareness", "output_style", "language"],
         "token_budget": 1000,
     },
     "detailed": {

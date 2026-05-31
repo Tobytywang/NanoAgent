@@ -323,13 +323,16 @@ class ToolResultSummarizer:
         current_result = {}
 
         for line in lines:
-            # Look for title patterns
-            if line.startswith("Title:") or line.startswith("# "):
+            # Look for title patterns (v0.7.15: support 【title】 format)
+            if line.startswith("Title:") or line.startswith("# ") or line.startswith("【"):
                 if current_result:
                     results.append(current_result)
-                current_result = {"title": line.replace("Title:", "").replace("# ", "").strip()}
-            elif line.startswith("URL:") or line.startswith("http"):
-                current_result["url"] = line.replace("URL:", "").strip()
+                title = line.replace("Title:", "").replace("# ", "").strip()
+                if title.startswith("【") and title.endswith("】"):
+                    title = title[1:-1]
+                current_result = {"title": title}
+            elif line.startswith("URL:") or line.startswith("http") or line.startswith("来源:"):
+                current_result["url"] = line.replace("URL:", "").replace("来源:", "").strip()
             elif line.startswith("Snippet:") or line.startswith("Description:"):
                 snippet = line.replace("Snippet:", "").replace("Description:", "").strip()
                 current_result["snippet"] = snippet[:100] + "..." if len(snippet) > 100 else snippet

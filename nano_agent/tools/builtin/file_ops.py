@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Literal
 from ..base import BaseTool, ToolResult
+from ..standard_output import StandardToolOutput, OutputFormat
 from ...agent.types import RiskLevel
 
 
@@ -88,9 +89,22 @@ class FileReadTool(BaseTool):
             ]
 
             content = "\n".join(result_lines)
+            raw_output = f"File: {path}\nTotal lines: {len(lines)}\n\n{content}"
+            standard_output = StandardToolOutput(
+                format=OutputFormat.CONTENT,
+                data={
+                    "source": str(path),
+                    "lines_total": len(lines),
+                    "lines_shown": len(selected_lines),
+                    "start_line": start_idx + 1,
+                    "content": content,
+                },
+                summary=f"{path}: {len(lines)} lines",
+            )
             return ToolResult(
                 success=True,
-                output=f"File: {path}\nTotal lines: {len(lines)}\n\n{content}"
+                output=raw_output,
+                metadata={"standard_output": standard_output},
             )
         except UnicodeDecodeError:
             return ToolResult(
@@ -318,9 +332,20 @@ class FileSearchTool(BaseTool):
             if len(sorted_matches) > max_results:
                 result_str += f"\n... and {len(sorted_matches) - max_results} more results"
 
+            items = [{"path": str(m.relative_to(base_path))} for m in sorted_matches[:max_results]]
+            standard_output = StandardToolOutput(
+                format=OutputFormat.LIST,
+                data={
+                    "items": items,
+                    "total": len(sorted_matches),
+                    "max_display": max_results,
+                },
+                summary=f"Found {len(sorted_matches)} files matching '{pattern}'",
+            )
             return ToolResult(
                 success=True,
-                output=f"Found {len(sorted_matches)} matches:\n{result_str}"
+                output=f"Found {len(sorted_matches)} matches:\n{result_str}",
+                metadata={"standard_output": standard_output},
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

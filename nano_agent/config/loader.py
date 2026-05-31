@@ -9,7 +9,7 @@ from typing import Any
 from .schema import (
     Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig, SkillsConfig,
     OutputStyleConfig, ToolMergeConfig, CacheConfig, CompressorConfig,
-    ProjectFileConfig, SmartOptimizationConfig
+    ProjectFileConfig, SmartOptimizationConfig, AggressiveOutputConfig, StandardizedOutputConfig
 )
 
 
@@ -54,7 +54,9 @@ class ConfigLoader:
             cache=cls._parse_cache_config(data.get("cache", {})),
             compressor=cls._parse_compressor_config(data.get("compressor", {})),
             project_file=cls._parse_project_file_config(data.get("project_file", {})),
-            smart_optimization=cls._parse_smart_optimization_config(data.get("smart_optimization", {}))
+            smart_optimization=cls._parse_smart_optimization_config(data.get("smart_optimization", {})),
+            aggressive_output=cls._parse_aggressive_output_config(data.get("aggressive_output", {})),
+            standardized_output=cls._parse_standardized_output_config(data.get("standardized_output", {})),
         )
 
     @classmethod
@@ -195,6 +197,27 @@ class ConfigLoader:
         )
 
     @classmethod
+    def _parse_aggressive_output_config(cls, data: dict) -> AggressiveOutputConfig:
+        """解析激进输出配置"""
+        return AggressiveOutputConfig(
+            enabled=data.get("enabled", False),
+            level=data.get("level", "mild"),
+            max_response_sentences=data.get("max_response_sentences", 0),
+            strip_emoji=data.get("strip_emoji", True),
+            strip_markdown_tables=data.get("strip_markdown_tables", True),
+            strip_markdown_lists=data.get("strip_markdown_lists", False),
+            max_response_chars=data.get("max_response_chars", 0),
+        )
+
+    @classmethod
+    def _parse_standardized_output_config(cls, data: dict) -> StandardizedOutputConfig:
+        """解析标准化输出配置"""
+        return StandardizedOutputConfig(
+            enabled=data.get("enabled", True),
+            detailed=data.get("detailed", False),
+        )
+
+    @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
         """
         保存配置到 YAML 文件。
@@ -296,6 +319,19 @@ class ConfigLoader:
                 "budget_wrapup_threshold": config.smart_optimization.budget_wrapup_threshold,
                 "budget_wrapup_free_round": config.smart_optimization.budget_wrapup_free_round,
                 "budget_wrapup_max_tokens": config.smart_optimization.budget_wrapup_max_tokens,
+            },
+            "aggressive_output": {
+                "enabled": config.aggressive_output.enabled,
+                "level": config.aggressive_output.level,
+                "max_response_sentences": config.aggressive_output.max_response_sentences,
+                "strip_emoji": config.aggressive_output.strip_emoji,
+                "strip_markdown_tables": config.aggressive_output.strip_markdown_tables,
+                "strip_markdown_lists": config.aggressive_output.strip_markdown_lists,
+                "max_response_chars": config.aggressive_output.max_response_chars,
+            },
+            "standardized_output": {
+                "enabled": config.standardized_output.enabled,
+                "detailed": config.standardized_output.detailed,
             }
         }
 

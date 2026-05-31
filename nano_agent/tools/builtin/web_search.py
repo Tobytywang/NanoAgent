@@ -5,6 +5,7 @@ Web search tool using curl and Bing search engine.
 import subprocess
 import urllib.parse
 from ..base import BaseTool, ToolResult
+from ..standard_output import StandardToolOutput, OutputFormat
 from ...agent.types import RiskLevel
 
 
@@ -78,7 +79,7 @@ class WebSearchTool(BaseTool):
             stdout = result.stdout.decode('utf-8', errors='replace')
 
             # Parse the HTML to extract search results
-            output = self._parse_search_results(stdout)
+            output, structured = self._parse_search_results(stdout)
 
             if not output:
                 return ToolResult(
@@ -86,9 +87,19 @@ class WebSearchTool(BaseTool):
                     output=f"Search completed but no clear results found. The search was for: {query}"
                 )
 
+            standard_output = StandardToolOutput(
+                format=OutputFormat.LIST,
+                data={
+                    "items": structured,
+                    "total": len(structured),
+                    "max_display": 5,
+                },
+                summary=f"Found {len(structured)} results for '{query}'",
+            )
             return ToolResult(
                 success=True,
-                output=output
+                output=output,
+                metadata={"standard_output": standard_output},
             )
 
         except subprocess.TimeoutExpired:
@@ -102,37 +113,29 @@ class WebSearchTool(BaseTool):
                 error=f"Search failed: {str(e)}"
             )
 
-    def _parse_search_results(self, html: str) -> str:
-        """
-        Parse HTML to extract search results.
-
-        Args:
-            html: The HTML response from the search engine
+    def _parse_search_results(self, html: str) -> tuple[str, list[dict]]:
+        """Parse HTML to extract search results.
 
         Returns:
-            Extracted text from search results
+            (formatted_text, structured_items) tuple
         """
         import re
 
         results = []
+        structured_items = []
 
-        # Extract results from <li class="b_algo"> elements (Bing format)
-        # Pattern to match result containers
         algo_pattern = r'<li class="b_algo"[^>]*>(.*?)</li>'
         algo_matches = re.findall(algo_pattern, html, re.DOTALL | re.IGNORECASE)
 
-        for match in algo_matches[:5]:  # Limit to top 5 results
-            # Extract title
+        for match in algo_matches[:5]:
             title_pattern = r'<h2[^>]*><a[^>]*>(.*?)</a></h2>'
             title_match = re.search(title_pattern, match, re.DOTALL | re.IGNORECASE)
             title = self._clean_html(title_match.group(1)) if title_match else ""
 
-            # Extract snippet/description
             desc_pattern = r'<p[^>]*>(.*?)</p>|<span class="news_dt"[^>]*>.*?</span>\s*([^.]+\.)'
             desc_match = re.search(desc_pattern, match, re.DOTALL | re.IGNORECASE)
             description = self._clean_html(desc_match.group(1) or desc_match.group(2)) if desc_match else ""
 
-            # Extract URL
             url_pattern = r'<cite[^>]*>(.*?)</cite>'
             url_match = re.search(url_pattern, match, re.DOTALL | re.IGNORECASE)
             url = self._clean_html(url_match.group(1)) if url_match else ""
@@ -144,21 +147,20 @@ class WebSearchTool(BaseTool):
                 if url:
                     result_text += f"\n来源: {url}"
                 results.append(result_text)
+                structured_items.append({"title": title, "snippet": description[:100], "url": url})
 
-        # Fallback: try to extract any meaningful text
+        # Fallback
         if not results:
-            # Remove scripts and styles
-            clean_html = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            # Extract text from common result patterns
-            text = re.sub(r'<[^>]+>', ' ', clean_html)
+            clean_html_text = re.sub(r'<(script|style)[^>]*>.*?</\\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<[^>]+>', ' ', clean_html_text)
             text = re.sub(r'\s+', ' ', text).strip()
-
-            # Look for meaningful sentences
             sentences = re.findall(r'[^\s.!?]{20,}[.!?]', text)
             if sentences:
                 results = sentences[:5]
+                structured_items = [{"title": s[:50], "snippet": s} for s in sentences[:5]]
 
-        return "\n\n".join(results) if results else ""
+        formatted = "\n\n".join(results) if results else ""
+        return formatted, structured_items
 
     def _clean_html(self, text: str) -> str:
         """Remove HTML tags and clean up text."""

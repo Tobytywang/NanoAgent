@@ -1907,21 +1907,21 @@ nano_agent/agent/react.py            # 集成预判机制
 **任务列表**:
 
 **1. 激进输出精简 (P1)**:
-- [ ] 定义 `AggressiveOutputConfig` 配置 - mild/aggressive/extreme 三级
-- [ ] 实现输出格式约束提示词 - 一句话、无表格、无列表、无 emoji
-- [ ] 实现 `OutputSimplifier` 类 - 后处理强制精简
-- [ ] 实现 emoji/Markdown 过滤 - 正则清理
-- [ ] 实现长度截断策略 - 按字数限制
-- [ ] 配置支持 - `aggressive_output.enabled`、`aggressive_output.level`
+- [x] 定义 `AggressiveOutputConfig` 配置 - mild/aggressive/extreme 三级
+- [x] 实现输出格式约束提示词 - 一句话、无表格、无列表、无 emoji
+- [x] 实现 `OutputSimplifier` 类 - 后处理强制精简
+- [x] 实现 emoji/Markdown 过滤 - 正则清理
+- [x] 实现长度截断策略 - 按字数限制
+- [x] 配置支持 - `aggressive_output.enabled`、`aggressive_output.level`
 
 **2. 工具输出标准化 (P1)**:
-- [ ] 定义 `StandardToolOutput` 数据类 - 统一输出结构
-- [ ] 定义 `OutputFormat` 枚举 - structure/list/status/content/error
-- [ ] 重构 `file_read` 工具 - 输出 imports/classes/functions 结构
-- [ ] 重构 `shell_execute` 工具 - 解析 ls/git 等常见命令输出
-- [ ] 重构 `file_search` 工具 - 输出分组统计结果
-- [ ] 实现 `to_llm_message()` 方法 - 转换为精简 LLM 消息
-- [ ] 配置支持 - `standardized_output.enabled`、`standardized_output.detailed`
+- [x] 定义 `StandardToolOutput` 数据类 - 统一输出结构
+- [x] 定义 `OutputFormat` 枚举 - structure/list/status/content/error
+- [x] 重构 `file_read` 工具 - 输出 imports/classes/functions 结构
+- [x] 重构 `shell_execute` 工具 - 解析 ls/git 等常见命令输出
+- [x] 重构 `file_search` 工具 - 输出分组统计结果
+- [x] 实现 `to_llm_message()` 方法 - 转换为精简 LLM 消息
+- [x] 配置支持 - `standardized_output.enabled`、`standardized_output.detailed`
 
 **新增文件**:
 ```
@@ -2522,7 +2522,7 @@ persona:
 | v0.7.12 | 决策点真实 Token ✅ | 压缩/压力检测从估算切换到实际 prompt_tokens |
 | v0.7.13 | 统一截断比率与校准闭环 ✅ | calculate_max_chars、calibration_factor 参数、校准公式修正 |
 | v0.7.14 | 预判机制 ✅ | 简单问题不走 ReAct，节省 ~90% token |
-| v0.7.15 | 激进输出精简与工具输出标准化 | LLM 输出精简 + 工具结果结构化 |
+| v0.7.15 | 激进输出精简与工具输出标准化 ✅ | LLM 输出精简 + 工具结果结构化 |
 | v0.7.16 | 复杂度预算 Profile 与 Stall Detection | 小任务不浪费 + 无进展转向 |
 | v0.7.17 | 多轮缓存与 Tool Offloading | 跨轮次缓存 + 大结果 offload |
 | v0.7.18 | 估算审计与准确性增强 | 估算 vs 实际对比 + 估算准确性提升 |

@@ -30,10 +30,11 @@ from .confidence import ConfidenceParser
 from .prejudgment import QueryPrejudgment
 from .prompt_builder import PromptBuilder
 from .duplicate import DuplicateDetector
+from .output_simplifier import OutputSimplifier
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
-from ..config.schema import OutputStyleConfig, SmartOptimizationConfig, PromptConfig
+from ..config.schema import OutputStyleConfig, SmartOptimizationConfig, PromptConfig, AggressiveOutputConfig, StandardizedOutputConfig
 
 
 def _safe_str(text: str) -> str:
@@ -112,6 +113,8 @@ class ReActAgent(BaseAgent):
         smart_optimization_config: SmartOptimizationConfig | None = None,
         prompt_config: PromptConfig | None = None,
         llm_config=None,
+        aggressive_output_config: AggressiveOutputConfig | None = None,
+        standardized_output_config: StandardizedOutputConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -159,6 +162,15 @@ class ReActAgent(BaseAgent):
 
         # Prompt configuration (v0.7.6)
         self.prompt_config = prompt_config or PromptConfig()
+
+        # Aggressive output simplification (v0.7.15)
+        self.aggressive_output_config = aggressive_output_config or AggressiveOutputConfig()
+        self.standardized_output_config = standardized_output_config or StandardizedOutputConfig()
+        self._output_simplifier = (
+            OutputSimplifier(self.aggressive_output_config)
+            if self.aggressive_output_config.enabled
+            else None
+        )
 
         # Token budget management
         if self.smart_optimization_config.budget_enabled:
@@ -259,6 +271,26 @@ class ReActAgent(BaseAgent):
         # Set style
         style = self.prompt_config.style or self.output_style_config.style
         self._prompt_builder.set_style(style)
+
+        # v0.7.15: Inject aggressive_output module if enabled
+        if self.aggressive_output_config.enabled:
+            from .prompt_modules import AGGRESSIVE_OUTPUT_CONTENTS, PromptModule
+            level = self.aggressive_output_config.level
+            if level in AGGRESSIVE_OUTPUT_CONTENTS:
+                aggressive_module = PromptModule(
+                    name="aggressive_output",
+                    description=f"Aggressive output ({level})",
+                    content=AGGRESSIVE_OUTPUT_CONTENTS[level],
+                    priority=41,
+                    always_on=False,
+                    token_estimate=40,
+                    enabled=True,
+                    is_stable=True,
+                    category="output",
+                )
+                self._prompt_builder._modules["aggressive_output"] = aggressive_module
+                if "aggressive_output" not in self._prompt_builder.config.modules:
+                    self._prompt_builder.config.modules.append("aggressive_output")
 
         # Build stable portion (only once)
         tools_desc = self._format_tools_description(style)
@@ -881,8 +913,15 @@ class ReActAgent(BaseAgent):
         """
         result_content = result.output if result.success else f"Error: {result.error}"
 
-        # Summarize tool output for token efficiency
-        if self.output_style_config.style == "concise":
+        # v0.7.15: Standardized output takes priority over summarizer
+        if (result.success
+                and result.metadata
+                and "standard_output" in result.metadata
+                and self.standardized_output_config.enabled):
+            result_content = result.metadata["standard_output"].to_llm_message(
+                detailed=self.standardized_output_config.detailed
+            )
+        elif self.output_style_config.style == "concise":
             # Use intelligent summarization with config
             summarizer_config = SummarizerConfig(
                 enabled=self.output_style_config.smart_summarization,
@@ -894,8 +933,12 @@ class ReActAgent(BaseAgent):
             summarizer = ToolResultSummarizer(summarizer_config)
             result_content = summarizer.summarize(result_content, tool_call.name)
 
-        # Truncate long output based on output style config
-        max_tokens = self.output_style_config.tool_output_max_tokens
+        # v0.7.15: Activate tool_processor config for truncation
+        if (self.smart_optimization_config.tool_processor_enabled
+                and self.smart_optimization_config.tool_processor_max_output_tokens > 0):
+            max_tokens = self.smart_optimization_config.tool_processor_max_output_tokens
+        else:
+            max_tokens = self.output_style_config.tool_output_max_tokens
         from .token_utils import calculate_max_chars
         max_chars = calculate_max_chars(result_content, max_tokens)
         if len(result_content) > max_chars:
@@ -1109,6 +1152,9 @@ class ReActAgent(BaseAgent):
         """
         # Add final assistant message if not already added
         if success:
+            # v0.7.15: Apply aggressive output simplification
+            if self._output_simplifier is not None:
+                response = self._output_simplifier.simplify(response)
             self.memory.add_assistant_message(response)
 
         return ExecutionResult(
