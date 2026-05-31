@@ -801,7 +801,10 @@ test_result = tester.run(f"请为这段代码编写测试：{code}")
 
 ### Q: Agent 陷入循环怎么办？
 
-调整 `max_iterations` 参数，默认为 10 次。
+1. Stall Detection 默认启用（`stall_detection_enabled: True`），连续 3 次相似迭代会自动注入转向提示
+2. 调整 `stall_patience` 控制触发阈值（默认 3）
+3. 调整 `max_iterations` 参数限制最大迭代次数（默认 10）
+4. 使用 `duplicate_threshold` 控制重复调用检测（默认 3）
 
 ---
 

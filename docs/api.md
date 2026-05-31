@@ -328,6 +328,127 @@ message = sto.to_llm_message(detailed=False)
 - `enabled: bool = True` — 默认启用
 - `detailed: bool = False` — 紧凑模式（默认）或详细模式
 
+### StallDetector & StallConfig
+
+v0.7.16 停滞检测。检测 Agent 在 ReAct 循环中连续迭代无进展，注入转向提示让 LLM 换策略。
+
+```python
+from nano_agent.agent.stall_detector import StallDetector, StallConfig, StallResult
+
+# 配置
+config = StallConfig(
+    enabled=True,
+    patience=3,                 # 连续 N 次无进展触发
+    similarity_threshold=0.7,   # 签名相似度阈值
+    hint_injection=True,        # 注入转向提示
+)
+
+# 使用
+detector = StallDetector(config)
+detector.record_iteration(["file_read"], ["result content"])
+detector.record_iteration(["file_read"], ["result content"])
+result = detector.check_stall()
+# result.is_stalled → True
+# result.stalled_iterations → 1
+# result.hint → "你之前的尝试没有明显进展..."
+
+# 重置（新查询前）
+detector.reset()
+```
+
+**StallConfig 字段**:
+- `enabled: bool = True` — 启用停滞检测
+- `patience: int = 3` — 连续相似迭代次数阈值
+- `similarity_threshold: float = 0.7` — 签名相似度阈值（Jaccard）
+- `hint_injection: bool = True` — 检测到停滞时注入转向提示
+
+**StallResult 字段**:
+- `is_stalled: bool` — 是否停滞
+- `stalled_iterations: int` — 连续停滞迭代次数
+- `hint: str | None` — 转向提示文本
+
+**进展度量**: 每次迭代生成签名（工具名 + 结果 MD5[:8] + 结果长度），通过 Jaccard 相似度比较相邻迭代。
+
+**与 DuplicateDetector 的区别**: DuplicateDetector 检测完全相同的重复工具调用；StallDetector 检测"不同工具但原地打转"的模式。
+
+### RoutingResult.suggested_budget_ratio
+
+v0.7.16 复杂度预算 Profile。QueryRouter 分类结果现在包含预算比例建议。
+
+```python
+from nano_agent.agent.router import QueryRouter, RoutingResult
+
+router = QueryRouter(
+    simple_budget_ratio=0.15,   # SIMPLE → 15% 预算
+    moderate_budget_ratio=0.5,  # MODERATE → 50% 预算
+    complex_budget_ratio=1.0,   # COMPLEX → 100% 预算
+)
+
+result = router.classify("你好")
+# result.suggested_budget_ratio → 0.15
+# result.suggested_max_tools → 0
+```
+
+**TokenBudget.set_budget_ratio()**: 根据复杂度比例调整预算。
+
+```python
+from nano_agent.agent.token_budget import TokenBudget, TokenBudgetConfig
+
+budget = TokenBudget(TokenBudgetConfig(initial_budget=100000))
+budget.set_budget_ratio(0.15, 100000)
+# budget.initial_budget → 15000
+# budget.remaining → 15000
+```
+
+### AgentEvent 枚举
+
+```python
+from nano_agent.agent.types import AgentEvent
+
+class AgentEvent(Enum):
+    RUN_START = "run_start"
+    THINK_START = "think_start"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    RUN_END = "run_end"
+    CONFIRMATION_REQUIRED = "confirmation_required"
+    BUDGET_WRAPUP = "budget_wrapup"
+    DUPLICATE_BLOCKED = "duplicate_blocked"
+    STALL_DETECTED = "stall_detected"          # v0.7.16
+```
+
+### TerminationReason 枚举
+
+```python
+from nano_agent.agent.types import TerminationReason
+
+class TerminationReason(str, Enum):
+    COMPLETED = "completed"
+    MAX_ITERATIONS = "max_iterations"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    BUDGET_WRAP_UP = "budget_wrap_up"
+    STALL_DETECTED = "stall_detected"          # v0.7.16
+    CONFIDENCE_EARLY_STOP = "confidence_early_stop"
+    CONFIDENCE_VERIFIED = "confidence_verified"
+    ROUTING_LIMIT = "routing_limit"
+    DUPLICATE_BLOCKED = "duplicate_blocked"
+    PREJUDGMENT_SIMPLE = "prejudgment_simple"
+```
+
+**配置** (SmartOptimizationConfig):
+
+复杂度预算 Profile (v0.7.16):
+- `complexity_budget_enabled: bool = True` — 按复杂度调整预算
+- `complexity_budget_simple_ratio: float = 0.15` — SIMPLE 预算比例
+- `complexity_budget_moderate_ratio: float = 0.5` — MODERATE 预算比例
+- `complexity_budget_complex_ratio: float = 1.0` — COMPLEX 预算比例
+
+Stall Detection (v0.7.16):
+- `stall_detection_enabled: bool = True` — 启用停滞检测
+- `stall_patience: int = 3` — 连续相似迭代次数阈值
+- `stall_similarity_threshold: float = 0.7` — 签名相似度阈值
+- `stall_hint_injection: bool = True` — 检测到停滞时注入转向提示
+
 
 ---
 
@@ -928,6 +1049,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.16 | 复杂度预算 Profile 与 Stall Detection（`RoutingResult.suggested_budget_ratio`、`TokenBudget.set_budget_ratio`、`StallDetector`、`StallConfig`、`AgentEvent.STALL_DETECTED`） |
 | v0.7.15 | 激进输出精简与工具输出标准化（`AggressiveOutputConfig`、`OutputSimplifier`、`StandardToolOutput`、`OutputFormat`） |
 | v0.7.14 | 预判机制（`QueryPrejudgment`、`PrejudgmentResult`、两级路由：规则优先 + LLM 补充） |
 | v0.7.13 | 统一截断比率与校准闭环（`calculate_max_chars`、`calibration_factor` 参数、`CalibrationData`） |

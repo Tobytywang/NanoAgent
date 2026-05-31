@@ -56,6 +56,23 @@ agent:
 
 每轮扣减实际 LLM 消耗的 Token，预算归零时调用 `_force_summarize()` 强制总结并终止。与 BudgetChecker 不同，这是逐扣减制而非累计检查。
 
+**复杂度预算 Profile（v0.7.16）**：
+
+Token 预算按查询复杂度动态调整，小任务不浪费大预算：
+
+| 复杂度 | 预算比例 | 实际预算（以 50000 为例） |
+|--------|----------|--------------------------|
+| SIMPLE | 15% | 7500 |
+| MODERATE | 50% | 25000 |
+| COMPLEX | 100% | 50000 |
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `smart_optimization.complexity_budget_enabled` | `True` | 是否按复杂度调整预算 |
+| `smart_optimization.complexity_budget_simple_ratio` | `0.15` | SIMPLE 预算比例 |
+| `smart_optimization.complexity_budget_moderate_ratio` | `0.5` | MODERATE 预算比例 |
+| `smart_optimization.complexity_budget_complex_ratio` | `1.0` | COMPLEX 预算比例 |
+
 **预算收尾轮（v0.7.9）**：
 
 预算即将耗尽时（剩余比例 ≤ `budget_wrapup_threshold`），触发收尾轮：注入收尾指令到对话，让 LLM 执行最后一轮总结。收尾轮可以不扣预算（`budget_wrapup_free_round`），相当于"低电量时弹出保存对话框"。
@@ -175,6 +192,33 @@ smart_optimization:
 ```yaml
 llm:
   timeout: 180  # 增大 LLM 超时（慢模型场景）
+```
+
+### 9. Stall Detection 停滞检测
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `smart_optimization.stall_detection_enabled` / `stall_patience` / `stall_similarity_threshold` |
+| 默认值 | `True` / `3` / `0.7` |
+| 源码位置 | `nano_agent/agent/stall_detector.py` → `StallDetector` |
+
+当连续 N 次迭代产生相似结果（Jaccard 相似度 ≥ threshold）时，判定 Agent 停滞（原地打转）。停滞时注入转向提示让 LLM 换策略，而非直接终止循环。
+
+**与重复调用阻断的区别**：DuplicateDetector 检测完全相同的重复调用；StallDetector 检测"不同工具但结果相似"的停滞模式。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `smart_optimization.stall_detection_enabled` | `True` | 是否启用停滞检测 |
+| `smart_optimization.stall_patience` | `3` | 连续相似迭代次数阈值 |
+| `smart_optimization.stall_similarity_threshold` | `0.7` | 签名相似度阈值（Jaccard） |
+| `smart_optimization.stall_hint_injection` | `True` | 检测到停滞时注入转向提示 |
+
+```yaml
+smart_optimization:
+  stall_detection_enabled: true
+  stall_patience: 5            # 更耐心，允许更多相似迭代
+  stall_similarity_threshold: 0.8  # 更严格的相似度判定
+  stall_hint_injection: true
 ```
 
 ---
@@ -381,7 +425,9 @@ cache:
   │   ├─ ⑨ _observe() → 工具输出截断后写入内存
   │   │   ├─ 消息数 > max_messages → 裁剪旧消息
   │   │
-  │   └─ 回到循环顶部 ↺
+  │   ├─ ⑩ Stall Detection → 连续相似迭代 → 注入转向提示
+│   │
+│   └─ 回到循环顶部 ↺
   │
   └─ 循环结束 → 返回 ExecutionResult
 ```
@@ -392,6 +438,7 @@ cache:
 - 置信度早停和查询路由是**两个独立的提前终止机制**：置信度在循环内部触发，路由在循环入口触发
 - 预算收尾轮是**TokenBudget 的子机制**：在 `should_summarize()` 之前检查，收尾轮执行后直接终止，不会回到主循环
 - 重复检测阈值现在可通过 `smart_optimization.duplicate_threshold` 配置
+- Stall Detection 是**第三个提前干预机制**：与置信度早停（循环内部）和查询路由（循环入口）不同，Stall Detection 在循环末尾检测无进展并注入转向提示，不直接终止循环
 
 ---
 
@@ -437,6 +484,14 @@ cache:
 | `smart_optimization.budget_wrapup_threshold` | `0.1` | 收尾轮触发阈值 | 硬限制 |
 | `smart_optimization.budget_wrapup_free_round` | `True` | 收尾轮不扣预算 | 硬限制 |
 | `smart_optimization.budget_wrapup_max_tokens` | `2000` | 收尾轮 LLM 最大 Token | 硬限制 |
+| `smart_optimization.complexity_budget_enabled` | `True` | 按复杂度调整预算 | 硬限制 |
+| `smart_optimization.complexity_budget_simple_ratio` | `0.15` | SIMPLE 预算比例 | 硬限制 |
+| `smart_optimization.complexity_budget_moderate_ratio` | `0.5` | MODERATE 预算比例 | 硬限制 |
+| `smart_optimization.complexity_budget_complex_ratio` | `1.0` | COMPLEX 预算比例 | 硬限制 |
+| `smart_optimization.stall_detection_enabled` | `True` | Stall Detection 开关 | 硬限制 |
+| `smart_optimization.stall_patience` | `3` | 连续相似迭代阈值 | 硬限制 |
+| `smart_optimization.stall_similarity_threshold` | `0.7` | 签名相似度阈值 | 硬限制 |
+| `smart_optimization.stall_hint_injection` | `True` | 停滞时注入转向提示 | 硬限制 |
 | `tool_merge.enabled` | `True` | 工具合并开关 | 软限制 |
 | `tool_merge.max_batch_size` | `3` | 合批最大数量 | 软限制 |
 
