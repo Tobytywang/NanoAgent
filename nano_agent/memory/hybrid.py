@@ -33,6 +33,7 @@ class HybridMemory(BaseMemory):
         """如未设置则初始化会话 ID。"""
         if not self.session_id:
             import uuid
+
             self.session_id = f"session_{uuid.uuid4().hex[:8]}"
 
     def set_llm(self, llm) -> None:
@@ -68,11 +69,15 @@ class HybridMemory(BaseMemory):
         """添加用户消息到工作内存。"""
         self.working_memory.add_user_message(content)
 
-    def add_assistant_message(self, content: str, tool_calls: list | None = None) -> None:
+    def add_assistant_message(
+        self, content: str, tool_calls: list | None = None
+    ) -> None:
         """添加助手消息到工作内存。"""
         self.working_memory.add_assistant_message(content, tool_calls)
 
-    def add_tool_result(self, tool_call_id: str, content: str, tool_name: str = "unknown") -> None:
+    def add_tool_result(
+        self, tool_call_id: str, content: str, tool_name: str = "unknown"
+    ) -> None:
         """添加工具结果到工作内存。"""
         self.working_memory.add_tool_result(tool_call_id, content, tool_name)
 
@@ -109,7 +114,7 @@ class HybridMemory(BaseMemory):
         category: str = "fact",
         keywords: list[str] | None = None,
         importance: float = 0.5,
-        metadata: dict | None = None
+        metadata: dict | None = None,
     ) -> tuple[str, bool]:
         """
         将信息存储到长期内存。
@@ -134,7 +139,7 @@ class HybridMemory(BaseMemory):
             keywords=keywords,
             source_session=self.session_id,
             importance=importance,
-            metadata=metadata
+            metadata=metadata,
         )
 
     def recall(self, query: str, limit: int = 5) -> list[LongTermEntry]:
@@ -171,17 +176,17 @@ class HybridMemory(BaseMemory):
         keywords = []
 
         # 提取英文单词（2字符及以上）
-        english_words = re.findall(r'[a-zA-Z]{2,}', content.lower())
+        english_words = re.findall(r"[a-zA-Z]{2,}", content.lower())
         keywords.extend([w for w in english_words if w not in ENGLISH_STOP_WORDS])
 
         # 提取中文片段（2-4字符滑动窗口）
-        chinese_matches = re.findall(r'[一-鿿]+', content)
+        chinese_matches = re.findall(r"[一-鿿]+", content)
         for chars in chinese_matches:
             # 始终使用滑动窗口以获得更好的匹配
             for i in range(len(chars)):
                 for length in [4, 3, 2]:  # 优先较长的片段
                     if i + length <= len(chars):
-                        segment = chars[i:i+length]
+                        segment = chars[i : i + length]
                         if segment not in CHINESE_STOP_WORDS:
                             keywords.append(segment)
 
@@ -207,12 +212,10 @@ class HybridMemory(BaseMemory):
             messages = self.working_memory.get_all()
             # 获取最近几条用户/助手消息
             recent = [
-                m for m in messages[-10:]
-                if m.get("role") in ("user", "assistant")
+                m for m in messages[-10:] if m.get("role") in ("user", "assistant")
             ]
             content = "\n".join(
-                f"{m.get('role')}: {m.get('content', '')}"
-                for m in recent
+                f"{m.get('role')}: {m.get('content', '')}" for m in recent
             )
 
         if not content or len(content) < 50:
@@ -242,8 +245,7 @@ Only output the JSON array, nothing else."""
 
         try:
             response, _, _ = self._llm.chat(
-                messages=[{"role": "user", "content": extraction_prompt}],
-                tools=None
+                messages=[{"role": "user", "content": extraction_prompt}], tools=None
             )
 
             # 解析响应
@@ -251,7 +253,7 @@ Only output the JSON array, nothing else."""
             import re
 
             # 从响应中提取 JSON
-            json_match = re.search(r'\[[\s\S]*\]', response)
+            json_match = re.search(r"\[[\s\S]*\]", response)
             if not json_match:
                 return []
 
@@ -263,7 +265,7 @@ Only output the JSON array, nothing else."""
                     entry_id = self.memorize(
                         content=item["content"],
                         category=item.get("category", "fact"),
-                        importance=item.get("importance", 0.5)
+                        importance=item.get("importance", 0.5),
                     )
                     entry_ids.append(entry_id)
 

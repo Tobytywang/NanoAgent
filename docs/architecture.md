@@ -21,6 +21,8 @@ graph TB
         UNDO[UndoStack<br/>撤销栈]
         GIT[GitManager<br/>Git集成]
         STALL[StallDetector<br/>停滞检测]
+        CACHE[ToolResultCache<br/>多轮缓存]
+        OFFLOAD[ToolOffloadManager<br/>结果卸载]
     end
 
     subgraph Core["核心组件"]
@@ -49,6 +51,8 @@ graph TB
     REACT --> UNDO
     REACT --> GIT
     REACT --> STALL
+    REACT --> CACHE
+    REACT --> OFFLOAD
 
     REACT --> LLM
     REACT --> MEM
@@ -67,7 +71,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |

@@ -97,7 +97,9 @@ class AgentBuilder:
         self._memory = memory
         return self
 
-    def with_tools(self, registrar: Callable[[ToolRegistry, Any], None]) -> "AgentBuilder":
+    def with_tools(
+        self, registrar: Callable[[ToolRegistry, Any], None]
+    ) -> "AgentBuilder":
         """
         Register tools using a registrar function.
 
@@ -125,7 +127,9 @@ class AgentBuilder:
         self._tool_registry = registry
         return self
 
-    def with_skills(self, loader: Callable[[SkillRegistry, Any], None]) -> "AgentBuilder":
+    def with_skills(
+        self, loader: Callable[[SkillRegistry, Any], None]
+    ) -> "AgentBuilder":
         """
         Load skills using a loader function.
 
@@ -186,7 +190,7 @@ class AgentBuilder:
             self._skill_registry = SkillRegistry()
 
         # Inject LLM client into config so get_context_length() can query API
-        if hasattr(self.config, 'llm'):
+        if hasattr(self.config, "llm"):
             self.config.llm.set_llm_client(self._llm)
 
         # Create agent
@@ -198,17 +202,48 @@ class AgentBuilder:
             verbose=self.config.agent.verbose,
             skill_prompt=self._skill_registry.get_combined_system_prompt(),
             tracker=self._tracker,
-            context_config=self.config.context if hasattr(self.config, 'context') else None,
-            confirmation_config=self.config.confirmation if hasattr(self.config, 'confirmation') else None,
-            output_style_config=self.config.output_style if hasattr(self.config, 'output_style') else None,
-            tool_merge_config=self.config.tool_merge if hasattr(self.config, 'tool_merge') else None,
-            cache_config=self.config.cache if hasattr(self.config, 'cache') else None,
-            compressor_config=self.config.compressor if hasattr(self.config, 'compressor') else None,
-            smart_optimization_config=self.config.smart_optimization if hasattr(self.config, 'smart_optimization') else None,
-            prompt_config=self.config.prompt if hasattr(self.config, 'prompt') else None,
+            context_config=(
+                self.config.context if hasattr(self.config, "context") else None
+            ),
+            confirmation_config=(
+                self.config.confirmation
+                if hasattr(self.config, "confirmation")
+                else None
+            ),
+            output_style_config=(
+                self.config.output_style
+                if hasattr(self.config, "output_style")
+                else None
+            ),
+            tool_merge_config=(
+                self.config.tool_merge if hasattr(self.config, "tool_merge") else None
+            ),
+            cache_config=self.config.cache if hasattr(self.config, "cache") else None,
+            compressor_config=(
+                self.config.compressor if hasattr(self.config, "compressor") else None
+            ),
+            smart_optimization_config=(
+                self.config.smart_optimization
+                if hasattr(self.config, "smart_optimization")
+                else None
+            ),
+            prompt_config=(
+                self.config.prompt if hasattr(self.config, "prompt") else None
+            ),
             llm_config=self.config.llm,
-            aggressive_output_config=self.config.aggressive_output if hasattr(self.config, 'aggressive_output') else None,
-            standardized_output_config=self.config.standardized_output if hasattr(self.config, 'standardized_output') else None,
+            aggressive_output_config=(
+                self.config.aggressive_output
+                if hasattr(self.config, "aggressive_output")
+                else None
+            ),
+            standardized_output_config=(
+                self.config.standardized_output
+                if hasattr(self.config, "standardized_output")
+                else None
+            ),
+            offload_config=(
+                self.config.offload if hasattr(self.config, "offload") else None
+            ),
         )
 
         # Create orchestrator

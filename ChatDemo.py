@@ -19,7 +19,7 @@ def call_local_llm(messages: list) -> str:
     payload = {
         "model": MODEL_NAME,
         "messages": messages,
-        "stream": False  # 为了简单起见，我们先设置为非流式传输
+        "stream": False,  # 为了简单起见，我们先设置为非流式传输
     }
 
     print("🤖 正在连接本地模型...")
@@ -29,8 +29,8 @@ def call_local_llm(messages: list) -> str:
 
         data = response.json()
         # Ollama 返回的数据结构是 data['message']['content']
-        if 'message' in data and 'content' in data['message']:
-            return data['message']['content'].strip()
+        if "message" in data and "content" in data["message"]:
+            return data["message"]["content"].strip()
         else:
             return "模型返回数据格式错误，请检查 API 响应。"
 
@@ -57,7 +57,10 @@ def chat_loop():
     """
     # 初始化会话历史 (Memory)
     conversation_history = [
-        {"role": "system", "content": "你是一个乐于助人的AI助理，请保持语气友好且专业。"},
+        {
+            "role": "system",
+            "content": "你是一个乐于助人的AI助理，请保持语气友好且专业。",
+        },
     ]
 
     print("========================================")
@@ -73,7 +76,7 @@ def chat_loop():
             continue
 
         # 检查退出指令
-        if user_input.lower() in ['exit', 'quit']:
+        if user_input.lower() in ["exit", "quit"]:
             print("👋 感谢使用，程序已退出。")
             break
 
@@ -98,4 +101,3 @@ def chat_loop():
 
 if __name__ == "__main__":
     chat_loop()
-

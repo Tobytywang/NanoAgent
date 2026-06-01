@@ -16,7 +16,9 @@ class CompressorConfig:
 
     enabled: bool = True
     threshold_tokens: int = 2000  # Compress when prompt_tokens > threshold
-    keep_recent: int = 3  # Keep recent N rounds of conversation (user + assistant pairs)
+    keep_recent: int = (
+        3  # Keep recent N rounds of conversation (user + assistant pairs)
+    )
     summary_max_tokens: int = 500  # Max tokens for summary
 
 
@@ -33,8 +35,10 @@ class MessageCompressor:
         self._compression_count: int = 0
 
     def should_compress(
-        self, messages: list, last_prompt_tokens: int | None = None,
-        calibration_factor: float = 1.0
+        self,
+        messages: list,
+        last_prompt_tokens: int | None = None,
+        calibration_factor: float = 1.0,
     ) -> bool:
         """
         Check if messages should be compressed.
@@ -61,8 +65,10 @@ class MessageCompressor:
         return tokens > self.config.threshold_tokens
 
     def compress(
-        self, messages: list, last_prompt_tokens: int | None = None,
-        calibration_factor: float = 1.0
+        self,
+        messages: list,
+        last_prompt_tokens: int | None = None,
+        calibration_factor: float = 1.0,
     ) -> list:
         """
         Compress old messages into a summary.
@@ -76,8 +82,11 @@ class MessageCompressor:
         Returns:
             Compressed message list
         """
-        if not self.should_compress(messages, last_prompt_tokens=last_prompt_tokens,
-                                    calibration_factor=calibration_factor):
+        if not self.should_compress(
+            messages,
+            last_prompt_tokens=last_prompt_tokens,
+            calibration_factor=calibration_factor,
+        ):
             return messages
 
         # Keep system message
@@ -86,7 +95,9 @@ class MessageCompressor:
         # Keep recent N rounds (user + assistant pairs)
         non_system = [m for m in messages if m.get("role") != "system"]
         keep_count = self.config.keep_recent * 2  # Each round has 2 messages
-        recent = non_system[-keep_count:] if len(non_system) > keep_count else non_system
+        recent = (
+            non_system[-keep_count:] if len(non_system) > keep_count else non_system
+        )
         old = non_system[:-keep_count] if len(non_system) > keep_count else []
 
         if not old:
@@ -160,10 +171,7 @@ class MessageCompressor:
         if len(summary_text) > max_chars:
             summary_text = summary_text[:max_chars] + "..."
 
-        return {
-            "role": "system",
-            "content": summary_text
-        }
+        return {"role": "system", "content": summary_text}
 
     def get_stats(self) -> dict:
         """

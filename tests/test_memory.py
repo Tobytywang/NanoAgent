@@ -47,8 +47,7 @@ class TestShortTermMemory:
         """Test adding assistant message with tool calls."""
         memory = ShortTermMemory()
         memory.add_assistant_message(
-            "Let me check",
-            tool_calls=[{"id": "1", "function": {"name": "test"}}]
+            "Let me check", tool_calls=[{"id": "1", "function": {"name": "test"}}]
         )
         messages = memory.get_all()
         assert "tool_calls" in messages[1]

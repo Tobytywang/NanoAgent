@@ -24,7 +24,9 @@ class ReportGenerator:
         Returns:
             JSON string
         """
-        return json.dumps(metrics.to_dict(), indent=indent, default=str, ensure_ascii=False)
+        return json.dumps(
+            metrics.to_dict(), indent=indent, default=str, ensure_ascii=False
+        )
 
     @staticmethod
     def to_markdown(metrics: RunMetrics) -> str:
@@ -73,32 +75,34 @@ class ReportGenerator:
             "",
         ]
 
-        for iteration in data.get('iterations', []):
+        for iteration in data.get("iterations", []):
             lines.append(f"### 迭代 {iteration.get('iteration_number', '?')}")
 
             # LLM 调用
-            if iteration.get('llm_call'):
-                llm = iteration['llm_call']
-                lines.extend([
-                    "",
-                    "**LLM 调用**:",
-                    "",
-                    f"- 模型: `{llm.get('model', 'N/A')}`",
-                    f"- Token: {llm.get('prompt_tokens', 0)} (prompt) + {llm.get('completion_tokens', 0)} (completion) = {llm.get('total_tokens', 0)}",
-                    f"- 耗时: {llm.get('latency_ms', 0):.2f}ms",
-                    f"- 工具调用数: {llm.get('tool_calls_count', 0)}",
-                    "",
-                ])
+            if iteration.get("llm_call"):
+                llm = iteration["llm_call"]
+                lines.extend(
+                    [
+                        "",
+                        "**LLM 调用**:",
+                        "",
+                        f"- 模型: `{llm.get('model', 'N/A')}`",
+                        f"- Token: {llm.get('prompt_tokens', 0)} (prompt) + {llm.get('completion_tokens', 0)} (completion) = {llm.get('total_tokens', 0)}",
+                        f"- 耗时: {llm.get('latency_ms', 0):.2f}ms",
+                        f"- 工具调用数: {llm.get('tool_calls_count', 0)}",
+                        "",
+                    ]
+                )
 
             # 工具执行
-            if iteration.get('tool_executions'):
+            if iteration.get("tool_executions"):
                 lines.append("**工具执行**:")
                 lines.append("")
                 lines.append("| 工具 | 状态 | 耗时 |")
                 lines.append("|------|------|------|")
 
-                for tool in iteration['tool_executions']:
-                    status = "✓" if tool.get('success') else "✗"
+                for tool in iteration["tool_executions"]:
+                    status = "✓" if tool.get("success") else "✗"
                     lines.append(
                         f"| `{tool.get('tool_name', '?')}` | {status} | {tool.get('latency_ms', 0):.2f}ms |"
                     )
@@ -123,17 +127,17 @@ class ReportGenerator:
         """
         data = metrics.to_dict()
 
-        total_tokens = data.get('total_tokens', 0)
-        total_time = data.get('total_latency_ms', 0) / 1000
-        iterations = len(data.get('iterations', []))
+        total_tokens = data.get("total_tokens", 0)
+        total_time = data.get("total_latency_ms", 0) / 1000
+        iterations = len(data.get("iterations", []))
 
         # Count tool calls
         total_tools = 0
         success_tools = 0
-        for iteration in data.get('iterations', []):
-            for tool in iteration.get('tool_executions', []):
+        for iteration in data.get("iterations", []):
+            for tool in iteration.get("tool_executions", []):
                 total_tools += 1
-                if tool.get('success'):
+                if tool.get("success"):
                     success_tools += 1
 
         return (
@@ -153,7 +157,7 @@ class ReportGenerator:
             metrics: RunMetrics object
             path: File path
         """
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(ReportGenerator.to_json(metrics))
 
     @staticmethod
@@ -165,14 +169,12 @@ class ReportGenerator:
             metrics: RunMetrics object
             path: File path
         """
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(ReportGenerator.to_markdown(metrics))
 
 
 def export_report(
-    metrics: RunMetrics,
-    format: str = "json",
-    path: str | None = None
+    metrics: RunMetrics, format: str = "json", path: str | None = None
 ) -> str | None:
     """
     Export report in specified format.

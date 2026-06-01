@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 @dataclass
 class ConfirmationConfig:
     """Configuration for confirmation behavior."""
+
     enabled: bool = True
     confirm_safe: bool = False
     confirm_moderate: bool = False

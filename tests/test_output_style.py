@@ -76,7 +76,7 @@ class TestToolDescriptionFormatting:
         # Simulate concise format
         tool_name = "file_read"
         description = "Read contents of a file. Returns file content as string."
-        first_sentence = description.split('.')[0]
+        first_sentence = description.split(".")[0]
         concise_desc = f"- {tool_name}: {first_sentence}"
 
         # Should be short
@@ -215,7 +215,10 @@ class TestIntelligentSummarization:
         """Should extract class definitions."""
         config = SummarizerConfig(extract_signatures=True, max_lines=5)
         summarizer = ToolResultSummarizer(config)
-        content = "class MyClass:\n    pass\n\nclass Another:\n    pass\n\n# other code\n" * 10
+        content = (
+            "class MyClass:\n    pass\n\nclass Another:\n    pass\n\n# other code\n"
+            * 10
+        )
         result = summarizer.summarize(content, "file_read")
         assert "class MyClass" in result
         assert "Structure:" in result
@@ -232,7 +235,10 @@ class TestIntelligentSummarization:
         """Should extract error messages from shell output."""
         config = SummarizerConfig(extract_errors=True)
         summarizer = ToolResultSummarizer(config)
-        content = "Success line\nError: file not found\nAnother success\nFailed to connect\n" * 10
+        content = (
+            "Success line\nError: file not found\nAnother success\nFailed to connect\n"
+            * 10
+        )
         result = summarizer.summarize(content, "shell_execute")
         assert "Error: file not found" in result
         assert "Failed to connect" in result
@@ -249,7 +255,9 @@ class TestIntelligentSummarization:
 
     def test_combined_extraction(self):
         """Should combine multiple extraction types."""
-        config = SummarizerConfig(extract_imports=True, extract_signatures=True, max_lines=5)
+        config = SummarizerConfig(
+            extract_imports=True, extract_signatures=True, max_lines=5
+        )
         summarizer = ToolResultSummarizer(config)
         content = """
 import os
@@ -271,7 +279,9 @@ def helper():
 
     def test_disabled_extraction(self):
         """Should not extract when disabled."""
-        config = SummarizerConfig(extract_imports=False, extract_signatures=False, max_lines=5)
+        config = SummarizerConfig(
+            extract_imports=False, extract_signatures=False, max_lines=5
+        )
         summarizer = ToolResultSummarizer(config)
         content = "import os\nclass MyClass:\n    pass\n" * 20
         result = summarizer.summarize(content, "file_read")

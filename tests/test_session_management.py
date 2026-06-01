@@ -31,7 +31,7 @@ class TestSessionCleanup:
             entry = MemoryEntry.create(
                 session_id=session_id,
                 role="user" if i % 2 == 0 else "assistant",
-                content=f"Message {i}"
+                content=f"Message {i}",
             )
             storage.save(entry)
 

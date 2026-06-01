@@ -37,6 +37,7 @@ def extract_name_from_patterns(content: str, patterns: list[str]) -> str | None:
         提取的名称，如果没有匹配则返回 None
     """
     import re
+
     for pattern in patterns:
         match = re.search(pattern, content)
         if match:

@@ -14,7 +14,7 @@ def _safe_str(text: str) -> str:
     if not text:
         return text
     try:
-        return text.encode('utf-8', errors='replace').decode('utf-8')
+        return text.encode("utf-8", errors="replace").decode("utf-8")
     except (UnicodeDecodeError, UnicodeEncodeError):
         return text
 
@@ -22,7 +22,7 @@ def _safe_str(text: str) -> str:
 def migrate_file_to_sqlite(
     file_dir: str = ".nano_agent/memory",
     db_path: str = ".nano_agent/memory.db",
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> dict:
     """
     从文件存储迁移会话到 SQLite 存储。
@@ -50,7 +50,7 @@ def migrate_file_to_sqlite(
         "to_migrate": [],
         "migrated": [],
         "errors": [],
-        "dry_run": dry_run
+        "dry_run": dry_run,
     }
 
     for session_id in file_sessions:
@@ -77,7 +77,7 @@ def migrate_file_to_sqlite(
                     role=entry.role,
                     content=safe_content,
                     timestamp=entry.timestamp,
-                    metadata=entry.metadata or {}
+                    metadata=entry.metadata or {},
                 )
                 sqlite_storage.save(safe_entry)
 
@@ -88,23 +88,19 @@ def migrate_file_to_sqlite(
                 sqlite_storage.save_summary(
                     session_id=session_id,
                     summary=safe_summary,
-                    message_count=summary.get("message_count", 0)
+                    message_count=summary.get("message_count", 0),
                 )
 
             report["migrated"].append(session_id)
 
         except Exception as e:
-            report["errors"].append({
-                "session_id": session_id,
-                "error": str(e)
-            })
+            report["errors"].append({"session_id": session_id, "error": str(e)})
 
     return report
 
 
 def list_all_sessions(
-    file_dir: str = ".nano_agent/memory",
-    db_path: str = ".nano_agent/memory.db"
+    file_dir: str = ".nano_agent/memory", db_path: str = ".nano_agent/memory.db"
 ) -> dict:
     """
     列出文件和 SQLite 存储中的所有会话。
@@ -139,12 +135,12 @@ def list_all_sessions(
         "file_storage": {
             "path": file_dir,
             "sessions": file_sessions,
-            "info": file_info
+            "info": file_info,
         },
         "sqlite_storage": {
             "path": db_path,
             "sessions": sqlite_sessions,
-            "info": sqlite_info
+            "info": sqlite_info,
         },
-        "total_unique_sessions": len(set(file_sessions) | set(sqlite_sessions))
+        "total_unique_sessions": len(set(file_sessions) | set(sqlite_sessions)),
     }

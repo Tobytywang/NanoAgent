@@ -2015,34 +2015,41 @@ nano_agent/config/schema.py          # ComplexityBudgetConfig, StallDetectionCon
 **任务列表**:
 
 **1. 多轮对话增量缓存 (P2)**:
-- [ ] 扩展 `ToolResultCache` - 支持跨轮次缓存
-- [ ] 实现缓存持久化 - 会话结束时保存到磁盘
-- [ ] 实现缓存预热 - 会话恢复时加载历史缓存
-- [ ] 实现缓存失效策略 - 基于文件修改时间
-- [ ] 配置支持 - `cache.persist`、`cache.warmup`
+- [x] 扩展 `ToolResultCache` - 支持跨轮次缓存
+- [x] 实现缓存持久化 - 会话结束时保存到磁盘
+- [x] 实现缓存预热 - 会话恢复时加载历史缓存
+- [x] 实现缓存失效策略 - 基于文件修改时间
+- [x] 配置支持 - `cache.persist`、`cache.warmup`
 
 **2. Tool Output Offloading (P2)**:
-- [ ] 当 tool output > offload_threshold 时写入 `/tmp/`，注入 `{path, summary, size}`
-- [ ] 工具声明 `can_offload` 标记 - 仅 web_search/web_fetch 等被动接收型工具
-- [ ] 系统提示词告知 LLM 可 `file_read(path)` 按需加载全文
-- [ ] 会话结束时清理 offload 文件
-- [ ] 配置支持 - `offload.enabled`、`offload.threshold_bytes`
+- [x] 当 tool output > offload_threshold 时写入 `/tmp/`，注入 `{path, summary, size}`
+- [x] 工具声明 `can_offload` 标记 - file_read/file_search/shell_execute/python_execute/web_search
+- [x] 系统提示词告知 LLM 可 `file_read(path)` 按需加载全文
+- [x] 会话结束时清理 offload 文件
+- [x] 配置支持 - `offload.enabled`、`offload.size_threshold_tokens`
 
 **新增文件**:
 ```
-nano_agent/tools/
-├── offload.py                   # ToolOffloadManager
+nano_agent/agent/
+├── tool_offload.py               # ToolOffloadManager
 tests/
-├── test_multi_turn_cache.py     # 跨轮次缓存测试
-├── test_offload.py              # Offloading 测试
+├── test_multi_turn_cache.py      # 跨轮次缓存测试
+├── test_tool_offload.py          # Offloading 测试
 ```
 
 **修改文件**:
 ```
 nano_agent/agent/cache.py            # 跨轮次缓存
+nano_agent/agent/react.py            # 集成 offload + cache
 nano_agent/tools/base.py             # can_offload 属性
+nano_agent/tools/builtin/file_ops.py # can_offload=True
+nano_agent/tools/builtin/shell.py    # can_offload=True
+nano_agent/tools/builtin/python_executor.py # can_offload=True
 nano_agent/tools/builtin/web_search.py # can_offload=True
-nano_agent/config/schema.py          # CachePersistConfig, OffloadConfig
+nano_agent/config/schema.py          # ToolOffloadConfig, CacheConfig 扩展
+nano_agent/config/loader.py          # 配置解析
+nano_agent/core/builder.py           # 配置传递
+nano_agent/cli/main.py               # 配置显示
 ```
 
 **预期效果**:
@@ -2524,7 +2531,7 @@ persona:
 | v0.7.14 | 预判机制 ✅ | 简单问题不走 ReAct，节省 ~90% token |
 | v0.7.15 | 激进输出精简与工具输出标准化 ✅ | LLM 输出精简 + 工具结果结构化 |
 | v0.7.16 | 复杂度预算 Profile 与 Stall Detection ✅ | 小任务不浪费 + 无进展转向 |
-| v0.7.17 | 多轮缓存与 Tool Offloading | 跨轮次缓存 + 大结果 offload |
+| v0.7.17 | 多轮缓存与 Tool Offloading ✅ | 跨轮次缓存 + 大结果 offload |
 | v0.7.18 | 估算审计与准确性增强 | 估算 vs 实际对比 + 估算准确性提升 |
 | v0.7.19 | 语义压缩 | 合并相似历史消息 |
 | v0.8.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |

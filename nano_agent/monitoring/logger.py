@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
 # Log levels
 DEBUG = logging.DEBUG
 INFO = logging.INFO
@@ -32,7 +31,7 @@ class AgentLogger:
         level: int = INFO,
         console: bool = True,
         file_path: str | None = None,
-        format: str = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        format: str = "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     ):
         """
         Initialize the logger.
@@ -100,11 +99,7 @@ class AgentLogger:
         self.logger.error(message, **kwargs)
 
     def log_llm_call(
-        self,
-        model: str,
-        prompt_tokens: int,
-        completion_tokens: int,
-        latency_ms: float
+        self, model: str, prompt_tokens: int, completion_tokens: int, latency_ms: float
     ) -> None:
         """Log LLM call details."""
         self.debug(
@@ -114,11 +109,7 @@ class AgentLogger:
         )
 
     def log_tool_call(
-        self,
-        tool_name: str,
-        arguments: dict,
-        success: bool,
-        latency_ms: float
+        self, tool_name: str, arguments: dict, success: bool, latency_ms: float
     ) -> None:
         """Log tool execution details."""
         status = "success" if success else "failed"
@@ -128,22 +119,14 @@ class AgentLogger:
         )
 
     def log_iteration(
-        self,
-        iteration: int,
-        max_iterations: int,
-        has_tool_calls: bool
+        self, iteration: int, max_iterations: int, has_tool_calls: bool
     ) -> None:
         """Log iteration progress."""
         self.debug(
-            f"Iteration {iteration}/{max_iterations}, "
-            f"tool_calls={has_tool_calls}"
+            f"Iteration {iteration}/{max_iterations}, " f"tool_calls={has_tool_calls}"
         )
 
-    def log_session(
-        self,
-        session_id: str,
-        action: str
-    ) -> None:
+    def log_session(self, session_id: str, action: str) -> None:
         """Log session action."""
         self.info(f"Session: {action} (id={session_id})")
 
@@ -153,9 +136,7 @@ _global_logger: AgentLogger | None = None
 
 
 def get_logger(
-    level: int = INFO,
-    console: bool = True,
-    file_path: str | None = None
+    level: int = INFO, console: bool = True, file_path: str | None = None
 ) -> AgentLogger:
     """
     Get or create the global logger.
@@ -171,19 +152,13 @@ def get_logger(
     global _global_logger
 
     if _global_logger is None:
-        _global_logger = AgentLogger(
-            level=level,
-            console=console,
-            file_path=file_path
-        )
+        _global_logger = AgentLogger(level=level, console=console, file_path=file_path)
 
     return _global_logger
 
 
 def configure_logging(
-    level: str = "INFO",
-    console: bool = True,
-    file_path: str | None = None
+    level: str = "INFO", console: bool = True, file_path: str | None = None
 ) -> AgentLogger:
     """
     Configure logging from string level.

@@ -25,7 +25,7 @@ class AnthropicLLM(BaseLLM):
         timeout: int = 120,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize Anthropic client.
@@ -59,6 +59,7 @@ class AnthropicLLM(BaseLLM):
         # Lazy import to avoid dependency issues
         try:
             from anthropic import Anthropic
+
             self._client = Anthropic(api_key=self.api_key, timeout=timeout)
         except ImportError:
             raise ImportError(
@@ -66,10 +67,7 @@ class AnthropicLLM(BaseLLM):
                 "Install it with: pip install anthropic"
             )
 
-    def _format_messages(
-        self,
-        messages: list[Message] | list[dict]
-    ) -> list[dict]:
+    def _format_messages(self, messages: list[Message] | list[dict]) -> list[dict]:
         """Format messages for Anthropic API (skip system messages).
 
         Args:
@@ -82,22 +80,14 @@ class AnthropicLLM(BaseLLM):
         for m in messages:
             if isinstance(m, dict):
                 if m.get("role") != "system":
-                    formatted.append({
-                        "role": m["role"],
-                        "content": m["content"]
-                    })
+                    formatted.append({"role": m["role"], "content": m["content"]})
             else:
                 if m.role != "system":
-                    formatted.append({
-                        "role": m.role,
-                        "content": m.content
-                    })
+                    formatted.append({"role": m.role, "content": m.content})
         return formatted
 
     def _format_tools(
-        self,
-        tools: list[dict] | None,
-        cache_tools: bool = True
+        self, tools: list[dict] | None, cache_tools: bool = True
     ) -> list[dict] | None:
         """Format tools for Anthropic API with optional caching.
 
@@ -118,7 +108,7 @@ class AnthropicLLM(BaseLLM):
                 tool_def = {
                     "name": func.get("name", ""),
                     "description": func.get("description", ""),
-                    "input_schema": func.get("parameters", {})
+                    "input_schema": func.get("parameters", {}),
                 }
                 # Add cache_control to the last tool for caching all tools
                 # Anthropic caches from the start up to and including the block with cache_control
@@ -138,12 +128,14 @@ class AnthropicLLM(BaseLLM):
         """
         tool_calls = []
         for block in content_blocks:
-            if hasattr(block, 'type') and block.type == "tool_use":
-                tool_calls.append(ToolCall(
-                    id=block.id,
-                    name=block.name,
-                    arguments=block.input if hasattr(block, 'input') else {}
-                ))
+            if hasattr(block, "type") and block.type == "tool_use":
+                tool_calls.append(
+                    ToolCall(
+                        id=block.id,
+                        name=block.name,
+                        arguments=block.input if hasattr(block, "input") else {},
+                    )
+                )
         return tool_calls
 
     def chat(
@@ -152,7 +144,7 @@ class AnthropicLLM(BaseLLM):
         tools: list[dict] | None = None,
         system_stable: str | None = None,
         cache_tools: bool = True,
-        **kwargs
+        **kwargs,
     ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
         Call Anthropic API and get a response.
@@ -177,7 +169,7 @@ class AnthropicLLM(BaseLLM):
                 {
                     "type": "text",
                     "text": system_stable,
-                    "cache_control": {"type": "ephemeral"}
+                    "cache_control": {"type": "ephemeral"},
                 }
             ]
 
@@ -212,7 +204,7 @@ class AnthropicLLM(BaseLLM):
         # Parse response
         text = ""
         for block in response.content:
-            if hasattr(block, 'type') and block.type == "text":
+            if hasattr(block, "type") and block.type == "text":
                 text += block.text
 
         # Parse tool calls
@@ -224,8 +216,10 @@ class AnthropicLLM(BaseLLM):
             completion_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
             # Anthropic Prompt Caching specific fields
-            cache_read_tokens=getattr(response.usage, 'cache_read_input_tokens', 0) or 0,
-            cache_write_tokens=getattr(response.usage, 'cache_write_input_tokens', 0) or 0,
+            cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0)
+            or 0,
+            cache_write_tokens=getattr(response.usage, "cache_write_input_tokens", 0)
+            or 0,
         )
 
         return text, tool_calls, usage
@@ -236,7 +230,7 @@ class AnthropicLLM(BaseLLM):
         tools: list[dict] | None = None,
         system_stable: str | None = None,
         cache_tools: bool = True,
-        **kwargs
+        **kwargs,
     ) -> Generator[str, None, None]:
         """
         Stream the response from Anthropic API.
@@ -257,7 +251,7 @@ class AnthropicLLM(BaseLLM):
                 {
                     "type": "text",
                     "text": system_stable,
-                    "cache_control": {"type": "ephemeral"}
+                    "cache_control": {"type": "ephemeral"},
                 }
             ]
 

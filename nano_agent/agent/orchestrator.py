@@ -24,6 +24,7 @@ class SessionStats:
     Tracks totals for tokens, tool calls, and iterations within
     a session.
     """
+
     total_tokens: int = 0
     total_tool_calls: int = 0
     total_iterations: int = 0
@@ -91,17 +92,12 @@ class AgentOrchestrator:
             ExecutionResult containing response and execution metadata
         """
         # Emit start event
-        self.events.emit(AgentEvent.RUN_START, {
-            "input": user_input,
-            "session_id": self.session_id
-        })
+        self.events.emit(
+            AgentEvent.RUN_START, {"input": user_input, "session_id": self.session_id}
+        )
 
         # Delegate to execution layer
-        result = self.agent.run(
-            user_input,
-            dry_run=dry_run,
-            session_id=self.session_id
-        )
+        result = self.agent.run(user_input, dry_run=dry_run, session_id=self.session_id)
 
         # Collect statistics
         self._collect_stats(result)

@@ -31,12 +31,14 @@ class TestMessageCacheControl:
 
     def test_message_with_cache_control(self):
         """Message with cache_control includes it in dict."""
-        msg = Message(role="system", content="Hello", cache_control={"type": "ephemeral"})
+        msg = Message(
+            role="system", content="Hello", cache_control={"type": "ephemeral"}
+        )
         result = msg.to_dict()
         assert result == {
             "role": "system",
             "content": "Hello",
-            "cache_control": {"type": "ephemeral"}
+            "cache_control": {"type": "ephemeral"},
         }
 
     def test_message_with_cache_control_factory(self):
@@ -67,7 +69,7 @@ class TestLLMUsageCaching:
             prompt_tokens=100,
             completion_tokens=50,
             cache_read_tokens=30,
-            cache_write_tokens=20
+            cache_write_tokens=20,
         )
         assert usage.cache_read_tokens == 30
         assert usage.cache_write_tokens == 20
@@ -78,7 +80,7 @@ class TestLLMUsageCaching:
             prompt_tokens=100,
             completion_tokens=50,
             cache_read_tokens=30,
-            cache_write_tokens=20
+            cache_write_tokens=20,
         )
         result = usage.to_dict()
         assert "cache_read_tokens" in result
@@ -109,12 +111,12 @@ class TestOpenAICompatibleCaching:
     def test_build_payload_without_system_stable(self):
         """Payload built normally without system_stable."""
         # Create client with mock API key
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
             client = OpenAICompatibleLLM(model="gpt-4o")
 
             messages = [
                 {"role": "system", "content": "Original system"},
-                {"role": "user", "content": "Hello"}
+                {"role": "user", "content": "Hello"},
             ]
             payload = client._build_payload(messages, None, None)
 
@@ -124,12 +126,12 @@ class TestOpenAICompatibleCaching:
 
     def test_build_payload_with_system_stable(self):
         """Payload uses stable system prompt when provided."""
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
             client = OpenAICompatibleLLM(model="gpt-4o")
 
             messages = [
                 {"role": "system", "content": "Original system"},
-                {"role": "user", "content": "Hello"}
+                {"role": "user", "content": "Hello"},
             ]
             system_stable = "Stable system prompt for caching"
             payload = client._build_payload(messages, None, system_stable)
@@ -149,7 +151,7 @@ class TestAnthropicLLMCaching:
         # We can't fully test without API key, but test the formatting logic
         messages = [
             {"role": "system", "content": "System prompt"},
-            {"role": "user", "content": "Hello"}
+            {"role": "user", "content": "Hello"},
         ]
         # The formatting logic should skip system messages
         formatted = []
@@ -221,7 +223,10 @@ class TestMemoryStableSystemPrompt:
 
             # This was the bug: PersistentMemory was missing set_stable_system_prompt
             memory.set_stable_system_prompt("Stable prompt for PersistentMemory")
-            assert memory.get_stable_system_prompt() == "Stable prompt for PersistentMemory"
+            assert (
+                memory.get_stable_system_prompt()
+                == "Stable prompt for PersistentMemory"
+            )
 
 
 class TestPromptConfigCaching:
@@ -245,6 +250,7 @@ class TestBaseLLMInterface:
         """BaseLLM.chat signature includes system_stable."""
         # Check that the abstract method has the parameter
         import inspect
+
         sig = inspect.signature(BaseLLM.chat)
         params = list(sig.parameters.keys())
         assert "system_stable" in params
@@ -252,6 +258,7 @@ class TestBaseLLMInterface:
     def test_base_llm_chat_stream_has_system_stable(self):
         """BaseLLM.chat_stream signature includes system_stable."""
         import inspect
+
         sig = inspect.signature(BaseLLM.chat_stream)
         params = list(sig.parameters.keys())
         assert "system_stable" in params

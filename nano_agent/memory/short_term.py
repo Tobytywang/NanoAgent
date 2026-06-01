@@ -31,9 +31,7 @@ class ShortTermMemory(BaseMemory):
         self.add({"role": "user", "content": content})
 
     def add_assistant_message(
-        self,
-        content: str,
-        tool_calls: list | None = None
+        self, content: str, tool_calls: list | None = None
     ) -> None:
         """添加助手消息，可选包含工具调用"""
         msg = {"role": "assistant", "content": content}
@@ -41,14 +39,18 @@ class ShortTermMemory(BaseMemory):
             msg["tool_calls"] = tool_calls
         self.add(msg)
 
-    def add_tool_result(self, tool_call_id: str, content: str, tool_name: str = "unknown") -> None:
+    def add_tool_result(
+        self, tool_call_id: str, content: str, tool_name: str = "unknown"
+    ) -> None:
         """添加工具执行结果"""
-        self.add({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": content,
-            "name": tool_name  # 添加工具名称用于统计
-        })
+        self.add(
+            {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": content,
+                "name": tool_name,  # 添加工具名称用于统计
+            }
+        )
 
     def get_all(self) -> list:
         """获取所有消息"""
@@ -68,7 +70,7 @@ class ShortTermMemory(BaseMemory):
             return self.get_all()
 
         system_msg = self._messages[0]
-        recent = self._messages[-(max_messages - 1):]
+        recent = self._messages[-(max_messages - 1) :]
         return [system_msg] + recent
 
     def _trim_if_needed(self) -> None:
@@ -76,7 +78,7 @@ class ShortTermMemory(BaseMemory):
         if len(self._messages) > self.max_messages:
             # 保留系统消息和最近消息
             system_msg = self._messages[0]
-            recent = self._messages[-(self.max_messages - 1):]
+            recent = self._messages[-(self.max_messages - 1) :]
             self._messages = [system_msg] + recent
 
     def set_system_prompt(self, prompt: str) -> None:

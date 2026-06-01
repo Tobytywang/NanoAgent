@@ -292,12 +292,20 @@ class TestAgentPromptIntegration:
     def test_agent_with_default_prompt(self):
         """Test agent with default prompt configuration."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello", [], Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15)))
+        llm.chat = Mock(
+            return_value=(
+                "Hello",
+                [],
+                Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         assert agent._prompt_builder is not None
         assert len(agent._stable_system_prompt) > 0
@@ -305,7 +313,13 @@ class TestAgentPromptIntegration:
     def test_agent_with_custom_prompt_config(self):
         """Test agent with custom prompt configuration."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello", [], Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15)))
+        llm.chat = Mock(
+            return_value=(
+                "Hello",
+                [],
+                Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
@@ -330,12 +344,20 @@ class TestAgentPromptIntegration:
     def test_agent_system_prompt_contains_tools(self):
         """Test that agent system prompt contains tool descriptions."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello", [], Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15)))
+        llm.chat = Mock(
+            return_value=(
+                "Hello",
+                [],
+                Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         messages = memory.get_all()
         system_msg = messages[0]
@@ -346,7 +368,13 @@ class TestAgentPromptIntegration:
     def test_agent_with_skill_prompt(self):
         """Test agent with skill prompt."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello", [], Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15)))
+        llm.chat = Mock(
+            return_value=(
+                "Hello",
+                [],
+                Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
@@ -367,12 +395,20 @@ class TestAgentPromptIntegration:
     def test_stable_prompt_caching(self):
         """Test that stable prompt can be used for caching."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello", [], Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15)))
+        llm.chat = Mock(
+            return_value=(
+                "Hello",
+                [],
+                Mock(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         # Get cache key
         cache_key = agent._prompt_builder.get_cache_key("Test tools")

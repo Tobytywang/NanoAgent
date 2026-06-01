@@ -41,28 +41,36 @@ class TestTokenBudgetShouldWrapup:
         assert not budget.should_wrapup()
 
     def test_enabled_above_threshold_returns_false(self):
-        config = TokenBudgetConfig(initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1)
+        config = TokenBudgetConfig(
+            initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1
+        )
         budget = TokenBudget(config)
         # Remaining: 9000/10000 = 0.9 > 0.1
         budget.consume(1000)
         assert not budget.should_wrapup()
 
     def test_enabled_at_threshold_returns_true(self):
-        config = TokenBudgetConfig(initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1)
+        config = TokenBudgetConfig(
+            initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1
+        )
         budget = TokenBudget(config)
         # Remaining: 1000/10000 = 0.1 <= 0.1
         budget.consume(9000)
         assert budget.should_wrapup()
 
     def test_enabled_below_threshold_returns_true(self):
-        config = TokenBudgetConfig(initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1)
+        config = TokenBudgetConfig(
+            initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1
+        )
         budget = TokenBudget(config)
         # Remaining: 500/10000 = 0.05 < 0.1
         budget.consume(9500)
         assert budget.should_wrapup()
 
     def test_exhausted_budget_with_wrapup_enabled(self):
-        config = TokenBudgetConfig(initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1)
+        config = TokenBudgetConfig(
+            initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.1
+        )
         budget = TokenBudget(config)
         budget.consume(10000)
         # Remaining: 0/10000 = 0 <= 0.1
@@ -76,7 +84,9 @@ class TestTokenBudgetShouldWrapup:
         assert not budget.should_wrapup()
 
     def test_higher_threshold_triggers_earlier(self):
-        config = TokenBudgetConfig(initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.3)
+        config = TokenBudgetConfig(
+            initial_budget=10000, wrapup_enabled=True, wrapup_threshold=0.3
+        )
         budget = TokenBudget(config)
         # Remaining: 7000/10000 = 0.7 > 0.3 → False
         budget.consume(3000)
@@ -91,6 +101,7 @@ class TestSmartOptimizationConfigWrapup:
 
     def test_default_values(self):
         from nano_agent.config.schema import SmartOptimizationConfig
+
         config = SmartOptimizationConfig()
         assert not config.budget_wrapup_enabled
         assert config.budget_wrapup_threshold == 0.1
@@ -99,6 +110,7 @@ class TestSmartOptimizationConfigWrapup:
 
     def test_custom_values(self):
         from nano_agent.config.schema import SmartOptimizationConfig
+
         config = SmartOptimizationConfig(
             budget_wrapup_enabled=True,
             budget_wrapup_threshold=0.2,
@@ -116,6 +128,7 @@ class TestConfigLoaderWrapup:
 
     def test_loader_parses_wrapup_fields(self):
         from nano_agent.config.loader import ConfigLoader
+
         data = {
             "smart_optimization": {
                 "budget_wrapup_enabled": True,
@@ -132,6 +145,7 @@ class TestConfigLoaderWrapup:
 
     def test_loader_defaults_when_absent(self):
         from nano_agent.config.loader import ConfigLoader
+
         config = ConfigLoader._parse_config({})
         assert not config.smart_optimization.budget_wrapup_enabled
         assert config.smart_optimization.budget_wrapup_threshold == 0.1

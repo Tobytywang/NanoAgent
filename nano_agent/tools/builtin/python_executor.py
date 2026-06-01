@@ -16,23 +16,21 @@ class PythonExecutorTool(BaseTool):
     name = "python_execute"
     description = "Execute Python code and return the result. Useful for calculations, data processing, and algorithm implementation."
     risk_level = RiskLevel.DANGEROUS  # Can execute arbitrary code
+    can_offload = True
 
     @property
     def parameters_schema(self) -> dict:
         return {
             "type": "object",
             "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "The Python code to execute"
-                },
+                "code": {"type": "string", "description": "The Python code to execute"},
                 "timeout": {
                     "type": "integer",
                     "description": "Execution timeout in seconds (default: 30)",
-                    "default": 30
-                }
+                    "default": 30,
+                },
             },
-            "required": ["code"]
+            "required": ["code"],
         }
 
     def execute(self, code: str, timeout: int = 30) -> ToolResult:
@@ -53,7 +51,7 @@ class PythonExecutorTool(BaseTool):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=tempfile.gettempdir()
+                cwd=tempfile.gettempdir(),
             )
 
             if result.returncode == 0:
@@ -75,13 +73,13 @@ class PythonExecutorTool(BaseTool):
                 return ToolResult(
                     success=False,
                     output="",
-                    error=f"Execution error: {result.stderr.strip()}"
+                    error=f"Execution error: {result.stderr.strip()}",
                 )
         except subprocess.TimeoutExpired:
             return ToolResult(
                 success=False,
                 output="",
-                error=f"Execution timed out ({timeout} seconds)"
+                error=f"Execution timed out ({timeout} seconds)",
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

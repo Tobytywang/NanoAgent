@@ -10,9 +10,13 @@ from typing import Generator
 
 from .base import BaseAgent
 from .prompts import (
-    REACT_SYSTEM_PROMPT, REACT_SYSTEM_PROMPT_CONCISE, REACT_SYSTEM_PROMPT_STANDARD,
-    REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE, REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE,
-    TOOL_DESCRIPTION_TEMPLATE, CONFIDENCE_SUFFIX
+    REACT_SYSTEM_PROMPT,
+    REACT_SYSTEM_PROMPT_CONCISE,
+    REACT_SYSTEM_PROMPT_STANDARD,
+    REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE,
+    REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE,
+    TOOL_DESCRIPTION_TEMPLATE,
+    CONFIDENCE_SUFFIX,
 )
 from .types import ExecutionResult, ThinkResult, AgentEvent, TerminationReason
 from .events import EventEmitter
@@ -32,10 +36,18 @@ from .prompt_builder import PromptBuilder
 from .duplicate import DuplicateDetector
 from .stall_detector import StallDetector, StallConfig
 from .output_simplifier import OutputSimplifier
+from .tool_offload import ToolOffloadManager
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
-from ..config.schema import OutputStyleConfig, SmartOptimizationConfig, PromptConfig, AggressiveOutputConfig, StandardizedOutputConfig
+from ..config.schema import (
+    OutputStyleConfig,
+    SmartOptimizationConfig,
+    PromptConfig,
+    AggressiveOutputConfig,
+    StandardizedOutputConfig,
+    ToolOffloadConfig,
+)
 
 
 def _safe_str(text: str) -> str:
@@ -43,7 +55,7 @@ def _safe_str(text: str) -> str:
     if not text:
         return text
     try:
-        return text.encode('utf-8', errors='replace').decode('utf-8')
+        return text.encode("utf-8", errors="replace").decode("utf-8")
     except (UnicodeDecodeError, UnicodeEncodeError):
         return text
 
@@ -51,14 +63,33 @@ def _safe_str(text: str) -> str:
 # Simple question patterns that don't need tools
 SIMPLE_QUESTION_PATTERNS = [
     # Greetings
-    "你好", "hello", "hi", "嗨", "早上好", "下午好", "晚上好",
+    "你好",
+    "hello",
+    "hi",
+    "嗨",
+    "早上好",
+    "下午好",
+    "晚上好",
     # Thanks
-    "谢谢", "thanks", "thank you", "感谢",
+    "谢谢",
+    "thanks",
+    "thank you",
+    "感谢",
     # Simple questions (can answer directly)
-    "你是谁", "who are you", "你的名字", "what is your name",
-    "你能做什么", "what can you do", "你有什么功能",
+    "你是谁",
+    "who are you",
+    "你的名字",
+    "what is your name",
+    "你能做什么",
+    "what can you do",
+    "你有什么功能",
     # Confirmations
-    "好的", "ok", "okay", "明白", "了解", "清楚了",
+    "好的",
+    "ok",
+    "okay",
+    "明白",
+    "了解",
+    "清楚了",
 ]
 
 
@@ -116,6 +147,7 @@ class ReActAgent(BaseAgent):
         llm_config=None,
         aggressive_output_config: AggressiveOutputConfig | None = None,
         standardized_output_config: StandardizedOutputConfig | None = None,
+        offload_config: ToolOffloadConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -144,7 +176,9 @@ class ReActAgent(BaseAgent):
         self.skill_prompt = skill_prompt
         self.tracker = tracker or MetricsTracker()
         self.events = events or EventEmitter()
-        self.budget_checker = BudgetChecker(budget or Budget(max_iterations=max_iterations))
+        self.budget_checker = BudgetChecker(
+            budget or Budget(max_iterations=max_iterations)
+        )
 
         # Output style configuration
         self.output_style_config = output_style_config or OutputStyleConfig()
@@ -159,19 +193,33 @@ class ReActAgent(BaseAgent):
         self.compressor = MessageCompressor(compressor_config)
 
         # Smart optimization configuration (v0.7.5)
-        self.smart_optimization_config = smart_optimization_config or SmartOptimizationConfig()
+        self.smart_optimization_config = (
+            smart_optimization_config or SmartOptimizationConfig()
+        )
 
         # Prompt configuration (v0.7.6)
         self.prompt_config = prompt_config or PromptConfig()
 
         # Aggressive output simplification (v0.7.15)
-        self.aggressive_output_config = aggressive_output_config or AggressiveOutputConfig()
-        self.standardized_output_config = standardized_output_config or StandardizedOutputConfig()
+        self.aggressive_output_config = (
+            aggressive_output_config or AggressiveOutputConfig()
+        )
+        self.standardized_output_config = (
+            standardized_output_config or StandardizedOutputConfig()
+        )
         self._output_simplifier = (
             OutputSimplifier(self.aggressive_output_config)
             if self.aggressive_output_config.enabled
             else None
         )
+
+        # v0.7.17: Tool Offloading
+        self.offload_config = offload_config or ToolOffloadConfig()
+        self._offload_manager = ToolOffloadManager(self.offload_config)
+
+        # v0.7.17: Cache warmup on session restore
+        if cache_config and cache_config.warmup_on_restore and cache_config.persist:
+            self.cache.warmup_from_disk()
 
         # Token budget management
         if self.smart_optimization_config.budget_enabled:
@@ -224,13 +272,17 @@ class ReActAgent(BaseAgent):
             self.query_prejudgment = None
 
         # Context manager
-        self.context_manager = ContextManager(
-            memory=memory,
-            llm=llm,
-            config=context_config,
-            verbose=verbose,
-            llm_config=llm_config,
-        ) if context_config else None
+        self.context_manager = (
+            ContextManager(
+                memory=memory,
+                llm=llm,
+                config=context_config,
+                verbose=verbose,
+                llm_config=llm_config,
+            )
+            if context_config
+            else None
+        )
 
         # Confirmation manager
         self.confirmation = ConfirmationManager(confirmation_config)
@@ -241,7 +293,9 @@ class ReActAgent(BaseAgent):
         self._tool_call_records: list[dict] = []
         self._total_tokens: int = 0
         self._session_id: str = ""
-        self._routing_max_tools: int = -1  # Max tools for current query (-1 = unlimited)
+        self._routing_max_tools: int = (
+            -1
+        )  # Max tools for current query (-1 = unlimited)
 
         # Duplicate tool call detection (v0.7.9)
         self._duplicate_detector = DuplicateDetector(
@@ -250,12 +304,14 @@ class ReActAgent(BaseAgent):
         )
 
         # Stall detection (v0.7.16)
-        self._stall_detector = StallDetector(StallConfig(
-            enabled=self.smart_optimization_config.stall_detection_enabled,
-            patience=self.smart_optimization_config.stall_patience,
-            similarity_threshold=self.smart_optimization_config.stall_similarity_threshold,
-            hint_injection=self.smart_optimization_config.stall_hint_injection,
-        ))
+        self._stall_detector = StallDetector(
+            StallConfig(
+                enabled=self.smart_optimization_config.stall_detection_enabled,
+                patience=self.smart_optimization_config.stall_patience,
+                similarity_threshold=self.smart_optimization_config.stall_similarity_threshold,
+                hint_injection=self.smart_optimization_config.stall_hint_injection,
+            )
+        )
         self._wrapup_issued = False
 
         # Real token tracking for v0.7.12 decision points
@@ -272,7 +328,9 @@ class ReActAgent(BaseAgent):
         """Initialize PromptBuilder and build stable portion (v0.7.6)."""
         if self.prompt_config.source == "excel" and self.prompt_config.excel_path:
             try:
-                self._prompt_builder = PromptBuilder.from_excel(self.prompt_config.excel_path)
+                self._prompt_builder = PromptBuilder.from_excel(
+                    self.prompt_config.excel_path
+                )
             except Exception as e:
                 if self.verbose:
                     print(f"[Prompt] Failed to load Excel config: {e}, using default")
@@ -287,6 +345,7 @@ class ReActAgent(BaseAgent):
         # v0.7.15: Inject aggressive_output module if enabled
         if self.aggressive_output_config.enabled:
             from .prompt_modules import AGGRESSIVE_OUTPUT_CONTENTS, PromptModule
+
             level = self.aggressive_output_config.level
             if level in AGGRESSIVE_OUTPUT_CONTENTS:
                 aggressive_module = PromptModule(
@@ -333,7 +392,10 @@ class ReActAgent(BaseAgent):
                 dynamic_parts.append(f"## Skills\n\n{self.skill_prompt}")
 
             # Add confidence suffix if enabled
-            if self.smart_optimization_config.confidence_enabled and self.confidence_parser is not None:
+            if (
+                self.smart_optimization_config.confidence_enabled
+                and self.confidence_parser is not None
+            ):
                 dynamic_parts.append(CONFIDENCE_SUFFIX)
 
             # Build dynamic portion from prompt builder
@@ -404,7 +466,7 @@ class ReActAgent(BaseAgent):
                 descriptions.append(tool.name)
             elif style == "standard":
                 # Name + first sentence + required params
-                first_sentence = tool.description.split('.')[0]
+                first_sentence = tool.description.split(".")[0]
                 required = tool.parameters_schema.get("required", [])
                 params_str = ", ".join(required) if required else "none"
                 desc = f"- {tool.name}: {first_sentence}\n  params: {params_str}"
@@ -414,7 +476,7 @@ class ReActAgent(BaseAgent):
                 desc = TOOL_DESCRIPTION_TEMPLATE.format(
                     name=tool.name,
                     description=tool.description,
-                    parameters=tool.parameters_schema
+                    parameters=tool.parameters_schema,
                 )
                 descriptions.append(desc)
 
@@ -424,10 +486,7 @@ class ReActAgent(BaseAgent):
         return "\n".join(descriptions)
 
     def run(
-        self,
-        user_input: str,
-        dry_run: bool = False,
-        session_id: str = ""
+        self, user_input: str, dry_run: bool = False, session_id: str = ""
     ) -> ExecutionResult:
         """
         Run the ReAct loop to process user input.
@@ -450,57 +509,80 @@ class ReActAgent(BaseAgent):
             self._routing_max_tools = routing_result.suggested_max_tools
 
             if self.verbose:
-                print(f"[Router] Complexity: {routing_result.complexity.value}, "
-                      f"max_tools: {self._routing_max_tools}, "
-                      f"budget_ratio: {routing_result.suggested_budget_ratio:.0%}")
+                print(
+                    f"[Router] Complexity: {routing_result.complexity.value}, "
+                    f"max_tools: {self._routing_max_tools}, "
+                    f"budget_ratio: {routing_result.suggested_budget_ratio:.0%}"
+                )
 
             # Adjust token budget based on complexity (v0.7.16)
-            if (self.token_budget is not None
-                    and self.smart_optimization_config.complexity_budget_enabled
-                    and routing_result.suggested_budget_ratio < 1.0):
+            if (
+                self.token_budget is not None
+                and self.smart_optimization_config.complexity_budget_enabled
+                and routing_result.suggested_budget_ratio < 1.0
+            ):
                 base_budget = self.smart_optimization_config.initial_budget
                 self.token_budget.set_budget_ratio(
                     routing_result.suggested_budget_ratio, base_budget
                 )
                 if self.verbose:
-                    print(f"[Router] Budget adjusted to {self.token_budget.initial_budget} "
-                          f"({routing_result.suggested_budget_ratio:.0%} of {base_budget})")
+                    print(
+                        f"[Router] Budget adjusted to {self.token_budget.initial_budget} "
+                        f"({routing_result.suggested_budget_ratio:.0%} of {base_budget})"
+                    )
 
             # Rule-based SIMPLE -> LLM-generated answer
             if routing_result.complexity == QueryComplexity.SIMPLE:
                 response = self._answer_simple_via_llm(user_input)
                 self.tracker.end_run(response)
-                return self._build_result(response, 0, success=True,
-                                          termination_reason=TerminationReason.COMPLETED.value)
+                return self._build_result(
+                    response,
+                    0,
+                    success=True,
+                    termination_reason=TerminationReason.COMPLETED.value,
+                )
 
         # Phase 2: LLM-based prejudgment (only when router defaulted to COMPLEX)
         if self.query_prejudgment is not None:
-            should_prejudge = (
-                routing_result is None
-                or (routing_result.complexity == QueryComplexity.COMPLEX
-                    and "defaulting to complex" in routing_result.reason.lower())
+            should_prejudge = routing_result is None or (
+                routing_result.complexity == QueryComplexity.COMPLEX
+                and "defaulting to complex" in routing_result.reason.lower()
             )
             if should_prejudge:
                 prejudgment_result = self.query_prejudgment.prejudge(user_input)
                 if self.verbose:
-                    print(f"[Prejudgment] Complexity: {prejudgment_result.complexity.value}, "
-                          f"tokens: {prejudgment_result.prejudgment_tokens}")
+                    print(
+                        f"[Prejudgment] Complexity: {prejudgment_result.complexity.value}, "
+                        f"tokens: {prejudgment_result.prejudgment_tokens}"
+                    )
 
                 if prejudgment_result.complexity == QueryComplexity.SIMPLE:
-                    response = prejudgment_result.answer or self._answer_simple_via_llm(user_input)
+                    response = prejudgment_result.answer or self._answer_simple_via_llm(
+                        user_input
+                    )
                     self.tracker.end_run(response)
-                    return self._build_result(response, 0, success=True,
-                                              termination_reason=TerminationReason.PREJUDGMENT_SIMPLE.value)
+                    return self._build_result(
+                        response,
+                        0,
+                        success=True,
+                        termination_reason=TerminationReason.PREJUDGMENT_SIMPLE.value,
+                    )
                 elif prejudgment_result.complexity == QueryComplexity.MODERATE:
                     self._routing_max_tools = 1
 
         # Legacy: concise mode simple question check
-        if self.output_style_config.style == "concise" and _is_simple_question(user_input):
+        if self.output_style_config.style == "concise" and _is_simple_question(
+            user_input
+        ):
             # Direct answer for simple questions (skip tool calls)
             response = self._answer_simple_question(user_input)
             self.tracker.end_run(response)
-            return self._build_result(response, 0, success=True,
-                                      termination_reason=TerminationReason.COMPLETED.value)
+            return self._build_result(
+                response,
+                0,
+                success=True,
+                termination_reason=TerminationReason.COMPLETED.value,
+            )
 
         iteration = 0
         tool_calls_in_round = 0  # Track tool calls for routing limits
@@ -524,14 +606,19 @@ class ReActAgent(BaseAgent):
                 # Budget wrap-up round (v0.7.9)
                 if self.token_budget.should_wrapup() and not self._wrapup_issued:
                     self._wrapup_issued = True
-                    self.events.emit(AgentEvent.BUDGET_WRAPUP, {"remaining": self.token_budget.remaining})
+                    self.events.emit(
+                        AgentEvent.BUDGET_WRAPUP,
+                        {"remaining": self.token_budget.remaining},
+                    )
                     self.memory.add_user_message(
                         "[System] Token budget is critically low. This is the final round. "
                         "Please summarize your findings, list any unfinished work, "
                         "and provide the best answer you can."
                     )
                     if self.verbose:
-                        print("[Budget Wrap-Up] Token budget critically low — entering final round")
+                        print(
+                            "[Budget Wrap-Up] Token budget critically low — entering final round"
+                        )
 
                     self.tracker.start_iteration(iteration)
                     think = self._think()
@@ -545,21 +632,33 @@ class ReActAgent(BaseAgent):
                     if think.is_final:
                         self.tracker.end_iteration()
                         self.tracker.end_run(think.response_text)
-                        return self._build_result(think.response_text, iteration, success=True,
-                                                  termination_reason=TerminationReason.BUDGET_WRAP_UP.value)
+                        return self._build_result(
+                            think.response_text,
+                            iteration,
+                            success=True,
+                            termination_reason=TerminationReason.BUDGET_WRAP_UP.value,
+                        )
 
                     # If LLM still wants tools → force summarize instead
                     response = self._force_summarize()
                     self.tracker.end_run(response)
-                    return self._build_result(response, iteration, success=True,
-                                              termination_reason=TerminationReason.BUDGET_WRAP_UP.value)
+                    return self._build_result(
+                        response,
+                        iteration,
+                        success=True,
+                        termination_reason=TerminationReason.BUDGET_WRAP_UP.value,
+                    )
 
                 # Check for force summarize
                 if self.token_budget.should_summarize():
                     response = self._force_summarize()
                     self.tracker.end_run(response)
-                    return self._build_result(response, iteration, success=True,
-                                              termination_reason=TerminationReason.BUDGET_EXHAUSTED.value)
+                    return self._build_result(
+                        response,
+                        iteration,
+                        success=True,
+                        termination_reason=TerminationReason.BUDGET_EXHAUSTED.value,
+                    )
 
             self.tracker.start_iteration(iteration)
 
@@ -579,14 +678,22 @@ class ReActAgent(BaseAgent):
                         print(f"[Confidence] Early stop: {conf_result.confidence:.2f}")
                     self.tracker.end_iteration()
                     self.tracker.end_run(conf_result.cleaned_response)
-                    return self._build_result(conf_result.cleaned_response, iteration, success=True,
-                                          termination_reason=TerminationReason.CONFIDENCE_EARLY_STOP.value)
+                    return self._build_result(
+                        conf_result.cleaned_response,
+                        iteration,
+                        success=True,
+                        termination_reason=TerminationReason.CONFIDENCE_EARLY_STOP.value,
+                    )
 
             if think.is_final:
                 self.tracker.end_iteration()
                 self.tracker.end_run(think.response_text)
-                return self._build_result(think.response_text, iteration, success=True,
-                                          termination_reason=TerminationReason.COMPLETED.value)
+                return self._build_result(
+                    think.response_text,
+                    iteration,
+                    success=True,
+                    termination_reason=TerminationReason.COMPLETED.value,
+                )
 
             # Merge similar tool calls for token efficiency
             merged_tool_calls = self._merge_tool_calls(think.tool_calls)
@@ -597,20 +704,28 @@ class ReActAgent(BaseAgent):
                 if self._routing_max_tools >= 0:
                     if tool_calls_in_round >= self._routing_max_tools:
                         if self.verbose:
-                            print(f"[Router] Reached max tools limit: {self._routing_max_tools}")
+                            print(
+                                f"[Router] Reached max tools limit: {self._routing_max_tools}"
+                            )
                         # Record all remaining tool calls as skipped
-                        remaining_calls = merged_tool_calls[merged_tool_calls.index(tool_call):]
+                        remaining_calls = merged_tool_calls[
+                            merged_tool_calls.index(tool_call) :
+                        ]
                         for skipped_call in remaining_calls:
                             self.tracker.record_skipped_tool_call(
                                 skipped_call.name,
                                 skipped_call.arguments,
-                                "routing_limit"
+                                "routing_limit",
                             )
                         # Force summarize with current info
                         response = self._force_summarize()
                         self.tracker.end_run(response)
-                        return self._build_result(response, iteration, success=True,
-                                                  termination_reason=TerminationReason.ROUTING_LIMIT.value)
+                        return self._build_result(
+                            response,
+                            iteration,
+                            success=True,
+                            termination_reason=TerminationReason.ROUTING_LIMIT.value,
+                        )
 
                 result = self._act(tool_call, dry_run)
                 self._observe(tool_call, result)
@@ -634,21 +749,32 @@ class ReActAgent(BaseAgent):
                     else:
                         iter_tool_results.append("")
 
-                self._stall_detector.record_iteration(iter_tool_names, iter_tool_results)
+                self._stall_detector.record_iteration(
+                    iter_tool_names, iter_tool_results
+                )
                 stall_result = self._stall_detector.check_stall()
                 if stall_result.is_stalled and stall_result.hint:
-                    self.events.emit(AgentEvent.STALL_DETECTED, {
-                        "stalled_iterations": stall_result.stalled_iterations,
-                    })
+                    self.events.emit(
+                        AgentEvent.STALL_DETECTED,
+                        {
+                            "stalled_iterations": stall_result.stalled_iterations,
+                        },
+                    )
                     self.memory.add_user_message(f"[System] {stall_result.hint}")
                     if self.verbose:
-                        print(f"[Stall] Detected ({stall_result.stalled_iterations}x), hint injected")
+                        print(
+                            f"[Stall] Detected ({stall_result.stalled_iterations}x), hint injected"
+                        )
 
         # Reached max iterations or budget exhausted
         response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
         self.tracker.end_run(response)
-        return self._build_result(response, iteration, success=False,
-                                  termination_reason=TerminationReason.MAX_ITERATIONS.value)
+        return self._build_result(
+            response,
+            iteration,
+            success=False,
+            termination_reason=TerminationReason.MAX_ITERATIONS.value,
+        )
 
     def _prepare_run(self, user_input: str, session_id: str) -> None:
         """
@@ -683,7 +809,9 @@ class ReActAgent(BaseAgent):
         self.tracker.start_run(user_input)
 
         # Emit start event
-        self.events.emit(AgentEvent.RUN_START, {"input": user_input, "session_id": session_id})
+        self.events.emit(
+            AgentEvent.RUN_START, {"input": user_input, "session_id": session_id}
+        )
 
     def _think(self) -> ThinkResult:
         """
@@ -692,7 +820,9 @@ class ReActAgent(BaseAgent):
         Returns:
             ThinkResult containing response text and any tool calls
         """
-        self.events.emit(AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1})
+        self.events.emit(
+            AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1}
+        )
 
         # v0.7.12: Context pressure check using real tokens from previous iteration
         # v0.7.13: Pass calibration factor for more accurate estimation
@@ -709,16 +839,20 @@ class ReActAgent(BaseAgent):
         # v0.7.12: Apply message compression using real tokens from previous iteration
         # v0.7.13: Pass calibration factor
         if self.compressor.should_compress(
-            messages, last_prompt_tokens=self._last_prompt_tokens,
-            calibration_factor=calibration_factor
+            messages,
+            last_prompt_tokens=self._last_prompt_tokens,
+            calibration_factor=calibration_factor,
         ):
             original_count = len(messages)
             messages = self.compressor.compress(
-                messages, last_prompt_tokens=self._last_prompt_tokens,
+                messages,
+                last_prompt_tokens=self._last_prompt_tokens,
                 calibration_factor=calibration_factor,
             )
             if self.verbose and len(messages) < original_count:
-                print(f"[Compressor] Reduced {original_count} messages to {len(messages)}")
+                print(
+                    f"[Compressor] Reduced {original_count} messages to {len(messages)}"
+                )
 
         tools_schema = self.tool_registry.get_all_schemas()
 
@@ -727,7 +861,9 @@ class ReActAgent(BaseAgent):
         if self.prompt_config.enable_caching and self._stable_system_prompt:
             system_stable = self._stable_system_prompt
             if self.verbose:
-                print(f"[Caching] Using stable system prompt ({len(system_stable)} chars)")
+                print(
+                    f"[Caching] Using stable system prompt ({len(system_stable)} chars)"
+                )
 
         # Call LLM
         llm_start = time.perf_counter()
@@ -743,15 +879,17 @@ class ReActAgent(BaseAgent):
             print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
 
         # Record LLM call with raw data (decoupled API)
-        self.tracker.record_raw_llm_call(RawLLMCallData(
-            llm=self.llm,
-            messages=messages,
-            tools_schema=tools_schema,
-            response_text=response_text,
-            tool_calls=tool_calls,  # Pass raw ToolCall objects
-            usage=usage,
-            latency_ms=llm_latency,
-        ))
+        self.tracker.record_raw_llm_call(
+            RawLLMCallData(
+                llm=self.llm,
+                messages=messages,
+                tools_schema=tools_schema,
+                response_text=response_text,
+                tool_calls=tool_calls,  # Pass raw ToolCall objects
+                usage=usage,
+                latency_ms=llm_latency,
+            )
+        )
 
         # Update token count
         self._total_tokens += usage.total_tokens
@@ -762,15 +900,20 @@ class ReActAgent(BaseAgent):
             self._last_prompt_tokens = usage.prompt_tokens
 
             from .token_utils import estimate_tokens
+
             estimated = estimate_tokens(messages)
             self.token_budget.record_calibration_data(
                 estimated=estimated, actual=usage.prompt_tokens
             )
 
             # Log deviation for observability
-            deviation_pct = abs(usage.prompt_tokens - estimated) / max(estimated, 1) * 100
+            deviation_pct = (
+                abs(usage.prompt_tokens - estimated) / max(estimated, 1) * 100
+            )
             if self.verbose and deviation_pct > 10:
-                print(f"[Token] Estimated: {estimated}, Real: {usage.prompt_tokens}, Deviation: {deviation_pct:.1f}%")
+                print(
+                    f"[Token] Estimated: {estimated}, Real: {usage.prompt_tokens}, Deviation: {deviation_pct:.1f}%"
+                )
 
         # Verbose output
         if self.verbose and response_text:
@@ -779,15 +922,14 @@ class ReActAgent(BaseAgent):
         # Add assistant message to memory if there are tool calls
         if tool_calls:
             self.memory.add_assistant_message(
-                response_text,
-                tool_calls=[tc.to_dict() for tc in tool_calls]
+                response_text, tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
         return ThinkResult(
             response_text=response_text,
             tool_calls=tool_calls or [],
             usage=usage,
-            is_final=not tool_calls
+            is_final=not tool_calls,
         )
 
     def _merge_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolCall]:
@@ -801,14 +943,19 @@ class ReActAgent(BaseAgent):
             Merged tool calls (possibly fewer than input)
         """
         print(f"[Merge] Called with {len(tool_calls) if tool_calls else 0} tool calls")
-        print(f"[Merge] enabled={self.tool_merge_config.enabled}, concise_only={self.tool_merge_config.concise_only}, style={self.output_style_config.style}")
+        print(
+            f"[Merge] enabled={self.tool_merge_config.enabled}, concise_only={self.tool_merge_config.concise_only}, style={self.output_style_config.style}"
+        )
 
         if not tool_calls or not self.tool_merge_config.enabled:
             print("[Merge] Skipping: no calls or disabled")
             return tool_calls
 
         # Only merge in concise mode if configured
-        if self.tool_merge_config.concise_only and self.output_style_config.style != "concise":
+        if (
+            self.tool_merge_config.concise_only
+            and self.output_style_config.style != "concise"
+        ):
             print("[Merge] Skipping: concise_only check failed")
             return tool_calls
 
@@ -836,45 +983,46 @@ class ReActAgent(BaseAgent):
         if not dry_run and self._check_duplicate_tool_call(tool_call):
             # Record as skipped
             self.tracker.record_skipped_tool_call(
-                tool_call.name,
-                tool_call.arguments,
-                "duplicate"
+                tool_call.name, tool_call.arguments, "duplicate"
             )
             # Return cached result or empty result
-            cached_result = self.cache.get_cached_result(tool_call.name, tool_call.arguments)
+            cached_result = self.cache.get_cached_result(
+                tool_call.name, tool_call.arguments
+            )
             if cached_result is not None:
                 result = cached_result
             else:
                 result = ToolResult(
-                    success=True,
-                    output="[跳过] 检测到重复调用，已跳过"
+                    success=True, output="[跳过] 检测到重复调用，已跳过"
                 )
             # Record tool call
-            self._tool_call_records.append({
-                "name": tool_call.name,
-                "arguments": tool_call.arguments,
-                "success": result.success,
-                "output_preview": result.output[:100] if result.output else None,
-            })
+            self._tool_call_records.append(
+                {
+                    "name": tool_call.name,
+                    "arguments": tool_call.arguments,
+                    "success": result.success,
+                    "output_preview": result.output[:100] if result.output else None,
+                }
+            )
             return result
 
         # Emit tool call event
-        self.events.emit(AgentEvent.TOOL_CALL, {
-            "tool": tool_call.name,
-            "arguments": tool_call.arguments
-        })
+        self.events.emit(
+            AgentEvent.TOOL_CALL,
+            {"tool": tool_call.name, "arguments": tool_call.arguments},
+        )
 
         # Handle dry-run mode
         if dry_run:
-            result = ToolResult(
-                success=True,
-                output="[预览模式] 未实际执行"
-            )
+            result = ToolResult(success=True, output="[预览模式] 未实际执行")
         else:
             # Check cache first
-            cached_result = self.cache.get_cached_result(tool_call.name, tool_call.arguments)
+            cached_result = self.cache.get_cached_result(
+                tool_call.name, tool_call.arguments
+            )
             if cached_result is not None:
-                result = cached_result
+                # Cache now returns string content, wrap in ToolResult
+                result = ToolResult(success=True, output=cached_result)
                 if self.verbose:
                     print(f"[Cache] Hit for {tool_call.name}")
             else:
@@ -883,11 +1031,14 @@ class ReActAgent(BaseAgent):
                 if tool and self.confirmation.needs_confirmation(tool):
                     # Request confirmation
                     self.confirmation.request_confirmation()
-                    self.events.emit(AgentEvent.CONFIRMATION_REQUIRED, {
-                        "tool": tool_call.name,
-                        "arguments": tool_call.arguments,
-                        "risk_level": tool.risk_level.value
-                    })
+                    self.events.emit(
+                        AgentEvent.CONFIRMATION_REQUIRED,
+                        {
+                            "tool": tool_call.name,
+                            "arguments": tool_call.arguments,
+                            "risk_level": tool.risk_level.value,
+                        },
+                    )
 
                     # Wait for confirmation (blocking)
                     confirmed = self.confirmation.wait_for_result()
@@ -895,21 +1046,21 @@ class ReActAgent(BaseAgent):
                     if not confirmed:
                         # User denied
                         result = ToolResult(
-                            success=False,
-                            output="",
-                            error="用户取消操作"
+                            success=False, output="", error="用户取消操作"
                         )
                         # Record and return early
-                        self._tool_call_records.append({
-                            "name": tool_call.name,
-                            "arguments": tool_call.arguments,
-                            "success": False,
-                            "output_preview": None,
-                        })
-                        self.events.emit(AgentEvent.TOOL_RESULT, {
-                            "tool": tool_call.name,
-                            "result": result
-                        })
+                        self._tool_call_records.append(
+                            {
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments,
+                                "success": False,
+                                "output_preview": None,
+                            }
+                        )
+                        self.events.emit(
+                            AgentEvent.TOOL_RESULT,
+                            {"tool": tool_call.name, "result": result},
+                        )
                         return result
 
                 # Execute the tool
@@ -917,29 +1068,29 @@ class ReActAgent(BaseAgent):
                 result = self._execute_tool_call(tool_call)
                 tool_latency = (time.perf_counter() - tool_start) * 1000
 
-                # Cache the result if cacheable
-                self.cache.set_cached_result(tool_call.name, tool_call.arguments, result)
-
                 # Record tool execution with raw data (decoupled API)
-                self.tracker.record_raw_tool_execution(RawToolExecutionData(
-                    tool_call=tool_call,
-                    result=result,
-                    latency_ms=tool_latency,
-                ))
+                self.tracker.record_raw_tool_execution(
+                    RawToolExecutionData(
+                        tool_call=tool_call,
+                        result=result,
+                        latency_ms=tool_latency,
+                    )
+                )
 
         # Record tool call
-        self._tool_call_records.append({
-            "name": tool_call.name,
-            "arguments": tool_call.arguments,
-            "success": result.success,
-            "output_preview": result.output[:100] if result.output else None,
-        })
+        self._tool_call_records.append(
+            {
+                "name": tool_call.name,
+                "arguments": tool_call.arguments,
+                "success": result.success,
+                "output_preview": result.output[:100] if result.output else None,
+            }
+        )
 
         # Emit tool result event
-        self.events.emit(AgentEvent.TOOL_RESULT, {
-            "tool": tool_call.name,
-            "result": result
-        })
+        self.events.emit(
+            AgentEvent.TOOL_RESULT, {"tool": tool_call.name, "result": result}
+        )
 
         # Verbose output
         if self.verbose:
@@ -964,10 +1115,12 @@ class ReActAgent(BaseAgent):
         result_content = result.output if result.success else f"Error: {result.error}"
 
         # v0.7.15: Standardized output takes priority over summarizer
-        if (result.success
-                and result.metadata
-                and "standard_output" in result.metadata
-                and self.standardized_output_config.enabled):
+        if (
+            result.success
+            and result.metadata
+            and "standard_output" in result.metadata
+            and self.standardized_output_config.enabled
+        ):
             result_content = result.metadata["standard_output"].to_llm_message(
                 detailed=self.standardized_output_config.detailed
             )
@@ -983,21 +1136,44 @@ class ReActAgent(BaseAgent):
             summarizer = ToolResultSummarizer(summarizer_config)
             result_content = summarizer.summarize(result_content, tool_call.name)
 
+        # v0.7.17: Tool Offloading - check before truncation
+        is_offloaded = False
+        tool = self.tool_registry.get(tool_call.name)
+        tool_can_offload = getattr(tool, "can_offload", False) if tool else False
+
+        if self._offload_manager.should_offload(
+            result_content, tool_call.name, tool_can_offload
+        ):
+            summary_content, offloaded = self._offload_manager.offload(
+                result_content, tool_call.name, tool_call.id
+            )
+            result_content = summary_content
+            is_offloaded = True
+
+        # Cache the result (summary if offloaded, full content otherwise)
+        self.cache.set_cached_result(
+            tool_call.name,
+            tool_call.arguments,
+            result_content,
+            is_offloaded=is_offloaded,
+        )
+
         # v0.7.15: Activate tool_processor config for truncation
-        if (self.smart_optimization_config.tool_processor_enabled
-                and self.smart_optimization_config.tool_processor_max_output_tokens > 0):
+        if (
+            self.smart_optimization_config.tool_processor_enabled
+            and self.smart_optimization_config.tool_processor_max_output_tokens > 0
+        ):
             max_tokens = self.smart_optimization_config.tool_processor_max_output_tokens
         else:
             max_tokens = self.output_style_config.tool_output_max_tokens
         from .token_utils import calculate_max_chars
+
         max_chars = calculate_max_chars(result_content, max_tokens)
         if len(result_content) > max_chars:
             result_content = result_content[:max_chars] + "\n... [输出已截断]"
 
         self.memory.add_tool_result(
-            tool_call_id=tool_call.id,
-            content=result_content,
-            tool_name=tool_call.name
+            tool_call_id=tool_call.id, content=result_content, tool_name=tool_call.name
         )
 
     def _answer_simple_via_llm(self, user_input: str) -> str:
@@ -1011,7 +1187,9 @@ class ReActAgent(BaseAgent):
             {"role": "user", "content": user_input},
         ]
         try:
-            response, _, _ = self.llm.chat(messages=messages, tools=None, system_stable=None)
+            response, _, _ = self.llm.chat(
+                messages=messages, tools=None, system_stable=None
+            )
             return response
         except Exception:
             return self._answer_simple_question(user_input)
@@ -1092,7 +1270,11 @@ class ReActAgent(BaseAgent):
             print("[Budget] 预算耗尽，正在生成结构化摘要...")
 
         # Check if LLM summary is enabled and we have tool results
-        if self.token_budget and self.token_budget.config.llm_summary_enabled and self._tool_call_records:
+        if (
+            self.token_budget
+            and self.token_budget.config.llm_summary_enabled
+            and self._tool_call_records
+        ):
             return self._generate_llm_summary()
 
         # Fallback: simple summary (existing behavior)
@@ -1120,7 +1302,9 @@ class ReActAgent(BaseAgent):
             output_preview = record.get("output_preview", "")
             success = record.get("success", False)
             status = "成功" if success else "失败"
-            tool_summary_parts.append(f"- {tool_name} ({status}): {output_preview[:200]}")
+            tool_summary_parts.append(
+                f"- {tool_name} ({status}): {output_preview[:200]}"
+            )
 
         tool_summary = "\n".join(tool_summary_parts)
 
@@ -1155,8 +1339,7 @@ class ReActAgent(BaseAgent):
 
         try:
             response, _, _ = self.llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                tools=None
+                messages=[{"role": "user", "content": prompt}], tools=None
             )
             return response
         except Exception as e:
@@ -1186,7 +1369,7 @@ class ReActAgent(BaseAgent):
         response: str,
         iterations: int,
         success: bool,
-        termination_reason: str = ""
+        termination_reason: str = "",
     ) -> ExecutionResult:
         """
         Build the execution result.
@@ -1207,6 +1390,12 @@ class ReActAgent(BaseAgent):
                 response = self._output_simplifier.simplify(response)
             self.memory.add_assistant_message(response)
 
+        # v0.7.17: Persist cache and cleanup offloaded files
+        if self.cache and self.cache.config and self.cache.config.persist:
+            self.cache.persist_to_disk()
+        if self.offload_config and self.offload_config.auto_cleanup:
+            self._offload_manager.cleanup()
+
         return ExecutionResult(
             response=response,
             success=success,
@@ -1214,7 +1403,7 @@ class ReActAgent(BaseAgent):
             tool_calls=self._tool_call_records,
             tokens_used=self._total_tokens,
             session_id=self._session_id,
-            termination_reason=termination_reason
+            termination_reason=termination_reason,
         )
 
     def run_stream(self, user_input: str) -> Generator[str, None, None]:

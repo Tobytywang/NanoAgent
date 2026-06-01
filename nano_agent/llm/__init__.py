@@ -6,10 +6,19 @@ from .base import BaseLLM, LLMUsage
 from .ollama import OllamaLLM
 from .openai_compatible import OpenAICompatibleLLM
 from .anthropic import AnthropicLLM
-from .messages import Message, ToolCall, AssistantMessage, ToolResultMessage, SystemMessage, UserMessage
+from .messages import (
+    Message,
+    ToolCall,
+    AssistantMessage,
+    ToolResultMessage,
+    SystemMessage,
+    UserMessage,
+)
 
 # Provider type alias
-ProviderType = Literal["ollama", "openai", "deepseek", "moonshot", "openai_compatible", "anthropic"]
+ProviderType = Literal[
+    "ollama", "openai", "deepseek", "moonshot", "openai_compatible", "anthropic"
+]
 
 # Provider-specific default configurations
 PROVIDER_DEFAULTS = {
@@ -49,7 +58,7 @@ def create_llm(
     api_key_env: str | None = None,
     timeout: int = 120,
     temperature: float = 0.7,
-    **kwargs
+    **kwargs,
 ) -> BaseLLM:
     """
     Factory function to create LLM clients.
@@ -75,7 +84,7 @@ def create_llm(
             model=model or "llama3",
             base_url=base_url or "http://localhost:11434",
             timeout=timeout,
-            **kwargs
+            **kwargs,
         )
 
     # Anthropic provider (supports Prompt Caching)
@@ -86,7 +95,7 @@ def create_llm(
             api_key_env=api_key_env or PROVIDER_DEFAULTS["anthropic"]["api_key_env"],
             timeout=timeout,
             temperature=temperature,
-            **kwargs
+            **kwargs,
         )
 
     # OpenAI-compatible providers
@@ -100,7 +109,7 @@ def create_llm(
             api_key_env=api_key_env or defaults["api_key_env"],
             timeout=timeout,
             temperature=temperature,
-            **kwargs
+            **kwargs,
         )
 
     # Unknown provider - treat as OpenAI-compatible if base_url is provided
@@ -112,10 +121,12 @@ def create_llm(
             api_key_env=api_key_env or "OPENAI_API_KEY",
             timeout=timeout,
             temperature=temperature,
-            **kwargs
+            **kwargs,
         )
 
-    raise ValueError(f"Unsupported provider: {provider}. Use 'openai_compatible' with base_url for custom providers.")
+    raise ValueError(
+        f"Unsupported provider: {provider}. Use 'openai_compatible' with base_url for custom providers."
+    )
 
 
 def create_llm_from_config(config) -> BaseLLM:

@@ -52,7 +52,7 @@ class TestSkillDefinition:
             description="Test skill",
             system_prompt="Test prompt",
             tools=["tool1", "tool2"],
-            enabled=True
+            enabled=True,
         )
 
         assert definition.name == "test_skill"
@@ -361,7 +361,7 @@ class TestSkillLoaderPythonClass:
         """Test loading a skill class from a Python file."""
         with tempfile.TemporaryDirectory() as d:
             skill_file = Path(d) / "my_skill.py"
-            skill_file.write_text('''
+            skill_file.write_text("""
 from nano_agent.skills.base import BaseSkill
 from nano_agent.tools.base import BaseTool, ToolResult
 
@@ -383,7 +383,7 @@ class Skill(BaseSkill):
     @property
     def tools(self):
         return [MyTool()]
-''')
+""")
 
             loader = SkillLoader()
             skill = loader.load_skill_class(str(skill_file))
@@ -403,11 +403,11 @@ class Skill(BaseSkill):
         """Test loading a file without the Skill class."""
         with tempfile.TemporaryDirectory() as d:
             skill_file = Path(d) / "no_skill.py"
-            skill_file.write_text('''
+            skill_file.write_text("""
 # No Skill class here
 def some_function():
     pass
-''')
+""")
 
             loader = SkillLoader()
             skill = loader.load_skill_class(str(skill_file))
@@ -417,12 +417,12 @@ def some_function():
         """Test loading a skill with custom class name."""
         with tempfile.TemporaryDirectory() as d:
             skill_file = Path(d) / "custom_skill.py"
-            skill_file.write_text('''
+            skill_file.write_text("""
 from nano_agent.skills.base import BaseSkill
 
 class CustomSkill(BaseSkill):
     name = "custom_skill"
-''')
+""")
 
             loader = SkillLoader()
             skill = loader.load_skill_class(str(skill_file), class_name="CustomSkill")
@@ -434,12 +434,12 @@ class CustomSkill(BaseSkill):
         """Test that loaded skill is registered."""
         with tempfile.TemporaryDirectory() as d:
             skill_file = Path(d) / "reg_skill.py"
-            skill_file.write_text('''
+            skill_file.write_text("""
 from nano_agent.skills.base import BaseSkill
 
 class Skill(BaseSkill):
     name = "registered_skill"
-''')
+""")
 
             registry = SkillRegistry()
             loader = SkillLoader(registry)
@@ -457,12 +457,7 @@ class TestSkillLoaderFromConfig:
             skill_file = Path(d) / "config_skill.yaml"
             skill_file.write_text("name: config_skill\ndescription: From config")
 
-            config = {
-                "skills": {
-                    "enabled": [],
-                    "directory": d
-                }
-            }
+            config = {"skills": {"enabled": [], "directory": d}}
 
             loader = SkillLoader()
             skills = loader.load_from_config(config)

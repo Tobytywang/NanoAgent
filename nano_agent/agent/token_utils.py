@@ -29,7 +29,7 @@ def estimate_tokens(messages: list[dict], calibration_factor: float = 1.0) -> in
             continue
 
         # Count Chinese characters (CJK range)
-        chinese_chars = sum(1 for c in content if '一' <= c <= '鿿')
+        chinese_chars = sum(1 for c in content if "一" <= c <= "鿿")
 
         # Count other characters
         other_chars = len(content) - chinese_chars
@@ -60,7 +60,7 @@ def estimate_text_tokens(text: str, calibration_factor: float = 1.0) -> int:
         return 0
 
     # Count Chinese characters (CJK range)
-    chinese_chars = sum(1 for c in text if '一' <= c <= '鿿')
+    chinese_chars = sum(1 for c in text if "一" <= c <= "鿿")
 
     # Count other characters
     other_chars = len(text) - chinese_chars

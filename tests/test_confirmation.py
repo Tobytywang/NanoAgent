@@ -61,7 +61,7 @@ class TestConfirmationConfig:
             confirm_safe=True,
             confirm_moderate=True,
             confirm_dangerous=False,
-            whitelist=["test_tool"]
+            whitelist=["test_tool"],
         )
         assert config.enabled is False
         assert config.confirm_safe is True
@@ -260,7 +260,7 @@ class TestConfirmationEvent:
             tool_registry=tool_registry,
             confirmation_config=config,
             events=events,
-            verbose=False
+            verbose=False,
         )
 
         # Track events
@@ -269,11 +269,10 @@ class TestConfirmationEvent:
 
         # Request confirmation
         agent.confirmation.request_confirmation()
-        events.emit(AgentEvent.CONFIRMATION_REQUIRED, {
-            "tool": "mock_tool",
-            "arguments": {},
-            "risk_level": "dangerous"
-        })
+        events.emit(
+            AgentEvent.CONFIRMATION_REQUIRED,
+            {"tool": "mock_tool", "arguments": {}, "risk_level": "dangerous"},
+        )
 
         assert len(emitted) == 1
         assert emitted[0]["tool"] == "mock_tool"
@@ -296,10 +295,7 @@ class TestConfirmationEvent:
         tool_registry.get_all_schemas = Mock(return_value=[])
 
         agent = ReActAgent(
-            llm=llm,
-            memory=memory,
-            tool_registry=tool_registry,
-            verbose=False
+            llm=llm, memory=memory, tool_registry=tool_registry, verbose=False
         )
 
         # Request confirmation
@@ -328,10 +324,7 @@ class TestConfirmationEvent:
         tool_registry.get_all_schemas = Mock(return_value=[])
 
         agent = ReActAgent(
-            llm=llm,
-            memory=memory,
-            tool_registry=tool_registry,
-            verbose=False
+            llm=llm, memory=memory, tool_registry=tool_registry, verbose=False
         )
 
         agent.add_tool_to_whitelist("test_tool")

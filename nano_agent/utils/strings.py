@@ -16,6 +16,6 @@ def safe_str(text: str) -> str:
     if not text:
         return text
     try:
-        return text.encode('utf-8', errors='replace').decode('utf-8')
+        return text.encode("utf-8", errors="replace").decode("utf-8")
     except (UnicodeDecodeError, UnicodeEncodeError):
         return text

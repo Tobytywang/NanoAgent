@@ -1,0 +1,28 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check-version-consistency
+        name: Version consistency check
+        entry: scripts/check_version_consistency.sh
+        language: script
+
+      - id: check-doc-updates
+        name: Documentation update check
+        entry: scripts/check_doc_updates.sh
+        language: script
+
+      - id: check-test-cases
+        name: Test cases update check
+        entry: scripts/check_test_cases.sh
+        language: script
+
+      - id: check-config-chain
+        name: Config chain completeness check
+        entry: scripts/check_config_chain.sh
+        language: script
+
+      - id: black
+        name: Black formatter
+        entry: black
+        language: python
+        types: [python]

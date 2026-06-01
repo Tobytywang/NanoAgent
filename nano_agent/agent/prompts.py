@@ -25,7 +25,9 @@ Use user's language.
 """
 
 # Concise mode with confidence
-REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE = REACT_SYSTEM_PROMPT_CONCISE + CONFIDENCE_SUFFIX
+REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE = (
+    REACT_SYSTEM_PROMPT_CONCISE + CONFIDENCE_SUFFIX
+)
 
 # Standard mode system prompt (~800 tokens)
 REACT_SYSTEM_PROMPT_STANDARD = """You are an intelligent assistant that can use tools.
@@ -61,7 +63,9 @@ Respond in user's language.
 """
 
 # Standard mode with confidence
-REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE = REACT_SYSTEM_PROMPT_STANDARD + CONFIDENCE_SUFFIX
+REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE = (
+    REACT_SYSTEM_PROMPT_STANDARD + CONFIDENCE_SUFFIX
+)
 
 # Detailed mode system prompt (original, ~1500 tokens)
 REACT_SYSTEM_PROMPT = """You are an intelligent assistant that can use tools to complete tasks.

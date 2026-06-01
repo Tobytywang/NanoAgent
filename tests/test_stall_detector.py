@@ -13,7 +13,6 @@ from nano_agent.agent.stall_detector import (
     StallResult,
 )
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -130,11 +129,17 @@ class TestStallDetectorSimilarity:
     def test_mixed_tools_partial_similarity(self):
         detector = StallDetector(StallConfig(patience=3, similarity_threshold=0.7))
         # First iteration: file_read + shell
-        detector.record_iteration(["file_read", "shell_execute"], ["result A", "result B"])
+        detector.record_iteration(
+            ["file_read", "shell_execute"], ["result A", "result B"]
+        )
         # Second iteration: same tools, same results
-        detector.record_iteration(["file_read", "shell_execute"], ["result A", "result B"])
+        detector.record_iteration(
+            ["file_read", "shell_execute"], ["result A", "result B"]
+        )
         # Third iteration: same again
-        detector.record_iteration(["file_read", "shell_execute"], ["result A", "result B"])
+        detector.record_iteration(
+            ["file_read", "shell_execute"], ["result A", "result B"]
+        )
         result = detector.check_stall()
         assert result.is_stalled
 
@@ -143,7 +148,9 @@ class TestStallDetectorHints:
     """Test hint generation."""
 
     def test_hint_generated_when_stalled(self):
-        detector = StallDetector(StallConfig(patience=2, hint_injection=True, similarity_threshold=0.5))
+        detector = StallDetector(
+            StallConfig(patience=2, hint_injection=True, similarity_threshold=0.5)
+        )
         detector.record_iteration(["file_read"], ["same"])
         detector.record_iteration(["file_read"], ["same"])
         result = detector.check_stall()
@@ -152,7 +159,9 @@ class TestStallDetectorHints:
         assert len(result.hint) > 0
 
     def test_no_hint_when_disabled(self):
-        detector = StallDetector(StallConfig(patience=2, hint_injection=False, similarity_threshold=0.5))
+        detector = StallDetector(
+            StallConfig(patience=2, hint_injection=False, similarity_threshold=0.5)
+        )
         detector.record_iteration(["file_read"], ["same"])
         detector.record_iteration(["file_read"], ["same"])
         result = detector.check_stall()
@@ -160,7 +169,9 @@ class TestStallDetectorHints:
         assert result.hint is None
 
     def test_hints_cycle_through_variants(self):
-        detector = StallDetector(StallConfig(patience=2, hint_injection=True, similarity_threshold=0.5))
+        detector = StallDetector(
+            StallConfig(patience=2, hint_injection=True, similarity_threshold=0.5)
+        )
         hints = []
         # Keep recording without reset to see hint cycling
         for _ in range(4):

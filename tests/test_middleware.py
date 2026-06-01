@@ -49,10 +49,7 @@ class TestMiddlewareContext:
 
     def test_create_context(self):
         """Test creating a context."""
-        ctx = MiddlewareContext(
-            tool_name="test_tool",
-            arguments={"arg1": "value1"}
-        )
+        ctx = MiddlewareContext(tool_name="test_tool", arguments={"arg1": "value1"})
         assert ctx.tool_name == "test_tool"
         assert ctx.arguments == {"arg1": "value1"}
         assert ctx.result is None
@@ -96,7 +93,7 @@ class TestMiddlewareChain:
         result = chain.execute(
             "test_tool",
             {"arg": "value"},
-            lambda args: ToolResult(success=True, output="done")
+            lambda args: ToolResult(success=True, output="done"),
         )
         assert result.success is True
         assert result.output == "done"
@@ -106,6 +103,7 @@ class TestMiddlewareChain:
         chain = MiddlewareChain()
 
         call_log = []
+
         class TestMiddleware(BaseMiddleware):
             def before(self, ctx):
                 call_log.append(("before", ctx.tool_name))
@@ -116,9 +114,7 @@ class TestMiddlewareChain:
 
         chain.add(TestMiddleware())
         chain.execute(
-            "test_tool",
-            {},
-            lambda args: ToolResult(success=True, output="done")
+            "test_tool", {}, lambda args: ToolResult(success=True, output="done")
         )
 
         assert ("before", "test_tool") in call_log
@@ -129,13 +125,16 @@ class TestMiddlewareChain:
         chain = MiddlewareChain()
 
         order = []
+
         class LowPriority(BaseMiddleware):
             priority = 10
+
             def before(self, ctx):
                 order.append("low_before")
 
         class HighPriority(BaseMiddleware):
             priority = 100
+
             def before(self, ctx):
                 order.append("high_before")
 
@@ -157,6 +156,7 @@ class TestMiddlewareChain:
         chain.add(ShortCircuitMiddleware())
 
         executor_called = []
+
         def executor(args):
             executor_called.append(True)
             return ToolResult(success=True, output="done")
@@ -172,6 +172,7 @@ class TestMiddlewareChain:
         chain = MiddlewareChain()
 
         error_log = []
+
         class ErrorMiddleware(BaseMiddleware):
             def error(self, ctx):
                 error_log.append(str(ctx.error))
@@ -196,7 +197,11 @@ class TestLoggingMiddleware:
         chain = MiddlewareChain()
         chain.add(middleware)
 
-        chain.execute("test_tool", {"arg": "value"}, lambda args: ToolResult(success=True, output="done"))
+        chain.execute(
+            "test_tool",
+            {"arg": "value"},
+            lambda args: ToolResult(success=True, output="done"),
+        )
 
         captured = capsys.readouterr()
         assert "test_tool" in captured.out
@@ -208,7 +213,11 @@ class TestLoggingMiddleware:
         chain = MiddlewareChain()
         chain.add(middleware)
 
-        chain.execute("test_tool", {"arg": "value"}, lambda args: ToolResult(success=True, output="done"))
+        chain.execute(
+            "test_tool",
+            {"arg": "value"},
+            lambda args: ToolResult(success=True, output="done"),
+        )
 
         captured = capsys.readouterr()
         assert "test_tool" in captured.out
@@ -240,7 +249,9 @@ class TestTracingMiddleware:
         chain.add(middleware)
 
         for i in range(5):
-            chain.execute(f"tool{i}", {}, lambda args: ToolResult(success=True, output="done"))
+            chain.execute(
+                f"tool{i}", {}, lambda args: ToolResult(success=True, output="done")
+            )
 
         traces = middleware.get_traces()
         assert len(traces) == 3
@@ -312,6 +323,7 @@ class TestCachingMiddleware:
         chain.add(middleware)
 
         call_count = [0]
+
         def counting_executor(args):
             call_count[0] += 1
             return ToolResult(success=True, output=f"call_{call_count[0]}")
@@ -332,6 +344,7 @@ class TestCachingMiddleware:
         chain.add(middleware)
 
         call_count = [0]
+
         def counting_executor(args):
             call_count[0] += 1
             return ToolResult(success=True, output=f"call_{call_count[0]}")
@@ -348,6 +361,7 @@ class TestCachingMiddleware:
         chain.add(middleware)
 
         call_count = [0]
+
         def counting_executor(args):
             call_count[0] += 1
             return ToolResult(success=True, output=f"call_{call_count[0]}")

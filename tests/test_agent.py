@@ -25,10 +25,8 @@ class MockTool(BaseTool):
     def parameters_schema(self):
         return {
             "type": "object",
-            "properties": {
-                "input": {"type": "string"}
-            },
-            "required": ["input"]
+            "properties": {"input": {"type": "string"}},
+            "required": ["input"],
         }
 
     def execute(self, input: str) -> ToolResult:
@@ -46,10 +44,7 @@ class TestReActAgent:
         registry.register(MockTool())
 
         agent = ReActAgent(
-            llm=llm,
-            memory=memory,
-            tool_registry=registry,
-            max_iterations=5
+            llm=llm, memory=memory, tool_registry=registry, max_iterations=5
         )
 
         assert agent.max_iterations == 5
@@ -102,7 +97,9 @@ class TestReActAgent:
         memory = ShortTermMemory()
         registry = ToolRegistry()
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
         # Use a non-simple input to avoid being routed to direct answer
         result = agent.run("Please tell me about Python programming")
 
@@ -122,7 +119,7 @@ class TestReActAgent:
         llm.chat = Mock(
             side_effect=[
                 ("Let me check", [tool_call], LLMUsage()),
-                ("The result is: Processed: test", [], LLMUsage())
+                ("The result is: Processed: test", [], LLMUsage()),
             ]
         )
 
@@ -130,7 +127,9 @@ class TestReActAgent:
         registry = ToolRegistry()
         registry.register(MockTool())
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
         result = agent.run("Process test")
 
         assert "Processed: test" in result.response
@@ -153,7 +152,7 @@ class TestReActAgent:
             memory=memory,
             tool_registry=registry,
             max_iterations=3,
-            verbose=False
+            verbose=False,
         )
         result = agent.run("Do something")
 
@@ -168,7 +167,9 @@ class TestReActAgent:
         memory = ShortTermMemory()
         registry = ToolRegistry()
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
         agent.run("Hello")
         agent.reset()
 
@@ -181,7 +182,9 @@ class TestReActAgent:
         memory = ShortTermMemory()
         registry = ToolRegistry()
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
         agent.add_tool(MockTool())
 
         assert "mock_tool" in agent.tool_registry
@@ -209,7 +212,7 @@ class TestPrompts:
         desc = TOOL_DESCRIPTION_TEMPLATE.format(
             name="python_execute",
             description="Execute Python code",
-            parameters={"type": "object"}
+            parameters={"type": "object"},
         )
 
         assert "python_execute" in desc
@@ -227,7 +230,9 @@ class TestReActAgentStreaming:
         memory = ShortTermMemory()
         registry = ToolRegistry()
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         # Use a non-simple input to avoid being routed to direct answer
         chunks = list(agent.run_stream("Please tell me about Python programming"))
@@ -243,7 +248,7 @@ class TestReActAgentStreaming:
         llm.chat = Mock(
             side_effect=[
                 ("Let me check", [tool_call], LLMUsage()),
-                ("The result is: Processed: test", [], LLMUsage())
+                ("The result is: Processed: test", [], LLMUsage()),
             ]
         )
 
@@ -251,7 +256,9 @@ class TestReActAgentStreaming:
         registry = ToolRegistry()
         registry.register(MockTool())
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         chunks = list(agent.run_stream("Process test"))
 
@@ -271,10 +278,7 @@ class TestReActAgentWithSkillPrompt:
         skill_prompt = "You are a coding assistant."
 
         agent = ReActAgent(
-            llm=llm,
-            memory=memory,
-            tool_registry=registry,
-            skill_prompt=skill_prompt
+            llm=llm, memory=memory, tool_registry=registry, skill_prompt=skill_prompt
         )
 
         messages = memory.get_all()
@@ -290,10 +294,7 @@ class TestReActAgentWithSkillPrompt:
         skill_prompt = "You are a specialized assistant."
 
         agent = ReActAgent(
-            llm=llm,
-            memory=memory,
-            tool_registry=registry,
-            skill_prompt=skill_prompt
+            llm=llm, memory=memory, tool_registry=registry, skill_prompt=skill_prompt
         )
 
         agent.add_tool(MockTool())

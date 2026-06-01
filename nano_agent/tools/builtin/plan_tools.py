@@ -12,7 +12,6 @@ from typing import Optional
 from ...agent.types import Plan, PlanPhase
 from ..base import BaseTool, ToolResult
 
-
 PLANS_DIR = Path(".nano_agent/plans")
 
 
@@ -25,10 +24,10 @@ def _ensure_plans_dir() -> Path:
 def _slugify(name: str) -> str:
     """Convert plan name to filename-safe slug."""
     # Replace spaces and special chars with hyphens
-    slug = re.sub(r'[^\w\s-]', '', name.lower())
-    slug = re.sub(r'[\s_]+', '-', slug)
-    slug = re.sub(r'-+', '-', slug)
-    return slug.strip('-') or 'plan'
+    slug = re.sub(r"[^\w\s-]", "", name.lower())
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug)
+    return slug.strip("-") or "plan"
 
 
 def plan_to_markdown(plan: Plan) -> str:
@@ -57,13 +56,15 @@ def plan_to_markdown(plan: Plan) -> str:
         for risk in plan.risks:
             lines.append(f"- {risk}")
 
-    lines.extend([
-        "",
-        "## 执行进度",
-        "",
-        "## 变更历史",
-        f"- {plan.created_at}: 创建计划",
-    ])
+    lines.extend(
+        [
+            "",
+            "## 执行进度",
+            "",
+            "## 变更历史",
+            f"- {plan.created_at}: 创建计划",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -122,15 +123,17 @@ def markdown_to_plan(content: str, filename: str) -> Plan:
                 break
             if line.startswith("- ["):
                 # Parse: - [ ] v0.7.0 - Description
-                match = re.match(r'- \[([ x])\] (\S+) - (.+)', line)
+                match = re.match(r"- \[([ x])\] (\S+) - (.+)", line)
                 if match:
                     checked, version, desc = match.groups()
                     phase_status = "completed" if checked == "x" else "pending"
-                    phases.append(PlanPhase(
-                        version=version,
-                        description=desc.strip(),
-                        status=phase_status
-                    ))
+                    phases.append(
+                        PlanPhase(
+                            version=version,
+                            description=desc.strip(),
+                            status=phase_status,
+                        )
+                    )
 
     # Extract risks
     risks = []
@@ -152,7 +155,7 @@ def markdown_to_plan(content: str, filename: str) -> Plan:
         phases=phases,
         risks=risks,
         created_at=created_at,
-        status=status
+        status=status,
     )
 
 
@@ -167,18 +170,9 @@ class SavePlanTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "plan_name": {
-                    "type": "string",
-                    "description": "计划名称"
-                },
-                "task": {
-                    "type": "string",
-                    "description": "任务描述"
-                },
-                "analysis": {
-                    "type": "string",
-                    "description": "任务分析"
-                },
+                "plan_name": {"type": "string", "description": "计划名称"},
+                "task": {"type": "string", "description": "任务描述"},
+                "analysis": {"type": "string", "description": "任务分析"},
                 "phases": {
                     "type": "array",
                     "description": "实现阶段",
@@ -186,17 +180,17 @@ class SavePlanTool(BaseTool):
                         "type": "object",
                         "properties": {
                             "version": {"type": "string"},
-                            "description": {"type": "string"}
-                        }
-                    }
+                            "description": {"type": "string"},
+                        },
+                    },
                 },
                 "risks": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "风险与约束"
-                }
+                    "description": "风险与约束",
+                },
             },
-            "required": ["plan_name", "task", "analysis", "phases"]
+            "required": ["plan_name", "task", "analysis", "phases"],
         }
 
     def execute(self, **kwargs) -> ToolResult:
@@ -209,18 +203,13 @@ class SavePlanTool(BaseTool):
         # Build phases
         phases = [
             PlanPhase(
-                version=p.get("version", ""),
-                description=p.get("description", "")
+                version=p.get("version", ""), description=p.get("description", "")
             )
             for p in phases_data
         ]
 
         plan = Plan(
-            name=plan_name,
-            task=task,
-            analysis=analysis,
-            phases=phases,
-            risks=risks
+            name=plan_name, task=task, analysis=analysis, phases=phases, risks=risks
         )
 
         # Save to file
@@ -229,10 +218,7 @@ class SavePlanTool(BaseTool):
         plan_file = PLANS_DIR / f"{slug}.md"
         plan_file.write_text(plan_to_markdown(plan), encoding="utf-8")
 
-        return ToolResult(
-            success=True,
-            output=f"计划已保存到 {plan_file}"
-        )
+        return ToolResult(success=True, output=f"计划已保存到 {plan_file}")
 
 
 class ListPlansTool(BaseTool):
@@ -248,15 +234,13 @@ class ListPlansTool(BaseTool):
     def execute(self, **kwargs) -> ToolResult:
         if not PLANS_DIR.exists():
             return ToolResult(
-                success=True,
-                output="暂无计划。使用 /plan 命令创建新计划。"
+                success=True, output="暂无计划。使用 /plan 命令创建新计划。"
             )
 
         plan_files = list(PLANS_DIR.glob("*.md"))
         if not plan_files:
             return ToolResult(
-                success=True,
-                output="暂无计划。使用 /plan 命令创建新计划。"
+                success=True, output="暂无计划。使用 /plan 命令创建新计划。"
             )
 
         lines = ["已保存的计划：", ""]
@@ -267,7 +251,7 @@ class ListPlansTool(BaseTool):
                 status_icon = {
                     "planning": "📝",
                     "executing": "🔄",
-                    "completed": "✅"
+                    "completed": "✅",
                 }.get(plan.status, "❓")
                 lines.append(f"  {status_icon} {plan.name} ({plan.status})")
                 if plan.phases:
@@ -290,12 +274,9 @@ class LoadPlanTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "plan_name": {
-                    "type": "string",
-                    "description": "计划名称或文件名"
-                }
+                "plan_name": {"type": "string", "description": "计划名称或文件名"}
             },
-            "required": ["plan_name"]
+            "required": ["plan_name"],
         }
 
     def execute(self, **kwargs) -> ToolResult:
@@ -311,9 +292,7 @@ class LoadPlanTool(BaseTool):
 
         if not plan_file.exists():
             return ToolResult(
-                success=False,
-                output="",
-                error=f"未找到计划: {plan_name}"
+                success=False, output="", error=f"未找到计划: {plan_name}"
             )
 
         try:
@@ -336,7 +315,9 @@ class LoadPlanTool(BaseTool):
             ]
             for i, phase in enumerate(plan.phases, 1):
                 status_mark = "✅" if phase.status == "completed" else "⬜"
-                lines.append(f"  {i}. {status_mark} {phase.version} - {phase.description}")
+                lines.append(
+                    f"  {i}. {status_mark} {phase.version} - {phase.description}"
+                )
 
             if plan.risks:
                 lines.extend(["", "## 风险与约束"])
@@ -344,12 +325,7 @@ class LoadPlanTool(BaseTool):
                     lines.append(f"  - {risk}")
 
             return ToolResult(
-                success=True,
-                output="\n".join(lines),
-                metadata={"plan": plan}
+                success=True, output="\n".join(lines), metadata={"plan": plan}
             )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                error=f"加载计划失败: {e}"
-            )
+            return ToolResult(success=False, error=f"加载计划失败: {e}")

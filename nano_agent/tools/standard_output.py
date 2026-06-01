@@ -9,10 +9,10 @@ class OutputFormat(Enum):
     """Standardized output format types."""
 
     STRUCTURE = "structure"  # Key-value pairs (file_read structure info)
-    LIST = "list"            # Item list (file_search, web_search)
-    STATUS = "status"        # Status message (shell, python_execute)
-    CONTENT = "content"      # Content with metadata (file_read body)
-    ERROR = "error"          # Error message
+    LIST = "list"  # Item list (file_search, web_search)
+    STATUS = "status"  # Status message (shell, python_execute)
+    CONTENT = "content"  # Content with metadata (file_read body)
+    ERROR = "error"  # Error message
 
 
 @dataclass
@@ -114,7 +114,9 @@ class StandardToolOutput:
             if lines_total:
                 header_parts.append(f"Lines: {lines_total}")
             if start_line > 1 or lines_shown < lines_total:
-                header_parts.append(f"Showing: {start_line}-{start_line + lines_shown - 1}")
+                header_parts.append(
+                    f"Showing: {start_line}-{start_line + lines_shown - 1}"
+                )
             return "\n".join(header_parts) + "\n\n" + content
 
         # Compact: just content with minimal header

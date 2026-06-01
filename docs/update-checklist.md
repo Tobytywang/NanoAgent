@@ -27,14 +27,16 @@
 
 ```
 1. config/schema.py        → 添加配置定义
-2. cli/main.py _show_config() → 显示新配置
-3. cli/main.py _init_config_file() → 保存默认值
-4. core/builder.py create_agent() → 使用新配置
+2. config/loader.py        → 解析新配置字段 + save() 序列化
+3. cli/main.py _show_config() → 显示新配置
+4. cli/main.py _init_config_file() → 保存默认值
+5. core/builder.py create_agent() → 使用新配置
 ```
 
 **常见遗漏**：
 - 配置添加了但忘记在 `_show_config()` 显示
 - 核心模块实现了但忘记在 `create_agent()` 调用
+- `config/loader.py` 添加了解析但忘记 `save()` 序列化
 
 ### 2.2 CLI 命令相关
 
@@ -79,14 +81,15 @@ tests/test_cases.xlsx → 补充测试类、测试点、测试内容
 
 ## 四、文档更新矩阵
 
-| 变更类型 | CLAUDE.md | ROADMAP.md | BUGLIST.md | docs/api.md | docs/tutorial.md |
-|----------|-----------|------------|------------|-------------|------------------|
-| 新版本发布 | - | ✅ 标记完成 | - | ✅ 如有新API | - |
-| 新功能 | - | ✅ 规划/记录 | - | ✅ | ✅ 如影响工作流 |
-| BUG修复 | - | - | ✅ 复盘记录 | - | - |
-| 架构变更 | ✅ 更新架构图 | ✅ | - | ✅ | - |
-| 配置变更 | ✅ 更新配置说明 | - | - | - | - |
-| CLI命令变更 | ✅ 更新命令表 | - | - | ✅ | ✅ |
+| 变更类型 | CLAUDE.md | ROADMAP.md | BUGLIST.md | docs/api.md | docs/tutorial.md | docs/architecture.md | docs/constraints.md |
+|----------|-----------|------------|------------|-------------|------------------|---------------------|---------------------|
+| 新版本发布 | - | ✅ 标记完成 | - | ✅ 如有新API | - | - | - |
+| 新功能 | - | ✅ 规划/记录 | - | ✅ | ✅ 如影响工作流 | ✅ 新组件/流程 | ✅ 新约束/限制 |
+| BUG修复 | - | - | ✅ 复盘记录 | - | - | - | - |
+| 架构变更 | ✅ 更新架构图 | ✅ | - | ✅ | - | ✅ 更新架构图 | - |
+| 配置变更 | ✅ 更新配置说明 | - | - | ✅ | - | - | ✅ 新约束项 |
+| CLI命令变更 | ✅ 更新命令表 | - | - | ✅ | ✅ | - | - |
+| 新终止/检测机制 | - | ✅ | - | ✅ 枚举+API | ✅ FAQ | ✅ 流程图 | ✅ 硬限制+交互图 |
 
 ---
 
@@ -144,10 +147,28 @@ fi
 
 ---
 
-## 八、自动化建议
+## 八、自动化检查（pre-commit hooks）
 
-可以考虑添加 pre-commit hook 或 CI 检查：
+已通过 pre-commit 框架实现以下自动检查，`git commit` 时自动运行，失败则阻止提交：
 
-1. **版本号一致性检查** - 确保 `pyproject.toml` 和 `__init__.py` 同步
-2. **文档更新提醒** - 当 `schema.py` 变更时提醒检查 `api.md`
-3. **测试用例更新提醒** - 当 `tests/` 有新文件时提醒更新 `test_cases.xlsx`
+| Hook ID | 脚本 | 检查内容 |
+|---------|------|----------|
+| `check-version-consistency` | `scripts/check_version_consistency.sh` | `pyproject.toml` 和 `__init__.py` 版本号一致 |
+| `check-doc-updates` | `scripts/check_doc_updates.sh` | `schema.py` 变更时 `docs/` 文档也需更新 |
+| `check-test-cases` | `scripts/check_test_cases.sh` | 新增测试文件时 `test_cases.xlsx` 也需更新 |
+| `check-config-chain` | `scripts/check_config_chain.sh` | `schema.py` 新增字段时 `loader.py` 解析+保存也需更新 |
+| `black` | `black` | Python 代码格式化 |
+
+**安装方式**：
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+**手动运行**：
+
+```bash
+pre-commit run --all-files           # 运行所有 hook
+pre-commit run check-version-consistency --all-files  # 运行单个 hook
+```

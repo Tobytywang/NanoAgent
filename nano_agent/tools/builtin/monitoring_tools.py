@@ -25,34 +25,35 @@ class GetStatsTool(BaseTool):
             "properties": {
                 "detail": {
                     "type": "boolean",
-                    "description": "Whether to include detailed iteration breakdown (default: false)"
+                    "description": "Whether to include detailed iteration breakdown (default: false)",
                 }
-            }
+            },
         }
 
     def execute(self, detail: bool = False) -> ToolResult:
         if not self._tracker:
-            return ToolResult(
-                success=True,
-                output="Monitoring not available."
-            )
+            return ToolResult(success=True, output="Monitoring not available.")
 
         # Use session-level accumulated statistics
         summary = self._tracker.get_session_summary()
 
-        if not summary or summary.get('total_tokens', 0) == 0:
+        if not summary or summary.get("total_tokens", 0) == 0:
             return ToolResult(
                 success=True,
-                output="No statistics available yet. Run some queries first."
+                output="No statistics available yet. Run some queries first.",
             )
 
         # Calculate context usage
-        total_tokens = summary.get('total_tokens', 0)
-        usage_percent = (total_tokens / self._context_length) * 100 if self._context_length > 0 else 0
+        total_tokens = summary.get("total_tokens", 0)
+        usage_percent = (
+            (total_tokens / self._context_length) * 100
+            if self._context_length > 0
+            else 0
+        )
 
         if not detail:
             # Simple summary
-            duration_sec = summary.get('session_duration_ms', 0) / 1000
+            duration_sec = summary.get("session_duration_ms", 0) / 1000
             warning = ""
             if usage_percent >= 80:
                 warning = " ⚠️ (接近上限!)"
@@ -71,11 +72,15 @@ class GetStatsTool(BaseTool):
             # Detailed report - include both session and current run
             session_summary = summary
             current_run = self._tracker.get_full_report()
-            output = json.dumps({
-                "session_summary": session_summary,
-                "current_run": current_run,
-                "context_length": self._context_length,
-                "context_usage_percent": round(usage_percent, 2)
-            }, indent=2, default=str)
+            output = json.dumps(
+                {
+                    "session_summary": session_summary,
+                    "current_run": current_run,
+                    "context_length": self._context_length,
+                    "context_usage_percent": round(usage_percent, 2),
+                },
+                indent=2,
+                default=str,
+            )
 
         return ToolResult(success=True, output=output)

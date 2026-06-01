@@ -13,6 +13,7 @@ from ..tools.base import BaseTool
 @dataclass
 class SkillDefinition:
     """技能包定义（从配置加载）"""
+
     name: str
     description: str = ""
     system_prompt: str | None = None
@@ -74,7 +75,7 @@ class SkillRegistry(BaseRegistry["BaseSkill"]):
 
     def get_active_skills(self) -> list[BaseSkill]:
         """获取所有启用的技能包"""
-        return [s for s in self._items.values() if getattr(s, 'enabled', True)]
+        return [s for s in self._items.values() if getattr(s, "enabled", True)]
 
     def get_all_tools(self) -> list[BaseTool]:
         """获取所有技能包的工具"""

@@ -71,10 +71,7 @@ class TestMigrateFileToSQLite:
         file_dir.mkdir()
         db_path = temp_dir / "test.db"
 
-        report = migrate_file_to_sqlite(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        report = migrate_file_to_sqlite(file_dir=str(file_dir), db_path=str(db_path))
 
         assert report["total_file_sessions"] == 0
         assert report["migrated"] == []
@@ -91,17 +88,12 @@ class TestMigrateFileToSQLite:
 
         file_storage = FileStorage(base_dir=str(file_dir))
         entry = MemoryEntry.create(
-            session_id="test_session",
-            role="user",
-            content="Hello"
+            session_id="test_session", role="user", content="Hello"
         )
         file_storage.save(entry)
 
         # Run migration
-        report = migrate_file_to_sqlite(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        report = migrate_file_to_sqlite(file_dir=str(file_dir), db_path=str(db_path))
 
         assert report["total_file_sessions"] == 1
         assert "test_session" in report["migrated"]
@@ -125,17 +117,12 @@ class TestMigrateFileToSQLite:
         # Create multiple sessions
         for i in range(3):
             entry = MemoryEntry.create(
-                session_id=f"session_{i}",
-                role="user",
-                content=f"Message {i}"
+                session_id=f"session_{i}", role="user", content=f"Message {i}"
             )
             file_storage.save(entry)
 
         # Run migration
-        report = migrate_file_to_sqlite(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        report = migrate_file_to_sqlite(file_dir=str(file_dir), db_path=str(db_path))
 
         assert report["total_file_sessions"] == 3
         assert len(report["migrated"]) == 3
@@ -152,26 +139,19 @@ class TestMigrateFileToSQLite:
         # Create session in file storage
         file_storage = FileStorage(base_dir=str(file_dir))
         entry = MemoryEntry.create(
-            session_id="existing_session",
-            role="user",
-            content="Hello"
+            session_id="existing_session", role="user", content="Hello"
         )
         file_storage.save(entry)
 
         # Create same session in SQLite
         sqlite_storage = SQLiteStorage(db_path=str(db_path))
         sqlite_entry = MemoryEntry.create(
-            session_id="existing_session",
-            role="user",
-            content="Already exists"
+            session_id="existing_session", role="user", content="Already exists"
         )
         sqlite_storage.save(sqlite_entry)
 
         # Run migration
-        report = migrate_file_to_sqlite(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        report = migrate_file_to_sqlite(file_dir=str(file_dir), db_path=str(db_path))
 
         assert "existing_session" in report["already_in_sqlite"]
         assert "existing_session" not in report["migrated"]
@@ -186,17 +166,13 @@ class TestMigrateFileToSQLite:
 
         file_storage = FileStorage(base_dir=str(file_dir))
         entry = MemoryEntry.create(
-            session_id="test_session",
-            role="user",
-            content="Hello"
+            session_id="test_session", role="user", content="Hello"
         )
         file_storage.save(entry)
 
         # Run dry run
         report = migrate_file_to_sqlite(
-            file_dir=str(file_dir),
-            db_path=str(db_path),
-            dry_run=True
+            file_dir=str(file_dir), db_path=str(db_path), dry_run=True
         )
 
         assert report["dry_run"] is True
@@ -218,22 +194,15 @@ class TestMigrateFileToSQLite:
 
         file_storage = FileStorage(base_dir=str(file_dir))
         entry = MemoryEntry.create(
-            session_id="session_with_summary",
-            role="user",
-            content="Hello"
+            session_id="session_with_summary", role="user", content="Hello"
         )
         file_storage.save(entry)
         file_storage.save_summary(
-            session_id="session_with_summary",
-            summary="Test summary",
-            message_count=1
+            session_id="session_with_summary", summary="Test summary", message_count=1
         )
 
         # Run migration
-        report = migrate_file_to_sqlite(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        report = migrate_file_to_sqlite(file_dir=str(file_dir), db_path=str(db_path))
 
         assert "session_with_summary" in report["migrated"]
 
@@ -243,10 +212,7 @@ class TestMigrateFileToSQLite:
         file_dir.mkdir()
         db_path = temp_dir / "test.db"
 
-        report = migrate_file_to_sqlite(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        report = migrate_file_to_sqlite(file_dir=str(file_dir), db_path=str(db_path))
 
         assert "total_file_sessions" in report
         assert "already_in_sqlite" in report
@@ -265,10 +231,7 @@ class TestListAllSessions:
         file_dir.mkdir()
         db_path = temp_dir / "test.db"
 
-        result = list_all_sessions(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        result = list_all_sessions(file_dir=str(file_dir), db_path=str(db_path))
 
         assert result["file_storage"]["sessions"] == []
         assert result["sqlite_storage"]["sessions"] == []
@@ -284,16 +247,11 @@ class TestListAllSessions:
 
         file_storage = FileStorage(base_dir=str(file_dir))
         entry = MemoryEntry.create(
-            session_id="file_session",
-            role="user",
-            content="Hello"
+            session_id="file_session", role="user", content="Hello"
         )
         file_storage.save(entry)
 
-        result = list_all_sessions(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        result = list_all_sessions(file_dir=str(file_dir), db_path=str(db_path))
 
         assert "file_session" in result["file_storage"]["sessions"]
         assert result["total_unique_sessions"] == 1
@@ -308,16 +266,11 @@ class TestListAllSessions:
 
         sqlite_storage = SQLiteStorage(db_path=str(db_path))
         entry = MemoryEntry.create(
-            session_id="sqlite_session",
-            role="user",
-            content="Hello"
+            session_id="sqlite_session", role="user", content="Hello"
         )
         sqlite_storage.save(entry)
 
-        result = list_all_sessions(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        result = list_all_sessions(file_dir=str(file_dir), db_path=str(db_path))
 
         assert "sqlite_session" in result["sqlite_storage"]["sessions"]
         assert result["total_unique_sessions"] == 1
@@ -333,25 +286,18 @@ class TestListAllSessions:
         # Add to file storage
         file_storage = FileStorage(base_dir=str(file_dir))
         entry1 = MemoryEntry.create(
-            session_id="file_session",
-            role="user",
-            content="Hello"
+            session_id="file_session", role="user", content="Hello"
         )
         file_storage.save(entry1)
 
         # Add to SQLite
         sqlite_storage = SQLiteStorage(db_path=str(db_path))
         entry2 = MemoryEntry.create(
-            session_id="sqlite_session",
-            role="user",
-            content="Hello"
+            session_id="sqlite_session", role="user", content="Hello"
         )
         sqlite_storage.save(entry2)
 
-        result = list_all_sessions(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        result = list_all_sessions(file_dir=str(file_dir), db_path=str(db_path))
 
         assert "file_session" in result["file_storage"]["sessions"]
         assert "sqlite_session" in result["sqlite_storage"]["sessions"]
@@ -367,16 +313,11 @@ class TestListAllSessions:
 
         file_storage = FileStorage(base_dir=str(file_dir))
         entry = MemoryEntry.create(
-            session_id="test_session",
-            role="user",
-            content="Hello"
+            session_id="test_session", role="user", content="Hello"
         )
         file_storage.save(entry)
 
-        result = list_all_sessions(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        result = list_all_sessions(file_dir=str(file_dir), db_path=str(db_path))
 
         assert "info" in result["file_storage"]
         assert "test_session" in result["file_storage"]["info"]
@@ -392,24 +333,17 @@ class TestListAllSessions:
         # Add same session to both (simulating migration)
         file_storage = FileStorage(base_dir=str(file_dir))
         entry1 = MemoryEntry.create(
-            session_id="shared_session",
-            role="user",
-            content="Hello"
+            session_id="shared_session", role="user", content="Hello"
         )
         file_storage.save(entry1)
 
         sqlite_storage = SQLiteStorage(db_path=str(db_path))
         entry2 = MemoryEntry.create(
-            session_id="shared_session",
-            role="user",
-            content="Hello"
+            session_id="shared_session", role="user", content="Hello"
         )
         sqlite_storage.save(entry2)
 
-        result = list_all_sessions(
-            file_dir=str(file_dir),
-            db_path=str(db_path)
-        )
+        result = list_all_sessions(file_dir=str(file_dir), db_path=str(db_path))
 
         # Should count unique sessions
         assert result["total_unique_sessions"] == 1

@@ -17,7 +17,7 @@ class BaseAgent(ABC):
         llm: BaseLLM,
         memory: BaseMemory,
         tool_registry: ToolRegistry,
-        max_iterations: int = 10
+        max_iterations: int = 10,
     ):
         """
         初始化 Agent。
@@ -59,11 +59,7 @@ class BaseAgent(ABC):
         """
         tool = self.tool_registry.get(tool_name)
         if tool is None:
-            return ToolResult(
-                success=False,
-                output="",
-                error=f"未知工具: {tool_name}"
-            )
+            return ToolResult(success=False, output="", error=f"未知工具: {tool_name}")
         return tool.execute(**arguments)
 
     def reset(self) -> None:

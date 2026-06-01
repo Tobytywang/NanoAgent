@@ -43,7 +43,7 @@ class Console:
         cls,
         message: str,
         style: Literal["info", "success", "warning", "error", "user", "agent"] = "info",
-        end: str = "\n"
+        end: str = "\n",
     ) -> None:
         """
         打印带样式的消息。

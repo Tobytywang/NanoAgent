@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING, Callable
 
 from ..agent.types import Plan, PlanPhase
 from ..agent.events import EventEmitter
-from ..tools.builtin.plan_tools import _ensure_plans_dir, _slugify, plan_to_markdown, PLANS_DIR
+from ..tools.builtin.plan_tools import (
+    _ensure_plans_dir,
+    _slugify,
+    plan_to_markdown,
+    PLANS_DIR,
+)
 
 if TYPE_CHECKING:
     from ..llm.base import BaseLLM
@@ -68,10 +73,7 @@ class PlanMode:
     """
 
     def __init__(
-        self,
-        llm: "BaseLLM",
-        config: "Config",
-        events: EventEmitter | None = None
+        self, llm: "BaseLLM", config: "Config", events: EventEmitter | None = None
     ):
         self.llm = llm
         self.config = config
@@ -90,8 +92,7 @@ class PlanMode:
         """
         prompt = PLAN_PROMPT.format(task=task)
         response, _, _ = self.llm.chat(
-            messages=[{"role": "user", "content": prompt}],
-            tools=None
+            messages=[{"role": "user", "content": prompt}], tools=None
         )
         self.current_plan = self._parse_plan_response(response, task)
         self.events.emit("plan_generated", {"plan": self.current_plan})
@@ -111,13 +112,9 @@ class PlanMode:
             raise ValueError("No plan to adjust. Call generate_plan() first.")
 
         current_plan_text = self._plan_to_text(self.current_plan)
-        prompt = ADJUST_PROMPT.format(
-            current_plan=current_plan_text,
-            feedback=feedback
-        )
+        prompt = ADJUST_PROMPT.format(current_plan=current_plan_text, feedback=feedback)
         response, _, _ = self.llm.chat(
-            messages=[{"role": "user", "content": prompt}],
-            tools=None
+            messages=[{"role": "user", "content": prompt}], tools=None
         )
         self.current_plan = self._parse_plan_response(response, self.current_plan.task)
         self.events.emit("plan_adjusted", {"plan": self.current_plan})
@@ -138,29 +135,30 @@ class PlanMode:
         plan_file = PLANS_DIR / f"{slug}.md"
         plan_file.write_text(plan_to_markdown(self.current_plan), encoding="utf-8")
 
-        self.events.emit("plan_saved", {
-            "plan": self.current_plan,
-            "path": str(plan_file)
-        })
+        self.events.emit(
+            "plan_saved", {"plan": self.current_plan, "path": str(plan_file)}
+        )
         return str(plan_file)
 
     def _parse_plan_response(self, response: str, original_task: str) -> Plan:
         """解析 LLM 返回的计划。"""
         # Extract plan name
         name = "unnamed-plan"
-        name_match = re.search(r'计划名称[：:]\s*(.+)', response)
+        name_match = re.search(r"计划名称[：:]\s*(.+)", response)
         if name_match:
             name = name_match.group(1).strip()
 
         # Extract analysis
         analysis = ""
-        analysis_match = re.search(r'任务分析[：:]\s*(.+?)(?=\n实现阶段|\n风险|\n---|$)', response, re.DOTALL)
+        analysis_match = re.search(
+            r"任务分析[：:]\s*(.+?)(?=\n实现阶段|\n风险|\n---|$)", response, re.DOTALL
+        )
         if analysis_match:
             analysis = analysis_match.group(1).strip()
 
         # Extract phases
         phases = []
-        phase_pattern = r'-\s*阶段[^:]*[：:]\s*(.+?)\s*\((v[\d.]+)\)'
+        phase_pattern = r"-\s*阶段[^:]*[：:]\s*(.+?)\s*\((v[\d.]+)\)"
         for match in re.finditer(phase_pattern, response):
             description = match.group(1).strip()
             version = match.group(2).strip()
@@ -179,29 +177,23 @@ class PlanMode:
 
         # Extract risks
         risks = []
-        risks_match = re.search(r'风险与约束[：:]\s*(.+?)(?=\n---|\n##|$)', response, re.DOTALL)
+        risks_match = re.search(
+            r"风险与约束[：:]\s*(.+?)(?=\n---|\n##|$)", response, re.DOTALL
+        )
         if risks_match:
             risks_text = risks_match.group(1).strip()
-            for risk in re.split(r'[,\n]', risks_text):
+            for risk in re.split(r"[,\n]", risks_text):
                 risk = risk.strip()
                 if risk and not risk.startswith("-"):
                     risks.append(risk)
 
         return Plan(
-            name=name,
-            task=original_task,
-            analysis=analysis,
-            phases=phases,
-            risks=risks
+            name=name, task=original_task, analysis=analysis, phases=phases, risks=risks
         )
 
     def _plan_to_text(self, plan: Plan) -> str:
         """将计划转换为文本格式。"""
-        lines = [
-            f"计划名称: {plan.name}",
-            f"任务分析: {plan.analysis}",
-            "实现阶段:"
-        ]
+        lines = [f"计划名称: {plan.name}", f"任务分析: {plan.analysis}", "实现阶段:"]
         for i, phase in enumerate(plan.phases, 1):
             lines.append(f"- 阶段{i}: {phase.description} ({phase.version})")
         if plan.risks:
@@ -214,7 +206,7 @@ def run_plan_mode_interactive(
     config: "Config",
     task: str,
     input_fn: Callable[[str], str] = input,
-    print_fn: Callable[[str], None] = print
+    print_fn: Callable[[str], None] = print,
 ) -> str:
     """
     Run plan mode interactively (CLI wrapper).
@@ -300,11 +292,9 @@ def list_plans() -> str:
         try:
             content = plan_file.read_text(encoding="utf-8")
             plan = markdown_to_plan(content, plan_file.stem)
-            status_icon = {
-                "planning": "📝",
-                "executing": "🔄",
-                "completed": "✅"
-            }.get(plan.status, "❓")
+            status_icon = {"planning": "📝", "executing": "🔄", "completed": "✅"}.get(
+                plan.status, "❓"
+            )
             lines.append(f"  {status_icon} {plan.name} ({plan.status})")
             if plan.phases:
                 completed = sum(1 for p in plan.phases if p.status == "completed")

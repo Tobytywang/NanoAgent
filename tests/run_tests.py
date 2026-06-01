@@ -20,7 +20,7 @@ def run_tests(args: list[str] = None):
         "--tb=short",
         "--cov=nano_agent",
         "--cov-fail-under=54",
-        *args
+        *args,
     ]
 
     result = subprocess.run(pytest_args)
@@ -35,14 +35,16 @@ def run_coverage():
         print("Installing pytest-cov...")
         subprocess.run([sys.executable, "-m", "pip", "install", "pytest-cov", "-q"])
 
-    result = subprocess.run([
-        "pytest",
-        "tests/",
-        "-v",
-        "--cov=nano_agent",
-        "--cov-report=term-missing",
-        "--cov-report=html",
-    ])
+    result = subprocess.run(
+        [
+            "pytest",
+            "tests/",
+            "-v",
+            "--cov=nano_agent",
+            "--cov-report=term-missing",
+            "--cov-report=html",
+        ]
+    )
     return result.returncode
 
 
@@ -51,15 +53,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run NanoAgent tests")
     parser.add_argument(
-        "--coverage", "-c",
-        action="store_true",
-        help="Run with coverage report"
+        "--coverage", "-c", action="store_true", help="Run with coverage report"
     )
-    parser.add_argument(
-        "pytest_args",
-        nargs="*",
-        help="Additional pytest arguments"
-    )
+    parser.add_argument("pytest_args", nargs="*", help="Additional pytest arguments")
 
     args = parser.parse_args()
 

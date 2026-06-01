@@ -371,6 +371,80 @@ detector.reset()
 
 **与 DuplicateDetector 的区别**: DuplicateDetector 检测完全相同的重复工具调用；StallDetector 检测"不同工具但原地打转"的模式。
 
+### ToolOffloadManager & OffloadedResult
+
+v0.7.17 工具结果卸载。大结果写入临时文件，仅注入摘要到上下文。
+
+```python
+from nano_agent.agent.tool_offload import ToolOffloadManager, OffloadedResult
+from nano_agent.config.schema import ToolOffloadConfig
+
+config = ToolOffloadConfig(
+    enabled=True,
+    size_threshold_tokens=1000,  # 超过 1000 tokens 触发卸载
+    offload_dir="/tmp/nano_agent_offload",
+    auto_cleanup=True,
+    summary_max_tokens=200,
+)
+
+manager = ToolOffloadManager(config)
+
+# 检查是否应卸载
+if manager.should_offload(large_content, "file_read", tool_can_offload=True):
+    summary, offloaded = manager.offload(large_content, "file_read", "call_123")
+    # summary: "[结果已卸载] file_read 返回约 5000 tokens\n摘要: ...\n完整结果: file_read(\"/tmp/xxx\")"
+    # offloaded.file_path: 临时文件路径
+```
+
+**OffloadedResult 字段**:
+- `offload_id: str` — 卸载 ID
+- `file_path: str` — 临时文件路径
+- `tool_name: str` — 工具名称
+- `original_size_tokens: int` — 原始大小
+- `summary: str` — 摘要内容
+- `accessed: bool` — 是否被访问
+
+### ToolResultCache & CacheEntry
+
+v0.7.17 多轮缓存。跨轮次复用工具结果，支持磁盘持久化和 mtime 失效。
+
+```python
+from nano_agent.agent.cache import ToolResultCache, CacheEntry
+from nano_agent.config.schema import CacheConfig
+
+config = CacheConfig(
+    enabled=True,
+    ttl_seconds=300,
+    persist=True,              # 持久化到磁盘
+    persist_dir=".nano_agent/cache",
+    warmup_on_restore=True,    # 会话恢复时预热
+    mtime_invalidation=True,   # 文件修改时失效
+)
+
+cache = ToolResultCache(config)
+
+# 缓存结果
+cache.set_cached_result("file_read", {"file_path": "/test.py"}, "file content")
+
+# 获取缓存（自动检查 TTL 和 mtime）
+result = cache.get_cached_result("file_read", {"file_path": "/test.py"})
+
+# 持久化到磁盘
+cache.persist_to_disk()
+
+# 从磁盘预热
+cache.warmup_from_disk()
+```
+
+**CacheEntry 字段**:
+- `tool_name: str` — 工具名称
+- `result: str` — 缓存内容（字符串）
+- `timestamp: float` — 缓存时间
+- `token_count: int` — Token 数量
+- `file_paths: list[str]` — 相关文件路径
+- `file_mtimes: dict[str, float]` — 文件修改时间
+- `is_offloaded: bool` — 是否为卸载摘要
+
 ### RoutingResult.suggested_budget_ratio
 
 v0.7.16 复杂度预算 Profile。QueryRouter 分类结果现在包含预算比例建议。
@@ -608,6 +682,7 @@ from nano_agent.tools.base import BaseTool, ToolResult
 class MyTool(BaseTool):
     name = "my_tool"
     description = "工具描述"
+    can_offload = True  # 允许大结果卸载到文件（默认 False）
 
     @property
     def parameters_schema(self):
@@ -817,9 +892,33 @@ tools:
   enabled: [all]
   disabled: []
 
+plugins:
+  directories: []            # 扫描插件的目录
+  modules: []                # 导入的 Python 模块
+  files: []                  # 加载的特定文件
+
 skills:
   enabled: []
   directory: .nano_agent/skills
+
+cache:
+  enabled: true
+  ttl_seconds: 300
+  cacheable_tools: [file_read, file_search, shell_execute]
+  excluded_tools: [file_write, memorize, forget]
+  max_cache_size: 100
+  persist: false             # 是否持久化到磁盘
+  persist_dir: .nano_agent/cache
+  warmup_on_restore: true    # 会话恢复时预热缓存
+  mtime_invalidation: true   # 基于文件修改时间失效
+
+offload:
+  enabled: true
+  size_threshold_tokens: 1000  # 超过此 token 数触发卸载
+  offload_dir: /tmp/nano_agent_offload
+  auto_cleanup: true
+  summary_max_tokens: 200
+  excluded_tools: [memorize, recall]
 ```
 
 ### ConfigLoader

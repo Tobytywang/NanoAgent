@@ -275,6 +275,7 @@ class TestAgentLifecycleEndToEnd:
 
     def test_agent_with_tools_workflow(self, mock_llm):
         """Test complete workflow with tool execution."""
+
         # Create a simple tool
         class EchoTool(BaseTool):
             @property
@@ -287,12 +288,7 @@ class TestAgentLifecycleEndToEnd:
 
             @property
             def parameters_schema(self) -> dict:
-                return {
-                    "type": "object",
-                    "properties": {
-                        "message": {"type": "string"}
-                    }
-                }
+                return {"type": "object", "properties": {"message": {"type": "string"}}}
 
             def execute(self, message: str = "") -> ToolResult:
                 return ToolResult(success=True, output=f"Echo: {message}")
@@ -389,8 +385,16 @@ class TestToolMergeEndToEnd:
         # Simulate what tool_merger does: merge multiple file_search calls
         merger = ToolCallMerger(ToolMergeConfig(enabled=True))
         calls = [
-            ToolCall(id="1", name="file_search", arguments={"directory": temp_dir, "pattern": "*plan*"}),
-            ToolCall(id="2", name="file_search", arguments={"directory": temp_dir, "pattern": "*.txt"}),
+            ToolCall(
+                id="1",
+                name="file_search",
+                arguments={"directory": temp_dir, "pattern": "*plan*"},
+            ),
+            ToolCall(
+                id="2",
+                name="file_search",
+                arguments={"directory": temp_dir, "pattern": "*.txt"},
+            ),
         ]
 
         merged = merger.analyze_and_merge(calls)
@@ -400,8 +404,7 @@ class TestToolMergeEndToEnd:
         merged_pattern = merged[0].arguments["pattern"]
         tool = FileSearchTool()
         result = tool.execute(
-            directory=merged[0].arguments["directory"],
-            pattern=merged_pattern
+            directory=merged[0].arguments["directory"], pattern=merged_pattern
         )
 
         # Verify the merged pattern works correctly

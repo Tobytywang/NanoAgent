@@ -208,9 +208,7 @@ class TestToolResultUndoData:
     def test_tool_result_with_undo_data(self):
         """Test ToolResult can hold undo_data."""
         result = ToolResult(
-            success=True,
-            output="Test output",
-            undo_data={"key": "value"}
+            success=True, output="Test output", undo_data={"key": "value"}
         )
         assert result.undo_data == {"key": "value"}
 

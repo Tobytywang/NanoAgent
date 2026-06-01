@@ -94,8 +94,7 @@ class TestGitManagerCommit:
         manager = GitManager()
         if manager.is_enabled() and manager.has_changes():
             result = manager.auto_commit(
-                "Test message",
-                step_info={"tool": "test_tool"}
+                "Test message", step_info={"tool": "test_tool"}
             )
             # Result could be commit hash or None
             if result:
@@ -203,7 +202,7 @@ class TestGitCommit:
             hash="abc1234",
             message="Test commit",
             time=datetime(2026, 5, 7, 10, 30, 0),
-            author="Test User"
+            author="Test User",
         )
 
         assert commit.hash == "abc1234"
@@ -224,8 +223,7 @@ class TestGitManagerFormatMessage:
         """Test formatting message with step info."""
         manager = GitManager()
         message = manager._format_commit_message(
-            "Test",
-            step_info={"tool": "file_write"}
+            "Test", step_info={"tool": "file_write"}
         )
         assert "[NanoAgent] Test" in message
         assert "Tool: file_write" in message
@@ -234,8 +232,7 @@ class TestGitManagerFormatMessage:
         """Test formatting message with arguments."""
         manager = GitManager()
         message = manager._format_commit_message(
-            "Test",
-            step_info={"tool": "shell_execute", "arguments": {"command": "ls"}}
+            "Test", step_info={"tool": "shell_execute", "arguments": {"command": "ls"}}
         )
         assert "[NanoAgent] Test" in message
         assert "Tool: shell_execute" in message
@@ -251,14 +248,26 @@ class TestGitManagerIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Initialize git repo
             subprocess.run(["git", "init"], cwd=tmpdir, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmpdir, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Test User"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@test.com"],
+                cwd=tmpdir,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test User"],
+                cwd=tmpdir,
+                capture_output=True,
+            )
 
             # Create initial commit
             test_file = Path(tmpdir) / "test.txt"
             test_file.write_text("initial")
             subprocess.run(["git", "add", "."], cwd=tmpdir, capture_output=True)
-            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=tmpdir, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", "Initial commit"],
+                cwd=tmpdir,
+                capture_output=True,
+            )
 
             yield tmpdir
 
@@ -273,7 +282,9 @@ class TestGitManagerIntegration:
         test_file = Path(temp_git_repo) / "test.txt"
         test_file.write_text("modified")
 
-        commit_hash = manager.auto_commit("Modified file", step_info={"tool": "file_write"})
+        commit_hash = manager.auto_commit(
+            "Modified file", step_info={"tool": "file_write"}
+        )
         assert commit_hash is not None
 
         # Check history

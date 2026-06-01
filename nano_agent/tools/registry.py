@@ -45,11 +45,7 @@ class ToolRegistry(BaseRegistry["BaseTool"]):
         super().register(tool, name or tool.name)
 
     def register_function(
-        self,
-        name: str,
-        description: str,
-        parameters_schema: dict,
-        func: Callable
+        self, name: str, description: str, parameters_schema: dict, func: Callable
     ) -> None:
         """
         Quickly register a function as a tool.
@@ -122,11 +118,7 @@ class ToolRegistry(BaseRegistry["BaseTool"]):
         """
         tool = self.get(name)
         if tool is None:
-            return ToolResult(
-                success=False,
-                output="",
-                error=f"Unknown tool: {name}"
-            )
+            return ToolResult(success=False, output="", error=f"Unknown tool: {name}")
 
         def executor(args: dict) -> ToolResult:
             # Pass tool to middleware via state
@@ -153,11 +145,7 @@ class ToolRegistry(BaseRegistry["BaseTool"]):
         """
         tool = self.get(name)
         if tool is None:
-            return ToolResult(
-                success=False,
-                output="",
-                error=f"Unknown tool: {name}"
-            )
+            return ToolResult(success=False, output="", error=f"Unknown tool: {name}")
         return tool.execute(**arguments)
 
     def get_all_schemas(self) -> list[dict]:

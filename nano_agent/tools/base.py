@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 @dataclass
 class ToolResult:
     """Result of a tool execution."""
+
     success: bool
     output: str
     error: str | None = None
@@ -26,10 +27,12 @@ class BaseTool(ABC):
     name: str = ""
     description: str = ""
     risk_level: "RiskLevel" = None  # Will be set to MODERATE by default
+    can_offload: bool = False  # Whether tool output can be offloaded to file
 
     def __init__(self):
         # Import here to avoid circular import
         from ..agent.types import RiskLevel
+
         if self.risk_level is None:
             self.risk_level = RiskLevel.MODERATE
 
@@ -64,8 +67,8 @@ class BaseTool(ABC):
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters_schema
-            }
+                "parameters": self.parameters_schema,
+            },
         }
 
     @abstractmethod

@@ -19,8 +19,8 @@ from nano_agent.tools import ToolRegistry
 from nano_agent.tools.base import BaseTool, ToolResult
 from nano_agent.llm.base import LLMUsage
 
-
 # === Directory and Storage Fixtures ===
+
 
 @pytest.fixture
 def temp_dir():
@@ -43,6 +43,7 @@ def temp_sqlite_storage(temp_dir):
 
 # === Memory Fixtures ===
 
+
 @pytest.fixture
 def short_term_memory():
     """Create a ShortTermMemory instance."""
@@ -53,9 +54,7 @@ def short_term_memory():
 def persistent_memory(temp_storage):
     """Create a PersistentMemory instance with temporary storage."""
     return PersistentMemory(
-        storage=temp_storage,
-        session_id="test_session",
-        system_prompt="Test prompt"
+        storage=temp_storage, session_id="test_session", system_prompt="Test prompt"
     )
 
 
@@ -71,11 +70,12 @@ def hybrid_memory(persistent_memory, long_term_memory):
     return HybridMemory(
         working_memory=persistent_memory,
         long_term_memory=long_term_memory,
-        session_id="test_session"
+        session_id="test_session",
     )
 
 
 # === Mock Fixtures ===
+
 
 @pytest.fixture
 def mock_llm():
@@ -102,6 +102,7 @@ def mock_tool_registry(mock_tool):
 
 
 # === Test Data Fixtures ===
+
 
 @pytest.fixture
 def sample_messages():
@@ -135,8 +136,10 @@ def sample_config_dict():
 
 # === Helper Functions ===
 
+
 def _create_mock_tool(name: str = "mock_tool", output: str = "mock result") -> BaseTool:
     """Create a mock tool instance."""
+
     class MockTool(BaseTool):
         def __init__(self, tool_name, tool_output):
             self.name = tool_name
@@ -147,10 +150,8 @@ def _create_mock_tool(name: str = "mock_tool", output: str = "mock result") -> B
         def parameters_schema(self) -> dict:
             return {
                 "type": "object",
-                "properties": {
-                    "input": {"type": "string"}
-                },
-                "required": ["input"]
+                "properties": {"input": {"type": "string"}},
+                "required": ["input"],
             }
 
         def execute(self, input: str = "") -> ToolResult:

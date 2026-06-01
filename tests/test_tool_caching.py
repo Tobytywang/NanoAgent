@@ -17,8 +17,22 @@ class TestToolCaching:
         llm = AnthropicLLM.__new__(AnthropicLLM)
 
         tools = [
-            {"type": "function", "function": {"name": "tool1", "description": "Tool 1", "parameters": {}}},
-            {"type": "function", "function": {"name": "tool2", "description": "Tool 2", "parameters": {}}},
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool1",
+                    "description": "Tool 1",
+                    "parameters": {},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool2",
+                    "description": "Tool 2",
+                    "parameters": {},
+                },
+            },
         ]
 
         result = llm._format_tools(tools, cache_tools=True)
@@ -35,7 +49,14 @@ class TestToolCaching:
         llm = AnthropicLLM.__new__(AnthropicLLM)
 
         tools = [
-            {"type": "function", "function": {"name": "tool1", "description": "Tool 1", "parameters": {}}},
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool1",
+                    "description": "Tool 1",
+                    "parameters": {},
+                },
+            },
         ]
 
         result = llm._format_tools(tools, cache_tools=False)
@@ -48,7 +69,14 @@ class TestToolCaching:
         llm = AnthropicLLM.__new__(AnthropicLLM)
 
         tools = [
-            {"type": "function", "function": {"name": "single_tool", "description": "Single", "parameters": {}}},
+            {
+                "type": "function",
+                "function": {
+                    "name": "single_tool",
+                    "description": "Single",
+                    "parameters": {},
+                },
+            },
         ]
 
         result = llm._format_tools(tools, cache_tools=True)
@@ -85,12 +113,10 @@ class TestToolCaching:
                     "description": "Read a file",
                     "parameters": {
                         "type": "object",
-                        "properties": {
-                            "file_path": {"type": "string"}
-                        },
-                        "required": ["file_path"]
-                    }
-                }
+                        "properties": {"file_path": {"type": "string"}},
+                        "required": ["file_path"],
+                    },
+                },
             }
         ]
 
@@ -103,7 +129,7 @@ class TestToolCaching:
 
     def test_chat_passes_cache_tools_parameter(self):
         """Test that chat() passes cache_tools parameter to _format_tools."""
-        with patch.object(AnthropicLLM, '__init__', lambda self, **kwargs: None):
+        with patch.object(AnthropicLLM, "__init__", lambda self, **kwargs: None):
             llm = AnthropicLLM()
             llm._client = Mock()
             llm.model = "claude-sonnet-4-20250514"
@@ -134,8 +160,17 @@ class TestToolCaching:
             # Call chat with cache_tools=False
             llm.chat(
                 messages=[{"role": "user", "content": "Hi"}],
-                tools=[{"type": "function", "function": {"name": "test", "description": "Test", "parameters": {}}}],
-                cache_tools=False
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "test",
+                            "description": "Test",
+                            "parameters": {},
+                        },
+                    }
+                ],
+                cache_tools=False,
             )
 
             # Verify cache_tools was passed correctly
@@ -148,7 +183,7 @@ class TestToolCachingIntegration:
 
     def test_chat_with_tools_caching_creates_correct_request(self):
         """Test that the request to Anthropic API includes cache_control on tools."""
-        with patch.object(AnthropicLLM, '__init__', lambda self, **kwargs: None):
+        with patch.object(AnthropicLLM, "__init__", lambda self, **kwargs: None):
             llm = AnthropicLLM()
             llm._client = Mock()
             llm.model = "claude-sonnet-4-20250514"
@@ -167,14 +202,28 @@ class TestToolCachingIntegration:
             llm._client.messages.create.return_value = mock_response
 
             tools = [
-                {"type": "function", "function": {"name": "tool1", "description": "Tool 1", "parameters": {}}},
-                {"type": "function", "function": {"name": "tool2", "description": "Tool 2", "parameters": {}}},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "tool1",
+                        "description": "Tool 1",
+                        "parameters": {},
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "tool2",
+                        "description": "Tool 2",
+                        "parameters": {},
+                    },
+                },
             ]
 
             text, tool_calls, usage = llm.chat(
                 messages=[{"role": "user", "content": "Hi"}],
                 tools=tools,
-                cache_tools=True
+                cache_tools=True,
             )
 
             # Verify the request was made with correct tools
@@ -199,7 +248,14 @@ class TestToolCachingDefault:
         llm = AnthropicLLM.__new__(AnthropicLLM)
 
         tools = [
-            {"type": "function", "function": {"name": "tool1", "description": "Tool 1", "parameters": {}}},
+            {
+                "type": "function",
+                "function": {
+                    "name": "tool1",
+                    "description": "Tool 1",
+                    "parameters": {},
+                },
+            },
         ]
 
         # Call without cache_tools parameter (should default to True)
@@ -209,7 +265,7 @@ class TestToolCachingDefault:
 
     def test_chat_default_caching(self):
         """Test that chat() defaults to caching tools."""
-        with patch.object(AnthropicLLM, '__init__', lambda self, **kwargs: None):
+        with patch.object(AnthropicLLM, "__init__", lambda self, **kwargs: None):
             llm = AnthropicLLM()
             llm._client = Mock()
             llm.model = "claude-sonnet-4-20250514"
@@ -227,14 +283,18 @@ class TestToolCachingDefault:
             llm._client.messages.create.return_value = mock_response
 
             tools = [
-                {"type": "function", "function": {"name": "tool1", "description": "Tool 1", "parameters": {}}},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "tool1",
+                        "description": "Tool 1",
+                        "parameters": {},
+                    },
+                },
             ]
 
             # Call chat without cache_tools parameter
-            llm.chat(
-                messages=[{"role": "user", "content": "Hi"}],
-                tools=tools
-            )
+            llm.chat(messages=[{"role": "user", "content": "Hi"}], tools=tools)
 
             # Verify cache_control was added (default behavior)
             call_args = llm._client.messages.create.call_args

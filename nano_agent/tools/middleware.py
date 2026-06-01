@@ -25,9 +25,10 @@ from .base import ToolResult
 
 class MiddlewarePhase(Enum):
     """When middleware is invoked."""
-    BEFORE = "before"    # Before tool execution
-    AFTER = "after"      # After successful execution
-    ERROR = "error"      # After failed execution
+
+    BEFORE = "before"  # Before tool execution
+    AFTER = "after"  # After successful execution
+    ERROR = "error"  # After failed execution
 
 
 @dataclass
@@ -38,6 +39,7 @@ class MiddlewareContext:
     Contains all information about the tool call and allows middleware
     to communicate with each other through shared state.
     """
+
     tool_name: str
     arguments: dict[str, Any]
     result: ToolResult | None = None
@@ -139,7 +141,7 @@ class MiddlewareChain:
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        executor: Callable[[dict[str, Any]], ToolResult]
+        executor: Callable[[dict[str, Any]], ToolResult],
     ) -> ToolResult:
         """
         Execute tool with middleware chain.
@@ -154,10 +156,7 @@ class MiddlewareChain:
         """
         import time
 
-        ctx = MiddlewareContext(
-            tool_name=tool_name,
-            arguments=arguments.copy()
-        )
+        ctx = MiddlewareContext(tool_name=tool_name, arguments=arguments.copy())
 
         # Before phase (higher priority first)
         ctx.start_time = time.time()

@@ -34,7 +34,7 @@ class LongTermEntry:
         keywords: list[str] | None = None,
         source_session: str = "",
         importance: float = 0.5,
-        metadata: dict | None = None
+        metadata: dict | None = None,
     ) -> "LongTermEntry":
         """创建新的长期记忆条目。"""
         return cls(
@@ -45,7 +45,7 @@ class LongTermEntry:
             source_session=source_session,
             created_at=datetime.now().isoformat(),
             importance=importance,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
     def to_dict(self) -> dict:
@@ -58,7 +58,7 @@ class LongTermEntry:
             "source_session": self.source_session,
             "created_at": self.created_at,
             "importance": self.importance,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
     @classmethod
@@ -72,7 +72,7 @@ class LongTermEntry:
             source_session=data.get("source_session", ""),
             created_at=data["created_at"],
             importance=data.get("importance", 0.5),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
         )
 
 
@@ -123,7 +123,7 @@ class LongTermMemory:
         keywords: list[str] | None = None,
         source_session: str = "",
         importance: float = 0.5,
-        metadata: dict | None = None
+        metadata: dict | None = None,
     ) -> tuple[str, bool]:
         """
         添加或更新长期记忆条目。
@@ -160,7 +160,7 @@ class LongTermMemory:
             keywords=keywords,
             source_session=source_session,
             importance=importance,
-            metadata=metadata
+            metadata=metadata,
         )
 
         self.entries.append(entry)
@@ -216,23 +216,25 @@ class LongTermMemory:
         keywords = []
 
         # 提取英文单词
-        english_words = re.findall(r'[a-zA-Z]{2,}', text.lower())
+        english_words = re.findall(r"[a-zA-Z]{2,}", text.lower())
         keywords.extend([w for w in english_words if w not in ENGLISH_STOP_WORDS])
 
         # 提取中文片段
-        chinese_matches = re.findall(r'[一-鿿]+', text)
+        chinese_matches = re.findall(r"[一-鿿]+", text)
         for chars in chinese_matches:
             # 始终使用滑动窗口以获得更好的匹配
             for i in range(len(chars)):
                 for length in [4, 3, 2]:
                     if i + length <= len(chars):
-                        segment = chars[i:i+length]
+                        segment = chars[i : i + length]
                         if segment not in CHINESE_STOP_WORDS:
                             keywords.append(segment)
 
         return set(k.lower() for k in keywords)
 
-    def _calculate_similarity(self, entry: LongTermEntry, new_keywords: set[str]) -> float:
+    def _calculate_similarity(
+        self, entry: LongTermEntry, new_keywords: set[str]
+    ) -> float:
         """
         基于关键字重叠计算条目与新内容的相似度。
 
@@ -258,7 +260,7 @@ class LongTermMemory:
         content: str,
         keywords: list[str] | None,
         category: str,
-        metadata: dict | None = None
+        metadata: dict | None = None,
     ) -> LongTermEntry | None:
         """
         查找与新内容相似的已有条目。
@@ -273,7 +275,11 @@ class LongTermMemory:
             如找到相似条目则返回，否则返回 None
         """
         # 从新内容提取关键字
-        new_keywords = set(k.lower() for k in keywords) if keywords else self._extract_search_keywords(content)
+        new_keywords = (
+            set(k.lower() for k in keywords)
+            if keywords
+            else self._extract_search_keywords(content)
+        )
 
         for entry in self.entries:
             # 要求类别相同

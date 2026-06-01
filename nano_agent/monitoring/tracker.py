@@ -88,13 +88,13 @@ class MetricsTracker:
 
         self.run_metrics.end_time = datetime.now()
         self.run_metrics.final_response = response
-        self.run_metrics.total_latency_ms = (time.perf_counter() - self._run_start_time) * 1000
+        self.run_metrics.total_latency_ms = (
+            time.perf_counter() - self._run_start_time
+        ) * 1000
 
         # Calculate total tokens for this run
         self.run_metrics.total_tokens = sum(
-            i.llm_call.total_tokens
-            for i in self.run_metrics.iterations
-            if i.llm_call
+            i.llm_call.total_tokens for i in self.run_metrics.iterations if i.llm_call
         )
 
         # Store run in history for cross-run analysis
@@ -308,7 +308,9 @@ class MetricsTracker:
                 arguments=raw_data.tool_call.arguments,
                 success=raw_data.result.success,
                 latency_ms=raw_data.latency_ms,
-                output_length=len(raw_data.result.output) if raw_data.result.output else 0,
+                output_length=(
+                    len(raw_data.result.output) if raw_data.result.output else 0
+                ),
                 error=raw_data.result.error,
             )
         )
@@ -418,12 +420,14 @@ class MetricsTracker:
         result = []
         for iteration in self.run_metrics.iterations:
             if iteration.llm_call:
-                result.append({
-                    "iteration_number": iteration.iteration_number,
-                    "prompt_tokens": iteration.llm_call.prompt_tokens,
-                    "completion_tokens": iteration.llm_call.completion_tokens,
-                    "total_tokens": iteration.llm_call.total_tokens,
-                })
+                result.append(
+                    {
+                        "iteration_number": iteration.iteration_number,
+                        "prompt_tokens": iteration.llm_call.prompt_tokens,
+                        "completion_tokens": iteration.llm_call.completion_tokens,
+                        "total_tokens": iteration.llm_call.total_tokens,
+                    }
+                )
         return result
 
     def get_full_report(self) -> dict[str, Any]:
@@ -490,25 +494,27 @@ class MetricsTracker:
                         for s in iteration.skipped_tool_calls
                     ]
 
-                    result.append({
-                        "id": row_id,
-                        "run_number": run_num,
-                        "iteration_number": iter_num,
-                        "tool_tokens": token_breakdown["tool_tokens"],
-                        "system_tokens": token_breakdown["system_tokens"],
-                        "skill_tokens": token_breakdown["skill_tokens"],
-                        "summary_tokens": token_breakdown["summary_tokens"],
-                        "message_tokens": token_breakdown["message_tokens"],
-                        "input_tokens": llm.prompt_tokens,
-                        "output_tool_tokens": token_breakdown["output_tool_tokens"],
-                        "output_text_tokens": token_breakdown["output_text_tokens"],
-                        "total_tokens": llm.total_tokens,
-                        # Raw data for CLI to format description
-                        "tool_names": tool_names,
-                        "input_messages": llm.input_messages,
-                        "output_text": llm.output_text,
-                        "skipped_tool_calls": skipped_calls,
-                    })
+                    result.append(
+                        {
+                            "id": row_id,
+                            "run_number": run_num,
+                            "iteration_number": iter_num,
+                            "tool_tokens": token_breakdown["tool_tokens"],
+                            "system_tokens": token_breakdown["system_tokens"],
+                            "skill_tokens": token_breakdown["skill_tokens"],
+                            "summary_tokens": token_breakdown["summary_tokens"],
+                            "message_tokens": token_breakdown["message_tokens"],
+                            "input_tokens": llm.prompt_tokens,
+                            "output_tool_tokens": token_breakdown["output_tool_tokens"],
+                            "output_text_tokens": token_breakdown["output_text_tokens"],
+                            "total_tokens": llm.total_tokens,
+                            # Raw data for CLI to format description
+                            "tool_names": tool_names,
+                            "input_messages": llm.input_messages,
+                            "output_text": llm.output_text,
+                            "skipped_tool_calls": skipped_calls,
+                        }
+                    )
 
         return result
 
@@ -579,7 +585,9 @@ class MetricsTracker:
                 message_chars += chars
 
         # 步骤2：计算总字符长度
-        total_chars = tool_chars + system_chars + skill_chars + summary_chars + message_chars
+        total_chars = (
+            tool_chars + system_chars + skill_chars + summary_chars + message_chars
+        )
 
         if total_chars > 0:
             # 步骤3：第一次迭代时计算并保存基准比例和字符长度
@@ -595,10 +603,18 @@ class MetricsTracker:
             skill_tokens = int(self._base_skill_chars * self._base_ratio)
 
             # 摘要部分：按当前字符长度计算（摘要会变化，不使用基准值）
-            summary_tokens = int(summary_chars * self._base_ratio) if summary_chars > 0 else 0
+            summary_tokens = (
+                int(summary_chars * self._base_ratio) if summary_chars > 0 else 0
+            )
 
             # 步骤5：消息部分用减法，确保总和等于 prompt_tokens
-            message_tokens = prompt_tokens - tool_tokens - system_tokens - skill_tokens - summary_tokens
+            message_tokens = (
+                prompt_tokens
+                - tool_tokens
+                - system_tokens
+                - skill_tokens
+                - summary_tokens
+            )
         else:
             tool_tokens = 0
             system_tokens = 0

@@ -22,10 +22,7 @@ class TestCompressorConfig:
     def test_custom_config(self):
         """Test custom configuration values."""
         config = CompressorConfig(
-            enabled=False,
-            threshold_tokens=1000,
-            keep_recent=2,
-            summary_max_tokens=300
+            enabled=False, threshold_tokens=1000, keep_recent=2, summary_max_tokens=300
         )
         assert config.enabled is False
         assert config.threshold_tokens == 1000
@@ -45,7 +42,7 @@ class TestMessageCompressor:
         messages = [
             {"role": "system", "content": "You are an assistant."},
             {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"}
+            {"role": "assistant", "content": "Hi there!"},
         ]
 
         assert compressor.should_compress(messages) is False
@@ -157,9 +154,11 @@ class TestMessageCompressor:
         messages = [
             {"role": "system", "content": "System " * 20},
             {"role": "user", "content": "Query " * 20},
-            {"role": "assistant", "content": "", "tool_calls": [
-                {"function": {"name": "file_read"}}
-            ]},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"function": {"name": "file_read"}}],
+            },
             {"role": "tool", "content": "file content " * 20, "name": "file_read"},
             {"role": "user", "content": "Recent query"},
             {"role": "assistant", "content": "Recent response"},
@@ -232,7 +231,9 @@ class TestMessageCompressor:
 
     def test_compress_truncates_long_content(self):
         """Test that long content is truncated in summary."""
-        config = CompressorConfig(threshold_tokens=100, keep_recent=1, summary_max_tokens=50)
+        config = CompressorConfig(
+            threshold_tokens=100, keep_recent=1, summary_max_tokens=50
+        )
         compressor = MessageCompressor(config)
 
         messages = [

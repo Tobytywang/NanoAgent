@@ -26,9 +26,7 @@ class TestPlanTypes:
     def test_create_plan_phase(self):
         """Test creating a plan phase."""
         phase = PlanPhase(
-            version="v0.7.0",
-            description="Implement basic features",
-            status="pending"
+            version="v0.7.0", description="Implement basic features", status="pending"
         )
         assert phase.version == "v0.7.0"
         assert phase.description == "Implement basic features"
@@ -45,7 +43,7 @@ class TestPlanTypes:
             task="Build a test system",
             analysis="Need to build a comprehensive test system",
             phases=phases,
-            risks=["Time constraint", "Resource limitation"]
+            risks=["Time constraint", "Resource limitation"],
         )
         assert plan.name == "test-plan"
         assert plan.task == "Build a test system"
@@ -56,12 +54,7 @@ class TestPlanTypes:
 
     def test_plan_default_values(self):
         """Test plan default values."""
-        plan = Plan(
-            name="minimal",
-            task="Task",
-            analysis="Analysis",
-            phases=[]
-        )
+        plan = Plan(name="minimal", task="Task", analysis="Analysis", phases=[])
         assert plan.risks == []
         assert plan.status == "planning"
 
@@ -102,7 +95,7 @@ class TestPlanMarkdown:
                 PlanPhase(version="v0.7.1", description="Phase 2", status="completed"),
             ],
             risks=["Risk 1", "Risk 2"],
-            created_at="2026-05-07 10:00"
+            created_at="2026-05-07 10:00",
         )
 
         md = plan_to_markdown(plan)
@@ -167,7 +160,7 @@ Need comprehensive testing
                 PlanPhase(version="v0.7.0", description="Phase 1"),
             ],
             risks=["Risk"],
-            created_at="2026-05-07 12:00"
+            created_at="2026-05-07 12:00",
         )
 
         md = plan_to_markdown(original)
@@ -186,6 +179,7 @@ class TestPlanTools:
         """Test saving a plan."""
         # Override PLANS_DIR for testing
         import nano_agent.tools.builtin.plan_tools as plan_tools
+
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "plans"
 
@@ -195,10 +189,8 @@ class TestPlanTools:
                 plan_name="Test Plan",
                 task="Build something",
                 analysis="Need to build",
-                phases=[
-                    {"version": "v0.7.0", "description": "Phase 1"}
-                ],
-                risks=["Risk 1"]
+                phases=[{"version": "v0.7.0", "description": "Phase 1"}],
+                risks=["Risk 1"],
             )
 
             assert result.success is True
@@ -213,6 +205,7 @@ class TestPlanTools:
     def test_list_plans_tool_empty(self, tmp_path):
         """Test listing plans when empty."""
         import nano_agent.tools.builtin.plan_tools as plan_tools
+
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "empty_plans"
 
@@ -228,6 +221,7 @@ class TestPlanTools:
     def test_load_plan_tool(self, tmp_path):
         """Test loading a plan."""
         import nano_agent.tools.builtin.plan_tools as plan_tools
+
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "plans"
 
@@ -238,7 +232,7 @@ class TestPlanTools:
                 plan_name="Load Test",
                 task="Test loading",
                 analysis="Analysis",
-                phases=[{"version": "v0.7.0", "description": "Phase"}]
+                phases=[{"version": "v0.7.0", "description": "Phase"}],
             )
 
             # Then load it
@@ -253,6 +247,7 @@ class TestPlanTools:
     def test_load_nonexistent_plan(self, tmp_path):
         """Test loading a plan that doesn't exist."""
         import nano_agent.tools.builtin.plan_tools as plan_tools
+
         original_dir = plan_tools.PLANS_DIR
         plan_tools.PLANS_DIR = tmp_path / "plans"
 
@@ -287,17 +282,19 @@ class TestPlanMode:
         from nano_agent.cli.plan_mode import PlanMode
 
         llm = Mock()
-        llm.chat = Mock(return_value=(
-            """计划名称: Test Plan
+        llm.chat = Mock(
+            return_value=(
+                """计划名称: Test Plan
 任务分析: This is a test analysis
 实现阶段:
 - 阶段一: Build core (v0.7.0)
 - 阶段二: Add features (v0.7.1)
 风险与约束: Time, Resources
 """,
-            [],
-            Mock(total_tokens=100)
-        ))
+                [],
+                Mock(total_tokens=100),
+            )
+        )
 
         config = Mock()
         mode = PlanMode(llm, config)
@@ -316,29 +313,31 @@ class TestPlanMode:
 
         llm = Mock()
         # First call for initial plan, second for adjustment
-        llm.chat = Mock(side_effect=[
-            (
-                """计划名称: Original
+        llm.chat = Mock(
+            side_effect=[
+                (
+                    """计划名称: Original
 任务分析: Original analysis
 实现阶段:
 - 阶段一: Phase 1 (v0.7.0)
 风险与约束: None
 """,
-                [],
-                Mock()
-            ),
-            (
-                """计划名称: Adjusted
+                    [],
+                    Mock(),
+                ),
+                (
+                    """计划名称: Adjusted
 任务分析: Adjusted analysis
 实现阶段:
 - 阶段一: Phase 1 (v0.7.0)
 - 阶段二: Phase 2 (v0.7.1)
 风险与约束: Time
 """,
-                [],
-                Mock()
-            ),
-        ])
+                    [],
+                    Mock(),
+                ),
+            ]
+        )
 
         config = Mock()
         mode = PlanMode(llm, config)
@@ -371,16 +370,18 @@ class TestPlanMode:
 
             try:
                 llm = Mock()
-                llm.chat = Mock(return_value=(
-                    """计划名称: Save Test
+                llm.chat = Mock(
+                    return_value=(
+                        """计划名称: Save Test
 任务分析: Analysis
 实现阶段:
 - 阶段一: Phase 1 (v0.7.0)
 风险与约束: None
 """,
-                    [],
-                    Mock()
-                ))
+                        [],
+                        Mock(),
+                    )
+                )
 
                 config = Mock()
                 mode = PlanMode(llm, Mock())
@@ -400,16 +401,18 @@ class TestPlanMode:
         from nano_agent.agent.events import EventEmitter
 
         llm = Mock()
-        llm.chat = Mock(return_value=(
-            """计划名称: Event Test
+        llm.chat = Mock(
+            return_value=(
+                """计划名称: Event Test
 任务分析: Analysis
 实现阶段:
 - 阶段一: Phase 1 (v0.7.0)
 风险与约束: None
 """,
-            [],
-            Mock()
-        ))
+                [],
+                Mock(),
+            )
+        )
 
         events = EventEmitter()
         mode = PlanMode(llm, Mock(), events=events)

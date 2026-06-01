@@ -118,9 +118,7 @@ class QueryPrejudgment:
             reason=f"Parsed from LLM response",
         )
 
-    def _parse_response(
-        self, response: str
-    ) -> tuple[QueryComplexity, str | None]:
+    def _parse_response(self, response: str) -> tuple[QueryComplexity, str | None]:
         """
         Parse complexity marker and optional answer from LLM response.
 
@@ -135,14 +133,12 @@ class QueryPrejudgment:
             return QueryComplexity.COMPLEX, None
 
         complexity_str = match.group(1).lower()
-        complexity = self.COMPLEXITY_MAP.get(
-            complexity_str, QueryComplexity.COMPLEX
-        )
+        complexity = self.COMPLEXITY_MAP.get(complexity_str, QueryComplexity.COMPLEX)
 
         # For SIMPLE queries, extract the answer after the marker
         answer = None
         if complexity == QueryComplexity.SIMPLE:
-            after_marker = response[match.end():].strip()
+            after_marker = response[match.end() :].strip()
             if after_marker:
                 answer = after_marker
 

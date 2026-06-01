@@ -31,21 +31,18 @@ class MemoryEntry:
 
     @classmethod
     def create(
-        cls,
-        session_id: str,
-        role: str,
-        content: str,
-        metadata: dict | None = None
+        cls, session_id: str, role: str, content: str, metadata: dict | None = None
     ) -> "MemoryEntry":
         """创建带有生成的 ID 和时间戳的新条目。"""
         import uuid
+
         return cls(
             id=str(uuid.uuid4()),
             session_id=session_id,
             role=role,
             content=content,
             timestamp=datetime.now().isoformat(),
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
 

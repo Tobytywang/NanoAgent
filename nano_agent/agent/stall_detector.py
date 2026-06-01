@@ -169,9 +169,7 @@ class StallDetector:
 
         # Compare each pair of consecutive signatures
         for i in range(len(signatures) - 1):
-            similarity = self._signature_similarity(
-                signatures[i], signatures[i + 1]
-            )
+            similarity = self._signature_similarity(signatures[i], signatures[i + 1])
             if similarity < threshold:
                 return False
 

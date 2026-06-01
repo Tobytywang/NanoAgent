@@ -33,6 +33,7 @@ class ExecutionResult:
     This is an immutable dataclass that captures all information about
     a completed execution, including the response, statistics, and metadata.
     """
+
     response: str
     success: bool
     iterations: int
@@ -50,6 +51,7 @@ class ThinkResult:
     Represents the output of the _think() method, which calls the LLM
     and returns the response along with any tool calls.
     """
+
     response_text: str
     tool_calls: list[Any]  # List of ToolCall
     usage: Any  # LLMUsage
@@ -67,12 +69,14 @@ class ExecutionEvent:
     Each event represents a discrete step in the execution process,
     allowing external listeners to react to progress updates.
     """
+
     type: str  # "run_start" / "think" / "tool_call" / "tool_result" / "end"
     data: dict
 
 
 class AgentEvent(Enum):
     """Event type enumeration for the event system."""
+
     RUN_START = "run_start"
     THINK_START = "think_start"
     TOOL_CALL = "tool_call"
@@ -86,12 +90,14 @@ class AgentEvent(Enum):
 
 class RiskLevel(Enum):
     """Tool risk level for confirmation mechanism."""
-    SAFE = "safe"           # Read-only, query operations
-    MODERATE = "moderate"   # Write, create operations
-    DANGEROUS = "dangerous" # Delete, shell operations
+
+    SAFE = "safe"  # Read-only, query operations
+    MODERATE = "moderate"  # Write, create operations
+    DANGEROUS = "dangerous"  # Delete, shell operations
 
 
 # === Plan Types ===
+
 
 @dataclass
 class PlanPhase:
@@ -101,6 +107,7 @@ class PlanPhase:
     Represents a single implementation stage with its target version,
     description, and completion status.
     """
+
     version: str  # Target version number (e.g., "v0.7.0")
     description: str  # Phase description
     status: str = "pending"  # pending / in_progress / completed
@@ -114,6 +121,7 @@ class Plan:
     Plans are persisted to .nano_agent/plans/ and can span multiple
     sessions. They support multi-round refinement before execution.
     """
+
     name: str  # Plan name (used as filename)
     task: str  # Original task description
     analysis: str  # LLM analysis of the task
@@ -125,4 +133,5 @@ class Plan:
     def __post_init__(self):
         if not self.created_at:
             from datetime import datetime
+
             self.created_at = datetime.now().strftime("%Y-%m-%d %H:%M")

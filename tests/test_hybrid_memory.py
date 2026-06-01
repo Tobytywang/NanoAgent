@@ -24,7 +24,7 @@ class TestLongTermEntry:
             category="preference",
             keywords=["python", "javascript", "preference"],
             source_session="session_123",
-            importance=0.8
+            importance=0.8,
         )
 
         assert entry.content == "User prefers Python over JavaScript"
@@ -36,10 +36,7 @@ class TestLongTermEntry:
     def test_to_dict_and_from_dict(self):
         """Test serialization and deserialization."""
         entry = LongTermEntry.create(
-            content="Test content",
-            category="fact",
-            keywords=["test"],
-            importance=0.5
+            content="Test content", category="fact", keywords=["test"], importance=0.5
         )
 
         data = entry.to_dict()
@@ -61,7 +58,7 @@ class TestLongTermMemory:
             content="User likes dark mode",
             category="preference",
             keywords=["dark mode", "ui"],
-            importance=0.7
+            importance=0.7,
         )
 
         assert entry_id.startswith("ltm_")
@@ -77,13 +74,13 @@ class TestLongTermMemory:
             content="User prefers Python",
             category="preference",
             keywords=["python", "programming"],
-            importance=0.8
+            importance=0.8,
         )
         long_term_memory.add(
             content="User lives in Beijing",
             category="fact",
             keywords=["beijing", "location"],
-            importance=0.6
+            importance=0.6,
         )
 
         results = long_term_memory.search("python programming")
@@ -96,7 +93,7 @@ class TestLongTermMemory:
             content="The project uses React framework",
             category="fact",
             keywords=["react"],
-            importance=0.5
+            importance=0.5,
         )
 
         results = long_term_memory.search("React framework")
@@ -109,13 +106,13 @@ class TestLongTermMemory:
             content="Important fact about user",
             category="fact",
             keywords=["user", "important"],
-            importance=0.9
+            importance=0.9,
         )
         long_term_memory.add(
             content="Less important note",
             category="note",
             keywords=["user", "note"],
-            importance=0.3
+            importance=0.3,
         )
 
         results = long_term_memory.search("user")
@@ -126,9 +123,7 @@ class TestLongTermMemory:
     def test_delete_memory(self, long_term_memory):
         """Test deleting a memory."""
         entry_id, is_new = long_term_memory.add(
-            content="Test memory",
-            category="fact",
-            keywords=["test"]
+            content="Test memory", category="fact", keywords=["test"]
         )
 
         assert long_term_memory.count() == 1
@@ -147,7 +142,7 @@ class TestLongTermMemory:
         memory1.add(
             content="Persistent memory test",
             category="fact",
-            keywords=["test", "persistence"]
+            keywords=["test", "persistence"],
         )
 
         # Create new instance
@@ -170,10 +165,7 @@ class TestLongTermMemory:
     def test_update_importance(self, long_term_memory):
         """Test updating importance."""
         entry_id, is_new = long_term_memory.add(
-            content="Test",
-            category="fact",
-            keywords=[],
-            importance=0.5
+            content="Test", category="fact", keywords=[], importance=0.5
         )
 
         success = long_term_memory.update_importance(entry_id, 0.9)
@@ -197,13 +189,13 @@ class TestLongTermMemory:
             content="用户的名字是天宇",
             category="fact",
             keywords=["名字", "天宇", "用户"],
-            importance=0.7
+            importance=0.7,
         )
         long_term_memory.add(
             content="用户住在北京",
             category="fact",
             keywords=["北京", "住址"],
-            importance=0.6
+            importance=0.6,
         )
 
         # Search with Chinese query
@@ -217,7 +209,7 @@ class TestLongTermMemory:
             content="用户的名字是天宇",
             category="fact",
             keywords=[],  # Empty keywords, should extract from content
-            importance=0.7
+            importance=0.7,
         )
 
         # Search should work even without pre-defined keywords
@@ -243,7 +235,7 @@ class TestLongTermMemory:
             content="用户的名字是天宇",
             category="fact",
             keywords=["名字", "天宇"],
-            metadata={"type": "user_name", "value": "天宇"}
+            metadata={"type": "user_name", "value": "天宇"},
         )
         assert is_new1 is True
 
@@ -252,7 +244,7 @@ class TestLongTermMemory:
             content="用户的名字是王五",
             category="fact",
             keywords=["名字", "王五"],
-            metadata={"type": "user_name", "value": "王五"}
+            metadata={"type": "user_name", "value": "王五"},
         )
         assert is_new2 is False  # Updated existing
         assert entry_id2 == entry_id1  # Same ID
@@ -268,7 +260,7 @@ class TestLongTermMemory:
         entry_id1, is_new1 = long_term_memory.add(
             content="项目: NanoAgent, 技术栈: Python",
             category="fact",
-            keywords=["nanoagent", "python", "项目", "技术栈"]
+            keywords=["nanoagent", "python", "项目", "技术栈"],
         )
         assert is_new1 is True
 
@@ -276,7 +268,7 @@ class TestLongTermMemory:
         entry_id2, is_new2 = long_term_memory.add(
             content="项目: NanoAgent, 技术栈: Python, 版本: 1.0",
             category="fact",
-            keywords=["nanoagent", "python", "项目", "技术栈", "版本"]
+            keywords=["nanoagent", "python", "项目", "技术栈", "版本"],
         )
         assert is_new2 is False  # Updated existing
         assert entry_id2 == entry_id1
@@ -285,17 +277,13 @@ class TestLongTermMemory:
         """Test that different category does not trigger dedup."""
         # Add as fact
         entry_id1, is_new1 = long_term_memory.add(
-            content="用户喜欢Python",
-            category="fact",
-            keywords=["python", "用户"]
+            content="用户喜欢Python", category="fact", keywords=["python", "用户"]
         )
         assert is_new1 is True
 
         # Add same content as preference - should create new
         entry_id2, is_new2 = long_term_memory.add(
-            content="用户喜欢Python",
-            category="preference",
-            keywords=["python", "用户"]
+            content="用户喜欢Python", category="preference", keywords=["python", "用户"]
         )
         assert is_new2 is True  # New entry
         assert entry_id2 != entry_id1
@@ -317,7 +305,7 @@ class TestHybridMemory:
         entry_id, is_new = hybrid_memory.memorize(
             content="User prefers dark mode",
             category="preference",
-            keywords=["dark mode", "ui"]
+            keywords=["dark mode", "ui"],
         )
 
         assert entry_id.startswith("ltm_")
@@ -329,7 +317,7 @@ class TestHybridMemory:
         hybrid_memory.memorize(
             content="User likes Python",
             category="preference",
-            keywords=["python", "programming"]
+            keywords=["python", "programming"],
         )
 
         results = hybrid_memory.recall("Python programming")
@@ -339,8 +327,7 @@ class TestHybridMemory:
     def test_forget_from_long_term(self, hybrid_memory):
         """Test deleting from long-term memory."""
         entry_id, is_new = hybrid_memory.memorize(
-            content="Test memory",
-            category="fact"
+            content="Test memory", category="fact"
         )
 
         assert hybrid_memory.long_term_memory.count() == 1
@@ -448,15 +435,10 @@ class TestHybridMemory:
         # Create hybrid memory with PersistentMemory as working memory
         storage = FileStorage(base_dir=temp_dir)
         working = PersistentMemory(
-            storage=storage,
-            max_messages=50,
-            system_prompt="Test"
+            storage=storage, max_messages=50, system_prompt="Test"
         )
         long_term = LongTermMemory(storage_path=temp_dir)
-        hybrid = HybridMemory(
-            working_memory=working,
-            long_term_memory=long_term
-        )
+        hybrid = HybridMemory(working_memory=working, long_term_memory=long_term)
 
         # Add a message and save
         hybrid.add_user_message("Hello")
@@ -487,7 +469,7 @@ class TestMemoryConfig:
             type="hybrid",
             max_messages=100,
             long_term_storage_path="/custom/long_term",
-            auto_extract=False
+            auto_extract=False,
         )
 
         assert config.type == "hybrid"

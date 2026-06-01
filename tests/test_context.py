@@ -81,7 +81,7 @@ class TestNineSectionSummary:
             user_messages="User wants dark mode",
             pending_tasks="Add authentication",
             current_work="Implementing login",
-            next_steps="Test login flow"
+            next_steps="Test login flow",
         )
         assert summary.user_request == "Build a web app"
         assert summary.technical_concepts == "React, Node.js"
@@ -97,7 +97,7 @@ class TestNineSectionSummary:
             user_messages="",
             pending_tasks="",
             current_work="",
-            next_steps=""
+            next_steps="",
         )
         msg = summary.to_message()
         assert msg["role"] == "system"
@@ -146,7 +146,7 @@ class TestContextManager:
         config = ContextConfig(
             pressure_threshold_low=0.70,
             pressure_threshold_mid=0.85,
-            pressure_threshold_high=0.95
+            pressure_threshold_high=0.95,
         )
 
         manager = ContextManager(memory, llm, config, verbose=True)
@@ -211,11 +211,14 @@ class TestContextManager:
         # Add enough messages for summary generation (need >= 10)
         for i in range(12):
             memory.add_user_message(f"Build a web app - message {i}")
-            memory.add_assistant_message(f"I'll help you build a web app - response {i}")
+            memory.add_assistant_message(
+                f"I'll help you build a web app - response {i}"
+            )
 
         llm = Mock()
-        llm.chat = Mock(return_value=(
-            """用户请求: Build a web app
+        llm.chat = Mock(
+            return_value=(
+                """用户请求: Build a web app
 技术概念: React, Node.js
 文件与代码: app.js
 错误与修复: 无
@@ -224,9 +227,10 @@ class TestContextManager:
 待处理任务: Add authentication
 当前工作: Setting up project
 下一步: Create components""",
-            [],
-            Mock(total_tokens=100)
-        ))
+                [],
+                Mock(total_tokens=100),
+            )
+        )
 
         config = ContextConfig()
         manager = ContextManager(memory, llm, config)
@@ -284,7 +288,7 @@ class TestContextManager:
             user_messages="",
             pending_tasks="",
             current_work="",
-            next_steps=""
+            next_steps="",
         )
 
         manager._replace_with_summary(summary)
@@ -320,7 +324,7 @@ class TestContextConfig:
             pressure_threshold_mid=0.75,
             pressure_threshold_high=0.9,
             max_context_tokens=64000,
-            max_compress_failures=5
+            max_compress_failures=5,
         )
         assert config.pressure_threshold_low == 0.5
         assert config.max_context_tokens == 64000

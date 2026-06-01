@@ -12,7 +12,11 @@ from pathlib import Path
 from nano_agent.tools import ToolRegistry
 from nano_agent.tools.base import BaseTool, ToolResult
 from nano_agent.tools.builtin.python_executor import PythonExecutorTool
-from nano_agent.tools.builtin.file_ops import FileReadTool, FileWriteTool, FileSearchTool
+from nano_agent.tools.builtin.file_ops import (
+    FileReadTool,
+    FileWriteTool,
+    FileSearchTool,
+)
 from nano_agent.tools.builtin.shell import ShellTool
 from nano_agent.tools.builtin import register_builtin_tools, BUILTIN_TOOLS
 
@@ -39,7 +43,7 @@ class TestToolResult:
         result = ToolResult(
             success=True,
             output="Done",
-            metadata={"name_type": "user_name", "name_value": "天宇"}
+            metadata={"name_type": "user_name", "name_value": "天宇"},
         )
         assert result.metadata is not None
         assert result.metadata["name_type"] == "user_name"
@@ -76,9 +80,9 @@ class TestToolRegistry:
             parameters_schema={
                 "type": "object",
                 "properties": {"name": {"type": "string"}},
-                "required": ["name"]
+                "required": ["name"],
             },
-            func=greet
+            func=greet,
         )
 
         result = registry.get("greet").execute(name="World")
@@ -152,7 +156,12 @@ class TestMemorizeToolNameDetection:
     def test_explicit_agent_name_parameter(self):
         """Test using explicit name_type and name_value parameters for agent name."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -163,9 +172,7 @@ class TestMemorizeToolNameDetection:
             tool = MemorizeTool(memory=memory)
             # Explicit parameters (preferred way)
             result = tool.execute(
-                content="我的名字是奥特曼",
-                name_type="agent_name",
-                name_value="奥特曼"
+                content="我的名字是奥特曼", name_type="agent_name", name_value="奥特曼"
             )
 
             assert result.success is True
@@ -176,7 +183,12 @@ class TestMemorizeToolNameDetection:
     def test_explicit_user_name_parameter(self):
         """Test using explicit name_type and name_value parameters for user name."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -187,9 +199,7 @@ class TestMemorizeToolNameDetection:
             tool = MemorizeTool(memory=memory)
             # Explicit parameters (preferred way)
             result = tool.execute(
-                content="用户的名字是天宇",
-                name_type="user_name",
-                name_value="天宇"
+                content="用户的名字是天宇", name_type="user_name", name_value="天宇"
             )
 
             assert result.success is True
@@ -200,7 +210,12 @@ class TestMemorizeToolNameDetection:
     def test_fallback_agent_name_my_name_is(self):
         """Test fallback regex detection for agent name from '我的名字是...'."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -220,7 +235,12 @@ class TestMemorizeToolNameDetection:
     def test_fallback_agent_name_i_am_called(self):
         """Test fallback regex detection for agent name from '我叫...'."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -240,7 +260,12 @@ class TestMemorizeToolNameDetection:
     def test_fallback_user_name_explicit(self):
         """Test fallback regex detection for user name from '用户的名字是...'."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -260,7 +285,12 @@ class TestMemorizeToolNameDetection:
     def test_detect_agent_name(self):
         """Test detecting agent name from 'Agent的名字是...'."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -279,7 +309,12 @@ class TestMemorizeToolNameDetection:
     def test_no_name_detection_for_general_content(self):
         """Test that general content doesn't trigger name detection."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -299,7 +334,12 @@ class TestMemorizeToolNameDetection:
     def test_name_extraction_stops_at_punctuation(self):
         """Test that name extraction stops at punctuation."""
         from nano_agent.tools.builtin.memory_tools import MemorizeTool
-        from nano_agent.memory import HybridMemory, PersistentMemory, LongTermMemory, FileStorage
+        from nano_agent.memory import (
+            HybridMemory,
+            PersistentMemory,
+            LongTermMemory,
+            FileStorage,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
@@ -309,7 +349,9 @@ class TestMemorizeToolNameDetection:
 
             tool = MemorizeTool(memory=memory)
             # Test that name extraction stops at comma
-            result = tool.execute(content="用户的名字是Nomi，用户王五给我起的名字", category="preference")
+            result = tool.execute(
+                content="用户的名字是Nomi，用户王五给我起的名字", category="preference"
+            )
 
             assert result.success is True
             assert result.metadata is not None

@@ -17,7 +17,6 @@ from nano_agent.config.schema import (
 from nano_agent.memory.short_term import ShortTermMemory
 from nano_agent.agent.token_utils import estimate_tokens
 
-
 # --- Fixtures ---
 
 
@@ -88,9 +87,7 @@ class TestContextManagerRealTokens:
             cm.memory.add(msg)
 
         # Real tokens = 1000, ratio = 1000/4096 = 24.4% → well below threshold
-        result = cm.check_and_compress(
-            max_context_tokens=4096, last_prompt_tokens=1000
-        )
+        result = cm.check_and_compress(max_context_tokens=4096, last_prompt_tokens=1000)
         assert result is False
 
     def test_verbose_output_includes_source(self, capsys):
@@ -138,7 +135,9 @@ class TestCompressorRealTokens:
         """compress() passes last_prompt_tokens to should_compress()."""
         comp = _make_compressor(threshold_tokens=100)
         # Mock the _summarize method to avoid LLM call
-        comp._summarize = MagicMock(return_value=[{"role": "system", "content": "summary"}])
+        comp._summarize = MagicMock(
+            return_value=[{"role": "system", "content": "summary"}]
+        )
 
         messages = _make_messages(10, "x " * 50)
         # Real tokens = 200 > threshold 100 → should compress
@@ -178,24 +177,28 @@ class TestReActAgentRealTokenIntegration:
     def test_real_tokens_stored_after_llm_call(self):
         """After LLM call with usage.prompt_tokens > 0, _last_prompt_tokens is updated."""
         import inspect
+
         source = inspect.getsource(ReActAgent)
         assert "self._last_prompt_tokens = usage.prompt_tokens" in source
 
     def test_prepare_run_resets_last_prompt_tokens(self):
         """_prepare_run() resets _last_prompt_tokens to None."""
         import inspect
+
         source = inspect.getsource(ReActAgent._prepare_run)
         assert "self._last_prompt_tokens = None" in source
 
     def test_check_and_compress_receives_last_prompt_tokens(self):
         """_think() passes _last_prompt_tokens to check_and_compress."""
         import inspect
+
         source = inspect.getsource(ReActAgent._think)
         assert "last_prompt_tokens=self._last_prompt_tokens" in source
 
     def test_should_compress_receives_last_prompt_tokens(self):
         """_think() passes _last_prompt_tokens to should_compress."""
         import inspect
+
         source = inspect.getsource(ReActAgent._think)
         # v0.7.13: should_compress now also receives calibration_factor
         assert "should_compress" in source
@@ -204,6 +207,7 @@ class TestReActAgentRealTokenIntegration:
     def test_compress_receives_last_prompt_tokens(self):
         """_think() passes _last_prompt_tokens to compress."""
         import inspect
+
         source = inspect.getsource(ReActAgent._think)
         # v0.7.13: compress now also receives calibration_factor
         assert "compress" in source

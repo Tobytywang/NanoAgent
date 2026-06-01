@@ -10,7 +10,14 @@ from datetime import datetime
 from pathlib import Path
 
 from ..llm import create_llm_from_config
-from ..memory import ShortTermMemory, PersistentMemory, HybridMemory, FileStorage, SQLiteStorage, LongTermMemory
+from ..memory import (
+    ShortTermMemory,
+    PersistentMemory,
+    HybridMemory,
+    FileStorage,
+    SQLiteStorage,
+    LongTermMemory,
+)
 from ..tools import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent import ReActAgent, AgentOrchestrator, AgentEvent
@@ -107,7 +114,7 @@ def create_memory(config):
             storage=storage,
             session_id=config.memory.session_id,
             max_messages=config.memory.max_messages,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
         )
 
         # Create long-term memory
@@ -119,7 +126,7 @@ def create_memory(config):
         memory = HybridMemory(
             working_memory=working_memory,
             long_term_memory=long_term_memory,
-            auto_extract=config.memory.auto_extract
+            auto_extract=config.memory.auto_extract,
         )
 
     elif config.memory.type == "persistent":
@@ -127,12 +134,11 @@ def create_memory(config):
             storage=storage,
             session_id=config.memory.session_id,
             max_messages=config.memory.max_messages,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
         )
     else:
         memory = ShortTermMemory(
-            max_messages=config.memory.max_messages,
-            system_prompt=system_prompt
+            max_messages=config.memory.max_messages, system_prompt=system_prompt
         )
 
     return memory
@@ -240,10 +246,11 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
 
     # Initialize logging based on config
     from ..monitoring.logger import configure_logging
+
     configure_logging(
         level=config.logging.level,
         console=config.logging.console,
-        file_path=config.logging.file
+        file_path=config.logging.file,
     )
 
     # Auto-update .gitignore
@@ -259,7 +266,7 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
 
     # Create memory and set LLM for auto-extraction
     memory = create_memory(config)
-    if config.memory.type == "hybrid" and hasattr(memory, 'set_llm'):
+    if config.memory.type == "hybrid" and hasattr(memory, "set_llm"):
         memory.set_llm(llm)
     builder.with_memory_instance(memory)
 
@@ -272,14 +279,20 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     agent = orchestrator.agent
 
     # Register built-in tools with tracker
-    register_builtin_tools(tool_registry, memory=memory, tracker=agent.tracker, context_length=config.llm.get_context_length())
+    register_builtin_tools(
+        tool_registry,
+        memory=memory,
+        tracker=agent.tracker,
+        context_length=config.llm.get_context_length(),
+    )
 
     # Load plugins from configuration
     from ..tools.plugin import load_plugins_from_config
+
     plugins_config = {
-        "directories": config.plugins.directories if hasattr(config, 'plugins') else [],
-        "modules": config.plugins.modules if hasattr(config, 'plugins') else [],
-        "files": config.plugins.files if hasattr(config, 'plugins') else [],
+        "directories": config.plugins.directories if hasattr(config, "plugins") else [],
+        "modules": config.plugins.modules if hasattr(config, "plugins") else [],
+        "files": config.plugins.files if hasattr(config, "plugins") else [],
     }
     load_plugins_from_config(plugins_config, tool_registry)
 
@@ -323,7 +336,7 @@ def _load_project_context(config=None) -> str:
 
     # Get project file mode from config
     project_file_mode = "condensed"  # default
-    if config and hasattr(config, 'project_file'):
+    if config and hasattr(config, "project_file"):
         project_file_mode = config.project_file.mode
 
     # 1. Load NANOPROJECT.md (required if exists)
@@ -353,13 +366,13 @@ def _load_project_context(config=None) -> str:
     if long_term_path.exists():
         try:
             from ..memory import LongTermMemory
+
             ltm = LongTermMemory(storage_path=str(long_term_path))
             memories = ltm.search("", limit=10)  # Get recent memories
             if memories:
-                memory_text = "\n".join([
-                    f"- [{m.category}] {m.content[:200]}"
-                    for m in memories[:5]
-                ])
+                memory_text = "\n".join(
+                    [f"- [{m.category}] {m.content[:200]}" for m in memories[:5]]
+                )
                 context_parts.append(f"## Long-term Memories\n\n{memory_text}")
         except Exception:
             pass
@@ -383,17 +396,17 @@ def _condense_project_file(content: str) -> str:
 
     # Extract key sections (## headers and their first paragraph)
     sections = []
-    lines = content.split('\n')
+    lines = content.split("\n")
 
     current_section = None
     section_content = []
 
     for line in lines:
-        if line.startswith('## '):
+        if line.startswith("## "):
             # Save previous section
             if current_section and section_content:
                 # Keep first 3 lines of section content
-                condensed = '\n'.join(section_content[:3])
+                condensed = "\n".join(section_content[:3])
                 if len(condensed) > 200:
                     condensed = condensed[:200] + "..."
                 sections.append(f"{current_section}\n{condensed}")
@@ -405,13 +418,13 @@ def _condense_project_file(content: str) -> str:
 
     # Don't forget last section
     if current_section and section_content:
-        condensed = '\n'.join(section_content[:3])
+        condensed = "\n".join(section_content[:3])
         if len(condensed) > 200:
             condensed = condensed[:200] + "..."
         sections.append(f"{current_section}\n{condensed}")
 
     # Limit total length
-    result = '\n\n'.join(sections[:5])  # Max 5 sections
+    result = "\n\n".join(sections[:5])  # Max 5 sections
     if len(result) > 1500:
         result = result[:1500] + "\n\n... (condensed)"
 
@@ -423,7 +436,7 @@ def run_interactive(
     config,
     report_enabled: bool = False,
     report_format: str = "json",
-    report_output: str | None = None
+    report_output: str | None = None,
 ) -> None:
     """
     Run interactive chat loop.
@@ -443,6 +456,7 @@ def run_interactive(
     # Set up confirmation handler
     def _setup_confirmation_handler():
         """Set up event handler for tool confirmation."""
+
         def handle_confirmation(event, data):
             """Handle confirmation request from agent."""
             tool_name = data.get("tool", "unknown")
@@ -450,39 +464,37 @@ def run_interactive(
             arguments = data.get("arguments", {})
 
             # Risk level icons
-            risk_icons = {
-                "safe": "🟢",
-                "moderate": "🟡",
-                "dangerous": "🔴"
-            }
+            risk_icons = {"safe": "🟢", "moderate": "🟡", "dangerous": "🔴"}
             icon = risk_icons.get(risk_level, "❓")
 
             print(f"\n{icon} 确认执行工具: {tool_name}")
             print(f"   风险级别: {risk_level}")
             if arguments:
                 args_str = str(arguments)[:100]
-                print(f"   参数: {args_str}{'...' if len(str(arguments)) > 100 else ''}")
+                print(
+                    f"   参数: {args_str}{'...' if len(str(arguments)) > 100 else ''}"
+                )
 
             while True:
                 response = input("   确认执行? [y/N/a(总是)/s(保存)]: ").strip().lower()
 
-                if response == 'y':
+                if response == "y":
                     agent.confirm_tool(True)
                     break
-                elif response == 'a':
+                elif response == "a":
                     # Add to memory whitelist (session only)
                     agent.add_tool_to_whitelist(tool_name)
                     agent.confirm_tool(True)
                     print(f"   已添加到本次会话白名单")
                     break
-                elif response == 's':
+                elif response == "s":
                     # Persist whitelist to config file
                     agent.add_tool_to_whitelist(tool_name)
                     _save_whitelist_to_config(tool_name, config)
                     agent.confirm_tool(True)
                     print(f"   已保存到配置文件白名单")
                     break
-                elif response in ('n', ''):
+                elif response in ("n", ""):
                     agent.confirm_tool(False)
                     print("   已取消")
                     break
@@ -499,9 +511,9 @@ def run_interactive(
                 if config.git.auto_commit:
                     tool_name = data.get("tool", "unknown")
                     git_manager.auto_commit(
-                        f"Tool: {tool_name}",
-                        step_info={"tool": tool_name}
+                        f"Tool: {tool_name}", step_info={"tool": tool_name}
                     )
+
             agent.events.on(AgentEvent.TOOL_RESULT, handle_tool_result)
 
         elif config.git.commit_mode == "round":
@@ -527,18 +539,24 @@ def run_interactive(
     # This replaces the _pending_name_updates and _prev_name_values from ReActAgent
     name_update_state = {
         "pending_updates": [],  # list of (name_type, name_value)
-        "prev_values": {}       # dict of name_type -> previous value
+        "prev_values": {},  # dict of name_type -> previous value
     }
 
     def _setup_name_update_handler():
         """Set up event handler for name updates from memorize tool."""
+
         def handle_tool_result(event, data):
             """Handle tool result to detect name updates."""
             tool_name = data.get("tool", "unknown")
             result = data.get("result")
 
             # Detect name update from memorize tool
-            if tool_name == "memorize" and result and result.success and result.metadata:
+            if (
+                tool_name == "memorize"
+                and result
+                and result.success
+                and result.metadata
+            ):
                 name_type = result.metadata.get("name_type")
                 name_value = result.metadata.get("name_value")
                 if name_type and name_value:
@@ -552,6 +570,7 @@ def run_interactive(
     git_manager = None
     if config.git.enabled:
         from ..agent.git_manager import GitManager
+
         git_manager = GitManager()
         if git_manager.is_enabled():
             _setup_git_handler(agent, git_manager, config)
@@ -572,7 +591,7 @@ def run_interactive(
     Console.print_header("NanoAgent - AI Assistant")
 
     # Show config source
-    if hasattr(orchestrator, '_config_source'):
+    if hasattr(orchestrator, "_config_source"):
         Console.print(f"Config: {orchestrator._config_source}", style="info")
 
     # Show project context status
@@ -635,9 +654,13 @@ def run_interactive(
                         print("\n可回退的操作：")
                         for i, commit in enumerate(history):
                             time_str = commit.time.strftime("%m-%d %H:%M")
-                            print(f"  {i+1}. {commit.hash} [{time_str}] {commit.message}")
+                            print(
+                                f"  {i+1}. {commit.hash} [{time_str}] {commit.message}"
+                            )
 
-                        choice = input("\n选择要回退的步骤 (1-5)，或按回车使用普通撤销: ").strip()
+                        choice = input(
+                            "\n选择要回退的步骤 (1-5)，或按回车使用普通撤销: "
+                        ).strip()
                         if choice.isdigit() and 1 <= int(choice) <= 5:
                             steps = int(choice)
                             if git_manager.undo(steps):
@@ -677,11 +700,13 @@ def run_interactive(
             # Plan commands
             if user_input.lower() == "/plans":
                 from .plan_mode import list_plans
+
                 print(list_plans())
                 continue
 
             if user_input.lower().startswith("/plan "):
                 from .plan_mode import run_plan_mode_interactive
+
                 task = user_input[6:].strip()
                 if task:
                     result = run_plan_mode_interactive(agent.llm, config, task)
@@ -723,21 +748,26 @@ def run_interactive(
                 continue
 
             if user_input.lower() == "/sessions":
-                if hasattr(agent.memory, 'list_sessions'):
+                if hasattr(agent.memory, "list_sessions"):
                     sessions = agent.memory.list_sessions()
                     if not sessions:
                         Console.print("No sessions found.", style="info")
                     else:
-                        Console.print(f"Available sessions ({len(sessions)}):", style="info")
+                        Console.print(
+                            f"Available sessions ({len(sessions)}):", style="info"
+                        )
                         for sid in sessions:
                             print(f"  {sid}")
                 else:
-                    Console.print("Session listing not available (requires persistent/hybrid memory)", style="warning")
+                    Console.print(
+                        "Session listing not available (requires persistent/hybrid memory)",
+                        style="warning",
+                    )
                 continue
 
             # Skill commands
             if user_input.lower() == "/skills":
-                if hasattr(agent, 'skill_loader'):
+                if hasattr(agent, "skill_loader"):
                     skills = agent.skill_loader.list_loaded_skills()
                     if not skills:
                         Console.print("No skills loaded.", style="info")
@@ -759,17 +789,20 @@ def run_interactive(
                 args = user_input[8:].strip().split()
                 if len(args) == 0:
                     # Show current names
-                    Console.print(f"当前设置: 用户名={user_display}, Agent名={agent_display}", style="info")
+                    Console.print(
+                        f"当前设置: 用户名={user_display}, Agent名={agent_display}",
+                        style="info",
+                    )
                 elif len(args) == 1:
                     # Set user name only
                     user_display = args[0]
                     config.agent.user_name = args[0]
                     # Store in long-term memory
-                    if hasattr(agent.memory, 'memorize'):
+                    if hasattr(agent.memory, "memorize"):
                         agent.memory.memorize(
                             content=f"用户的名字是{args[0]}",
                             category="preference",
-                            metadata={"type": "user_name", "value": args[0]}
+                            metadata={"type": "user_name", "value": args[0]},
                         )
                     Console.print(f"用户名已更新: {args[0]}", style="success")
                 elif len(args) >= 2:
@@ -778,21 +811,21 @@ def run_interactive(
                         if args[0].lower() == "user":
                             user_display = args[1]
                             config.agent.user_name = args[1]
-                            if hasattr(agent.memory, 'memorize'):
+                            if hasattr(agent.memory, "memorize"):
                                 agent.memory.memorize(
                                     content=f"用户的名字是{args[1]}",
                                     category="preference",
-                                    metadata={"type": "user_name", "value": args[1]}
+                                    metadata={"type": "user_name", "value": args[1]},
                                 )
                             Console.print(f"用户名已更新: {args[1]}", style="success")
                         else:
                             agent_display = args[1]
                             config.agent.agent_name = args[1]
-                            if hasattr(agent.memory, 'memorize'):
+                            if hasattr(agent.memory, "memorize"):
                                 agent.memory.memorize(
                                     content=f"Agent的名字是{args[1]}",
                                     category="preference",
-                                    metadata={"type": "agent_name", "value": args[1]}
+                                    metadata={"type": "agent_name", "value": args[1]},
                                 )
                             Console.print(f"Agent名已更新: {args[1]}", style="success")
                     else:
@@ -800,18 +833,21 @@ def run_interactive(
                         user_display, agent_display = args[0], args[1]
                         config.agent.user_name = args[0]
                         config.agent.agent_name = args[1]
-                        if hasattr(agent.memory, 'memorize'):
+                        if hasattr(agent.memory, "memorize"):
                             agent.memory.memorize(
                                 content=f"用户的名字是{args[0]}",
                                 category="preference",
-                                metadata={"type": "user_name", "value": args[0]}
+                                metadata={"type": "user_name", "value": args[0]},
                             )
                             agent.memory.memorize(
                                 content=f"Agent的名字是{args[1]}",
                                 category="preference",
-                                metadata={"type": "agent_name", "value": args[1]}
+                                metadata={"type": "agent_name", "value": args[1]},
                             )
-                        Console.print(f"名字已更新: 用户={args[0]}, Agent={args[1]}", style="success")
+                        Console.print(
+                            f"名字已更新: 用户={args[0]}, Agent={args[1]}",
+                            style="success",
+                        )
 
                 # Save config
                 config_file, _ = _find_config_file()
@@ -828,7 +864,7 @@ def run_interactive(
             # Sanitize response for printing
             response = result.response
             try:
-                response = response.encode('utf-8', errors='replace').decode('utf-8')
+                response = response.encode("utf-8", errors="replace").decode("utf-8")
             except (UnicodeDecodeError, UnicodeEncodeError):
                 pass
             print(f"> {response}")
@@ -841,16 +877,22 @@ def run_interactive(
                 for name_type, name_value in name_update_state["pending_updates"]:
                     # Sanitize name_value to remove invalid Unicode characters
                     try:
-                        name_value = name_value.encode('utf-8', errors='replace').decode('utf-8')
+                        name_value = name_value.encode(
+                            "utf-8", errors="replace"
+                        ).decode("utf-8")
                     except (UnicodeDecodeError, UnicodeEncodeError):
                         name_value = "User" if name_type == "user_name" else "Agent"
 
                     # Save previous value for undo (only save the original value, not overwrite)
                     if name_type not in name_update_state["prev_values"]:
                         if name_type == "user_name":
-                            name_update_state["prev_values"][name_type] = config.agent.user_name
+                            name_update_state["prev_values"][
+                                name_type
+                            ] = config.agent.user_name
                         elif name_type == "agent_name":
-                            name_update_state["prev_values"][name_type] = config.agent.agent_name
+                            name_update_state["prev_values"][
+                                name_type
+                            ] = config.agent.agent_name
 
                     if name_type == "user_name":
                         user_display = name_value
@@ -858,7 +900,10 @@ def run_interactive(
                     elif name_type == "agent_name":
                         agent_display = name_value
                         config.agent.agent_name = name_value
-                    Console.print(f"名字已更新: {name_type.replace('_', ' ')} = {name_value}", style="success")
+                    Console.print(
+                        f"名字已更新: {name_type.replace('_', ' ')} = {name_value}",
+                        style="success",
+                    )
 
                 # Save config once after all updates
                 config_file, _ = _find_config_file()
@@ -870,7 +915,10 @@ def run_interactive(
             _show_run_stats(agent, config)
 
             # Show undo hint if there are undoable operations
-            if hasattr(agent, 'has_undoable_operations') and agent.has_undoable_operations():
+            if (
+                hasattr(agent, "has_undoable_operations")
+                and agent.has_undoable_operations()
+            ):
                 Console.print("💡 输入 /undo 可撤销本轮操作", style="info")
 
         except KeyboardInterrupt:
@@ -882,6 +930,7 @@ def run_interactive(
 
 def main():
     """CLI entry point."""
+
     # Custom formatter with wider help column for alignment
     class WideHelpFormatter(argparse.RawTextHelpFormatter):
         def __init__(self, prog):
@@ -908,93 +957,95 @@ Config file priority:
   1. ./.nano_agent/config.yaml (project)
   2. ~/.nano_agent/config.yaml (global)
   3. Built-in defaults
-"""
+""",
     )
     parser.add_argument(
-        "-h", "--help", action="help",
-        help="Show this [h]elp message and exit"
+        "-h", "--help", action="help", help="Show this [h]elp message and exit"
     )
     parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         type=str,
         default=None,
         metavar="PATH",
-        help="[c]onfig file path (see priority below)"
+        help="[c]onfig file path (see priority below)",
     )
     parser.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         type=str,
         default=None,
         metavar="NAME",
-        help="Override [m]odel name"
+        help="Override [m]odel name",
     )
     parser.add_argument(
-        "-l", "--list-sessions",
+        "-l", "--list-sessions", action="store_true", help="[l]ist all saved sessions"
+    )
+    parser.add_argument(
+        "-s",
+        "--show-session",
+        type=str,
+        metavar="ID",
+        default=None,
+        help="[s]how a specific session",
+    )
+    parser.add_argument(
+        "-r",
+        "--resume-session",
+        type=str,
+        metavar="ID",
+        default=None,
+        help="[r]esume an existing session",
+    )
+    parser.add_argument(
+        "-n",
+        "--new-session",
         action="store_true",
-        help="[l]ist all saved sessions"
+        help="Start a [n]ew session (default: resume most recent)",
     )
     parser.add_argument(
-        "-s", "--show-session",
+        "-d",
+        "--delete-session",
         type=str,
         metavar="ID",
         default=None,
-        help="[s]how a specific session"
-    )
-    parser.add_argument(
-        "-r", "--resume-session",
-        type=str,
-        metavar="ID",
-        default=None,
-        help="[r]esume an existing session"
-    )
-    parser.add_argument(
-        "-n", "--new-session",
-        action="store_true",
-        help="Start a [n]ew session (default: resume most recent)"
-    )
-    parser.add_argument(
-        "-d", "--delete-session",
-        type=str,
-        metavar="ID",
-        default=None,
-        help="[d]elete a specific session by ID"
+        help="[d]elete a specific session by ID",
     )
     parser.add_argument(
         "--clean-sessions",
         action="store_true",
-        help="Auto-clean low-value sessions (using config threshold)"
+        help="Auto-clean low-value sessions (using config threshold)",
     )
     parser.add_argument(
         "--clean-threshold",
         type=int,
         metavar="N",
         default=None,
-        help="Set clean threshold in config (requires value)"
+        help="Set clean threshold in config (requires value)",
     )
     parser.add_argument(
         "--migrate-sessions",
         action="store_true",
-        help="Migrate sessions from file storage to SQLite"
+        help="Migrate sessions from file storage to SQLite",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Dry run for migration (show what would be migrated)"
+        help="Dry run for migration (show what would be migrated)",
     )
     parser.add_argument(
         "--non-interactive",
         action="store_true",
-        help="Non-interactive mode (read from stdin)"
+        help="Non-interactive mode (read from stdin)",
     )
     parser.add_argument(
-        "-q", "--quiet",
+        "-q",
+        "--quiet",
         action="store_true",
-        help="Suppress verbose output ([q]uiet mode)"
+        help="Suppress verbose output ([q]uiet mode)",
     )
     parser.add_argument(
-        "--report",
-        action="store_true",
-        help="Export monitoring report after session"
+        "--report", action="store_true", help="Export monitoring report after session"
     )
     parser.add_argument(
         "--report-format",
@@ -1002,14 +1053,14 @@ Config file priority:
         choices=["json", "markdown", "summary"],
         default="json",
         metavar="FORMAT",
-        help="Report format: json, markdown, summary"
+        help="Report format: json, markdown, summary",
     )
     parser.add_argument(
         "--report-output",
         type=str,
         default=None,
         metavar="PATH",
-        help="Report output file path"
+        help="Report output file path",
     )
 
     args = parser.parse_args()
@@ -1060,30 +1111,39 @@ Config file priority:
         recent_session = storage.get_most_recent_session()
         if recent_session:
             args.resume_session = recent_session
-            Console.print(f"Resuming most recent session: {recent_session}", style="info")
+            Console.print(
+                f"Resuming most recent session: {recent_session}", style="info"
+            )
         else:
-            Console.print("No existing sessions found. Starting new session.", style="info")
+            Console.print(
+                "No existing sessions found. Starting new session.", style="info"
+            )
 
     # Create agent
     agent = create_agent(args.config)
 
     # Handle --new-session: explicitly create a new empty session
     if args.new_session:
-        if hasattr(agent.memory, 'new_session'):
+        if hasattr(agent.memory, "new_session"):
             new_sid = agent.memory.new_session()
             Console.print(f"Started new session: {new_sid}", style="success")
         # else: short_term memory doesn't need explicit new_session
 
     # Handle --resume-session
     if args.resume_session:
-        if hasattr(agent.memory, 'load_session'):
+        if hasattr(agent.memory, "load_session"):
             success = agent.memory.load_session(args.resume_session)
             if not success:
-                Console.print(f"Session '{args.resume_session}' not found", style="error")
+                Console.print(
+                    f"Session '{args.resume_session}' not found", style="error"
+                )
                 sys.exit(1)
             Console.print(f"Resumed session: {args.resume_session}", style="success")
         else:
-            Console.print("Session resume not available (requires persistent/hybrid memory)", style="warning")
+            Console.print(
+                "Session resume not available (requires persistent/hybrid memory)",
+                style="warning",
+            )
 
     # Override model if specified
     if args.model:
@@ -1116,7 +1176,7 @@ Config file priority:
             config,
             report_enabled=args.report,
             report_format=args.report_format,
-            report_output=args.report_output
+            report_output=args.report_output,
         )
 
 
@@ -1132,7 +1192,7 @@ def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
     """
     import re
 
-    if not hasattr(memory, 'recall'):
+    if not hasattr(memory, "recall"):
         return None, None
 
     try:
@@ -1208,15 +1268,19 @@ def _migrate_sessions(config_path: str | None = None, dry_run: bool = False) -> 
     # First show current status
     all_sessions = list_all_sessions(file_dir=file_dir, db_path=db_path)
 
-    print(f"\nFile storage ({file_dir}): {len(all_sessions['file_storage']['sessions'])} sessions")
-    print(f"SQLite storage ({db_path}): {len(all_sessions['sqlite_storage']['sessions'])} sessions")
+    print(
+        f"\nFile storage ({file_dir}): {len(all_sessions['file_storage']['sessions'])} sessions"
+    )
+    print(
+        f"SQLite storage ({db_path}): {len(all_sessions['sqlite_storage']['sessions'])} sessions"
+    )
     print(f"Total unique sessions: {all_sessions['total_unique_sessions']}")
 
     if dry_run:
         print("\n[DRY RUN] Would migrate the following sessions:")
-        for session_id in all_sessions['file_storage']['sessions']:
-            if session_id not in all_sessions['sqlite_storage']['sessions']:
-                info = all_sessions['file_storage']['info'].get(session_id, {})
+        for session_id in all_sessions["file_storage"]["sessions"]:
+            if session_id not in all_sessions["sqlite_storage"]["sessions"]:
+                info = all_sessions["file_storage"]["info"].get(session_id, {})
                 print(f"  - {session_id} ({info.get('message_count', 0)} messages)")
         return
 
@@ -1229,13 +1293,16 @@ def _migrate_sessions(config_path: str | None = None, dry_run: bool = False) -> 
     print(f"  Already in SQLite: {len(report['already_in_sqlite'])}")
     print(f"  Successfully migrated: {len(report['migrated'])}")
 
-    if report['errors']:
+    if report["errors"]:
         print(f"  Errors: {len(report['errors'])}")
-        for error in report['errors']:
+        for error in report["errors"]:
             print(f"    - {error['session_id']}: {error['error']}")
 
-    if report['migrated']:
-        Console.print(f"\nSuccessfully migrated {len(report['migrated'])} sessions!", style="success")
+    if report["migrated"]:
+        Console.print(
+            f"\nSuccessfully migrated {len(report['migrated'])} sessions!",
+            style="success",
+        )
 
 
 def _get_storage(config):
@@ -1273,7 +1340,7 @@ def _list_sessions(config_path: str | None = None) -> None:
         info = storage.get_session_info(session_id)
         print(f"  {session_id}")
         print(f"    Messages: {info['message_count']}")
-        if info['last_message']:
+        if info["last_message"]:
             print(f"    Last activity: {info['last_message'][:19]}")
         print()
 
@@ -1309,7 +1376,11 @@ def _show_session(session_id: str, config_path: str | None = None) -> None:
         # 没有摘要时显示消息预览
         print("消息预览:")
         for entry in entries[:3]:
-            content = entry.content[:100] + "..." if len(entry.content) > 100 else entry.content
+            content = (
+                entry.content[:100] + "..."
+                if len(entry.content) > 100
+                else entry.content
+            )
             print(f"  [{entry.role}]: {content}")
         if len(entries) > 3:
             print(f"  ... 还有 {len(entries) - 3} 条消息")
@@ -1360,10 +1431,15 @@ def _cleanup_sessions(config_path: str | None = None, threshold: int = 3) -> Non
     low_value_sessions = storage.get_sessions_below_threshold(threshold)
 
     if not low_value_sessions:
-        Console.print(f"No sessions with fewer than {threshold} messages found.", style="info")
+        Console.print(
+            f"No sessions with fewer than {threshold} messages found.", style="info"
+        )
         return
 
-    Console.print(f"Found {len(low_value_sessions)} session(s) with fewer than {threshold} messages:", style="info")
+    Console.print(
+        f"Found {len(low_value_sessions)} session(s) with fewer than {threshold} messages:",
+        style="info",
+    )
     for session_id in low_value_sessions:
         info = storage.get_session_info(session_id)
         print(f"  {session_id} ({info['message_count']} messages)")
@@ -1417,8 +1493,7 @@ def _generate_session_summary(agent, config) -> str:
 
     # 构建对话文本
     conversation = "\n".join(
-        f"[{m.get('role')}]: {m.get('content', '')[:200]}"
-        for m in messages
+        f"[{m.get('role')}]: {m.get('content', '')[:200]}" for m in messages
     )
 
     prompt = f"""请用不超过10行总结以下对话的主要内容：
@@ -1432,8 +1507,7 @@ def _generate_session_summary(agent, config) -> str:
 
     try:
         response, _, _ = agent.llm.chat(
-            messages=[{"role": "user", "content": prompt}],
-            tools=None
+            messages=[{"role": "user", "content": prompt}], tools=None
         )
         return response
     except Exception:
@@ -1444,9 +1518,11 @@ def _generate_session_summary(agent, config) -> str:
 def _save_session_summary(agent, config, summary: str) -> None:
     """保存会话摘要"""
     # 获取 session_id
-    if hasattr(agent.memory, 'working_memory') and hasattr(agent.memory.working_memory, 'session_id'):
+    if hasattr(agent.memory, "working_memory") and hasattr(
+        agent.memory.working_memory, "session_id"
+    ):
         session_id = agent.memory.working_memory.session_id
-    elif hasattr(agent.memory, 'session_id'):
+    elif hasattr(agent.memory, "session_id"):
         session_id = agent.memory.session_id
     else:
         return  # 无法获取 session_id
@@ -1496,7 +1572,10 @@ def _handle_undo(agent, config=None, name_update_state: dict | None = None) -> d
     """
     restored = {}
 
-    if not hasattr(agent, 'has_undoable_operations') or not agent.has_undoable_operations():
+    if (
+        not hasattr(agent, "has_undoable_operations")
+        or not agent.has_undoable_operations()
+    ):
         Console.print("没有可撤销的操作", style="info")
         return restored
 
@@ -1504,7 +1583,7 @@ def _handle_undo(agent, config=None, name_update_state: dict | None = None) -> d
     context = {
         "memory": agent.memory,
         "config": config,
-        "tool_registry": agent.tool_registry
+        "tool_registry": agent.tool_registry,
     }
 
     # Perform undo
@@ -1514,7 +1593,9 @@ def _handle_undo(agent, config=None, name_update_state: dict | None = None) -> d
         Console.print(f"已撤销: {', '.join(undone)}", style="success")
 
         # Handle name updates - restore previous values
-        prev_values = name_update_state.get("prev_values", {}) if name_update_state else {}
+        prev_values = (
+            name_update_state.get("prev_values", {}) if name_update_state else {}
+        )
         if config and prev_values:
             for name_type, prev_value in prev_values.items():
                 if name_type == "user_name":
@@ -1544,7 +1625,7 @@ def _handle_skill_command(agent, command: str) -> None:
         agent: Agent 实例
         command: 命令字符串（如 'reload coding'）
     """
-    if not hasattr(agent, 'skill_loader'):
+    if not hasattr(agent, "skill_loader"):
         Console.print("Skill system not available", style="warning")
         return
 
@@ -1567,7 +1648,9 @@ def _handle_skill_command(agent, command: str) -> None:
 
         success = agent.skill_loader.reload_skill(skill_name)
         if success:
-            Console.print(f"Skill '{skill_name}' reloaded successfully", style="success")
+            Console.print(
+                f"Skill '{skill_name}' reloaded successfully", style="success"
+            )
             # Update agent's tools and prompt
             _update_agent_skills(agent)
         else:
@@ -1584,14 +1667,18 @@ def _handle_skill_command(agent, command: str) -> None:
 
         success = agent.skill_loader.unload_skill(skill_name)
         if success:
-            Console.print(f"Skill '{skill_name}' unloaded successfully", style="success")
+            Console.print(
+                f"Skill '{skill_name}' unloaded successfully", style="success"
+            )
             # Update agent's tools and prompt
             _update_agent_skills(agent)
         else:
             Console.print(f"Failed to unload skill '{skill_name}'", style="error")
 
     else:
-        Console.print(f"Unknown action: {action}. Use 'reload' or 'unload'", style="error")
+        Console.print(
+            f"Unknown action: {action}. Use 'reload' or 'unload'", style="error"
+        )
 
 
 def _update_agent_skills(agent) -> None:
@@ -1622,7 +1709,7 @@ def _show_run_stats(agent, config=None) -> None:
     if not GracefulExitManager.show_run_stats:
         return
 
-    if not hasattr(agent, 'tracker') or not agent.tracker.run_metrics:
+    if not hasattr(agent, "tracker") or not agent.tracker.run_metrics:
         return
 
     # Get current run and session statistics
@@ -1635,11 +1722,11 @@ def _show_run_stats(agent, config=None) -> None:
     # 收集工具调用类型 (from current run)，合并相同工具
     tool_counts = {}
     full_report = agent.tracker.get_full_report()
-    if full_report and full_report.get('iterations'):
-        for iteration in full_report['iterations']:
-            for tool in iteration.get('tool_executions', []):
-                status = "✓" if tool['success'] else "✗"
-                key = (status, tool['tool_name'])
+    if full_report and full_report.get("iterations"):
+        for iteration in full_report["iterations"]:
+            for tool in iteration.get("tool_executions", []):
+                status = "✓" if tool["success"] else "✗"
+                key = (status, tool["tool_name"])
                 tool_counts[key] = tool_counts.get(key, 0) + 1
 
     # 格式化工具调用显示
@@ -1651,24 +1738,30 @@ def _show_run_stats(agent, config=None) -> None:
             tool_types.append(f"{status}{name}")
 
     # 本轮统计
-    current_duration = current_summary.get('duration_ms', 0) / 1000
-    current_tokens = current_summary.get('total_tokens', 0)
-    current_iterations = current_summary.get('total_iterations', 0)
+    current_duration = current_summary.get("duration_ms", 0) / 1000
+    current_tokens = current_summary.get("total_tokens", 0)
+    current_iterations = current_summary.get("total_iterations", 0)
 
     # 会话总计
-    session_duration = session_summary.get('session_duration_ms', 0) / 1000
-    session_tokens = session_summary.get('total_tokens', 0)
-    session_llm_calls = session_summary.get('total_llm_calls', 0)
-    session_runs = session_summary.get('total_runs', 0)
+    session_duration = session_summary.get("session_duration_ms", 0) / 1000
+    session_tokens = session_summary.get("total_tokens", 0)
+    session_llm_calls = session_summary.get("total_llm_calls", 0)
+    session_runs = session_summary.get("total_runs", 0)
 
     # 上下文使用率 - 使用当前上下文大小（最后一次 LLM 输入）
     context_info = ""
-    if config and hasattr(config, 'llm'):
+    if config and hasattr(config, "llm"):
         context_length = config.llm.get_context_length()
         # 获取当前上下文大小（最后一次 prompt_tokens）
         last_tokens = agent.tracker.get_last_iteration_tokens()
-        current_context_tokens = last_tokens.get('prompt_tokens', 0) if last_tokens else 0
-        usage_percent = (current_context_tokens / context_length) * 100 if context_length > 0 and current_context_tokens > 0 else 0
+        current_context_tokens = (
+            last_tokens.get("prompt_tokens", 0) if last_tokens else 0
+        )
+        usage_percent = (
+            (current_context_tokens / context_length) * 100
+            if context_length > 0 and current_context_tokens > 0
+            else 0
+        )
         context_info = f" | 上下文: {usage_percent:.1f}% ({current_context_tokens}/{context_length})"
 
         # 警告接近上限
@@ -1686,11 +1779,16 @@ def _show_run_stats(agent, config=None) -> None:
         return f"{n:>3}"
 
     # 本轮
-    print(f"\n📊 本轮: {format_tokens(current_tokens)} tokens | {format_duration(current_duration)}s | LLM调用: {format_llm_calls(current_iterations)} | 迭代: {current_iterations}", end="")
+    print(
+        f"\n📊 本轮: {format_tokens(current_tokens)} tokens | {format_duration(current_duration)}s | LLM调用: {format_llm_calls(current_iterations)} | 迭代: {current_iterations}",
+        end="",
+    )
     if tool_types:
         print(f" | 工具: {', '.join(tool_types)}", end="")
     # 总计 - 添加轮次显示
-    print(f"\n📊 总计: {format_tokens(session_tokens)} tokens | {format_duration(session_duration)}s | LLM调用: {format_llm_calls(session_llm_calls)} | 轮次: {session_runs}{context_info}")
+    print(
+        f"\n📊 总计: {format_tokens(session_tokens)} tokens | {format_duration(session_duration)}s | LLM调用: {format_llm_calls(session_llm_calls)} | 轮次: {session_runs}{context_info}"
+    )
 
 
 def _show_monitoring_stats(agent) -> None:
@@ -1701,13 +1799,15 @@ def _show_monitoring_stats(agent) -> None:
     """
     import json
 
-    if not hasattr(agent, 'tracker'):
+    if not hasattr(agent, "tracker"):
         Console.print("Monitoring not available", style="warning")
         return
 
     summary = agent.tracker.get_summary()
     if not summary:
-        Console.print("No monitoring data available yet. Run a query first.", style="info")
+        Console.print(
+            "No monitoring data available yet. Run a query first.", style="info"
+        )
         return
 
     Console.print("\n=== Monitoring Statistics ===", style="info")
@@ -1721,29 +1821,31 @@ def _show_monitoring_stats(agent) -> None:
 
     # Show detailed report if available
     full_report = agent.tracker.get_full_report()
-    if full_report and full_report.get('iterations'):
+    if full_report and full_report.get("iterations"):
         print("\n--- Iteration Details ---")
-        for iteration in full_report['iterations']:
+        for iteration in full_report["iterations"]:
             print(f"\nIteration {iteration['iteration_number']}:")
-            if iteration.get('llm_call'):
-                llm = iteration['llm_call']
+            if iteration.get("llm_call"):
+                llm = iteration["llm_call"]
                 print(f"  LLM: {llm['model']}")
-                print(f"    Tokens: {llm['prompt_tokens']} prompt + {llm['completion_tokens']} completion = {llm['total_tokens']} total")
+                print(
+                    f"    Tokens: {llm['prompt_tokens']} prompt + {llm['completion_tokens']} completion = {llm['total_tokens']} total"
+                )
                 print(f"    Latency: {llm['latency_ms']:.2f} ms")
                 print(f"    Tool calls: {llm['tool_calls_count']}")
-            if iteration.get('tool_executions'):
+            if iteration.get("tool_executions"):
                 print(f"  Tool Executions:")
-                for tool in iteration['tool_executions']:
-                    status = "✓" if tool['success'] else "✗"
-                    print(f"    {status} {tool['tool_name']}: {tool['latency_ms']:.2f} ms")
+                for tool in iteration["tool_executions"]:
+                    status = "✓" if tool["success"] else "✗"
+                    print(
+                        f"    {status} {tool['tool_name']}: {tool['latency_ms']:.2f} ms"
+                    )
 
     print("\n" + "=" * 30)
 
 
 def _export_report(
-    agent,
-    report_format: str = "json",
-    report_output: str | None = None
+    agent, report_format: str = "json", report_output: str | None = None
 ) -> None:
     """导出监控报告
 
@@ -1752,8 +1854,10 @@ def _export_report(
         report_format: 报告格式 (json, markdown, summary)
         report_output: 输出路径 (默认 .nano_agent/report.{format})
     """
-    if not hasattr(agent, 'tracker') or not agent.tracker.run_metrics:
-        Console.print("No monitoring data available yet. Run a query first.", style="info")
+    if not hasattr(agent, "tracker") or not agent.tracker.run_metrics:
+        Console.print(
+            "No monitoring data available yet. Run a query first.", style="info"
+        )
         return
 
     # 确定输出路径
@@ -1763,6 +1867,7 @@ def _export_report(
 
     # 确保目录存在
     from pathlib import Path
+
     Path(report_output).parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -1829,26 +1934,40 @@ def _show_config(config, agent) -> None:
     # Skills 配置
     print("\n## 技能设置")
     print(format_line("Directory:", config.skills.directory))
-    if hasattr(agent, 'skill_loader'):
+    if hasattr(agent, "skill_loader"):
         skills = agent.skill_loader.list_loaded_skills()
-        print(format_line("Loaded Skills:", ', '.join(skills) if skills else 'None'))
+        print(format_line("Loaded Skills:", ", ".join(skills) if skills else "None"))
 
     # Plugins 配置
     print("\n## 插件设置")
-    print(format_line("Directories:", ', '.join(config.plugins.directories) if config.plugins.directories else 'None'))
-    print(format_line("Modules:", ', '.join(config.plugins.modules) if config.plugins.modules else 'None'))
+    print(
+        format_line(
+            "Directories:",
+            (
+                ", ".join(config.plugins.directories)
+                if config.plugins.directories
+                else "None"
+            ),
+        )
+    )
+    print(
+        format_line(
+            "Modules:",
+            ", ".join(config.plugins.modules) if config.plugins.modules else "None",
+        )
+    )
 
     # Logging 配置
     print("\n## 日志设置")
     print(format_line("Level:", config.logging.level))
     print(format_line("Console:", str(config.logging.console)))
-    print(format_line("File:", config.logging.file or 'None'))
+    print(format_line("File:", config.logging.file or "None"))
 
     # 工具统计
     print("\n## 工具")
     tools = agent.tool_registry.list_tools()
     print(format_line("Total:", str(len(tools))))
-    tools_display = ', '.join(tools[:10])
+    tools_display = ", ".join(tools[:10])
     if len(tools) > 10:
         tools_display += f"... (+{len(tools) - 10} more)"
     print(format_line("Tools:", tools_display))
@@ -1856,7 +1975,11 @@ def _show_config(config, agent) -> None:
     # Output Style 配置
     print("\n## 输出风格")
     print(format_line("Style:", config.output_style.style))
-    print(format_line("Max Tool Output:", f"{config.output_style.tool_output_max_tokens} tokens"))
+    print(
+        format_line(
+            "Max Tool Output:", f"{config.output_style.tool_output_max_tokens} tokens"
+        )
+    )
 
     # Smart Optimization 配置 (v0.7.14)
     print("\n## 智能优化")
@@ -1865,7 +1988,12 @@ def _show_config(config, agent) -> None:
     print(format_line("查询路由:", str(config.smart_optimization.routing_enabled)))
     print(format_line("预判机制:", str(config.smart_optimization.prejudgment_enabled)))
     if config.smart_optimization.prejudgment_enabled:
-        print(format_line("  最大回答 Token:", str(config.smart_optimization.prejudgment_max_answer_tokens)))
+        print(
+            format_line(
+                "  最大回答 Token:",
+                str(config.smart_optimization.prejudgment_max_answer_tokens),
+            )
+        )
 
     # Prompt 配置 (v0.7.6)
     print("\n## Prompt 设置")
@@ -1875,27 +2003,63 @@ def _show_config(config, agent) -> None:
     print(format_line("Include Environment:", str(config.prompt.include_environment)))
     print(format_line("Include Git Status:", str(config.prompt.include_git_status)))
     print(format_line("Enable Caching:", str(config.prompt.enable_caching)))
-    if hasattr(agent, '_prompt_builder') and agent._prompt_builder:
+    if hasattr(agent, "_prompt_builder") and agent._prompt_builder:
         stable_names = agent._prompt_builder.get_stable_module_names()
         if stable_names:
-            print(format_line("Stable Modules:", ', '.join(stable_names)))
+            print(format_line("Stable Modules:", ", ".join(stable_names)))
         else:
-            print(format_line("Stable Modules:", 'None'))
+            print(format_line("Stable Modules:", "None"))
 
     # Aggressive Output 配置 (v0.7.15)
     print("\n## 激进输出简化")
     print(format_line("Enabled:", str(config.aggressive_output.enabled)))
     if config.aggressive_output.enabled:
         print(format_line("Level:", config.aggressive_output.level))
-        print(format_line("Max Sentences:", str(config.aggressive_output.max_response_sentences) if config.aggressive_output.max_response_sentences > 0 else "auto"))
+        print(
+            format_line(
+                "Max Sentences:",
+                (
+                    str(config.aggressive_output.max_response_sentences)
+                    if config.aggressive_output.max_response_sentences > 0
+                    else "auto"
+                ),
+            )
+        )
         print(format_line("Strip Emoji:", str(config.aggressive_output.strip_emoji)))
-        print(format_line("Strip Tables:", str(config.aggressive_output.strip_markdown_tables)))
-        print(format_line("Strip Lists:", str(config.aggressive_output.strip_markdown_lists)))
+        print(
+            format_line(
+                "Strip Tables:", str(config.aggressive_output.strip_markdown_tables)
+            )
+        )
+        print(
+            format_line(
+                "Strip Lists:", str(config.aggressive_output.strip_markdown_lists)
+            )
+        )
 
     # Standardized Output 配置 (v0.7.15)
     print("\n## 标准化工具输出")
     print(format_line("Enabled:", str(config.standardized_output.enabled)))
     print(format_line("Detailed:", str(config.standardized_output.detailed)))
+
+    # Tool Offload 配置 (v0.7.17)
+    print("\n## 工具结果卸载")
+    print(format_line("Enabled:", str(config.offload.enabled)))
+    if config.offload.enabled:
+        print(
+            format_line(
+                "Size Threshold:", f"{config.offload.size_threshold_tokens} tokens"
+            )
+        )
+        print(format_line("Offload Dir:", config.offload.offload_dir))
+        print(format_line("Auto Cleanup:", str(config.offload.auto_cleanup)))
+        print(
+            format_line("Summary Max Tokens:", str(config.offload.summary_max_tokens))
+        )
+        if config.offload.excluded_tools:
+            print(
+                format_line("Excluded Tools:", ", ".join(config.offload.excluded_tools))
+            )
 
     print("\n" + "=" * 50 + "\n")
 
@@ -1983,11 +2147,19 @@ def _enable_long_term_memory(config) -> None:
         if "storage_path" not in existing_config["memory"]:
             existing_config["memory"]["storage_path"] = ".nano_agent/memory"
         if "long_term_storage_path" not in existing_config["memory"]:
-            existing_config["memory"]["long_term_storage_path"] = ".nano_agent/long_term_memory"
+            existing_config["memory"][
+                "long_term_storage_path"
+            ] = ".nano_agent/long_term_memory"
 
         # 写入配置
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(existing_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            yaml.dump(
+                existing_config,
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
 
         Console.print("Long-term memory enabled!", style="success")
         Console.print(f"Config updated: {config_path}", style="info")
@@ -2027,7 +2199,13 @@ def _disable_long_term_memory(config) -> None:
 
         # 写入配置
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(existing_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            yaml.dump(
+                existing_config,
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
 
         Console.print("Long-term memory disabled!", style="success")
         Console.print(f"Config updated: {config_path}", style="info")
@@ -2073,16 +2251,16 @@ def _show_stats_status(agent, config) -> None:
     print("=" * 50)
 
     # 显示会话统计
-    if hasattr(agent, 'tracker'):
+    if hasattr(agent, "tracker"):
         session_summary = agent.tracker.get_session_summary()
 
         if session_summary:
             # 消耗概览
             print("\n## 累计消耗")
-            total_tokens = session_summary.get('total_tokens', 0)
-            total_llm_calls = session_summary.get('total_llm_calls', 0)
-            total_iterations = session_summary.get('total_iterations', 0)
-            total_runs = session_summary.get('total_runs', 0)
+            total_tokens = session_summary.get("total_tokens", 0)
+            total_llm_calls = session_summary.get("total_llm_calls", 0)
+            total_iterations = session_summary.get("total_iterations", 0)
+            total_runs = session_summary.get("total_runs", 0)
 
             print(f"  {_pad_to_width('总 Token:', 14)} {total_tokens}")
             print(f"  {_pad_to_width('总 LLM 调用:', 14)} {total_llm_calls}")
@@ -2091,9 +2269,15 @@ def _show_stats_status(agent, config) -> None:
 
             # 工具调用
             print("\n## 工具调用")
-            print(f"  {_pad_to_width('总调用:', 14)} {session_summary.get('total_tool_calls', 0)}")
-            print(f"  {_pad_to_width('成功:', 14)} {session_summary.get('successful_tool_calls', 0)}")
-            print(f"  {_pad_to_width('失败:', 14)} {session_summary.get('failed_tool_calls', 0)}")
+            print(
+                f"  {_pad_to_width('总调用:', 14)} {session_summary.get('total_tool_calls', 0)}"
+            )
+            print(
+                f"  {_pad_to_width('成功:', 14)} {session_summary.get('successful_tool_calls', 0)}"
+            )
+            print(
+                f"  {_pad_to_width('失败:', 14)} {session_summary.get('failed_tool_calls', 0)}"
+            )
         else:
             print("\n## 会话统计")
             print("  无数据。请先运行查询。")
@@ -2114,14 +2298,14 @@ def _get_display_width(text: str) -> int:
     width = 0
     for char in text:
         # 中文字符范围（CJK）
-        if '一' <= char <= '鿿':
+        if "一" <= char <= "鿿":
             width += 2
         else:
             width += 1
     return width
 
 
-def _pad_to_width(text: str, width: int, align: str = 'left') -> str:
+def _pad_to_width(text: str, width: int, align: str = "left") -> str:
     """将字符串填充到指定显示宽度
 
     Args:
@@ -2134,19 +2318,19 @@ def _pad_to_width(text: str, width: int, align: str = 'left') -> str:
         return text
 
     padding = width - current_width
-    if align == 'left':
-        return text + ' ' * padding
-    elif align == 'right':
-        return ' ' * padding + text
+    if align == "left":
+        return text + " " * padding
+    elif align == "right":
+        return " " * padding + text
     else:  # center
         left_pad = padding // 2
         right_pad = padding - left_pad
-        return ' ' * left_pad + text + ' ' * right_pad
+        return " " * left_pad + text + " " * right_pad
 
 
 def _show_context_composition(agent, config) -> None:
     """显示 Token 消耗详情（按轮次、迭代分类）"""
-    if not hasattr(agent, 'tracker'):
+    if not hasattr(agent, "tracker"):
         Console.print("Tracker not available", style="warning")
         return
 
@@ -2162,18 +2346,20 @@ def _show_context_composition(agent, config) -> None:
 
     # 表头 - 使用 _pad_to_width 处理中文对齐
     print("\n## 迭代明细")
-    print(f"  {_pad_to_width('ID', 4)} "
-          f"{_pad_to_width('轮次', 5)} "
-          f"{_pad_to_width('迭代', 5)} "
-          f"{_pad_to_width('工具[*]', 9)} "
-          f"{_pad_to_width('系统[*]', 9)} "
-          f"{_pad_to_width('技能[*]', 9)} "
-          f"{_pad_to_width('摘要[*]', 9)} "
-          f"{_pad_to_width('消息[*]', 9)} "
-          f"{_pad_to_width('输入', 7)} "
-          f"{_pad_to_width('输出(工具)[*]', 13)} "
-          f"{_pad_to_width('输出[*]', 9)} "
-          f"{_pad_to_width('总和', 7)} 简要描述")
+    print(
+        f"  {_pad_to_width('ID', 4)} "
+        f"{_pad_to_width('轮次', 5)} "
+        f"{_pad_to_width('迭代', 5)} "
+        f"{_pad_to_width('工具[*]', 9)} "
+        f"{_pad_to_width('系统[*]', 9)} "
+        f"{_pad_to_width('技能[*]', 9)} "
+        f"{_pad_to_width('摘要[*]', 9)} "
+        f"{_pad_to_width('消息[*]', 9)} "
+        f"{_pad_to_width('输入', 7)} "
+        f"{_pad_to_width('输出(工具)[*]', 13)} "
+        f"{_pad_to_width('输出[*]', 9)} "
+        f"{_pad_to_width('总和', 7)} 简要描述"
+    )
     print("  " + "-" * 105)
 
     # 格式化函数：0 显示为 "-"
@@ -2183,40 +2369,44 @@ def _show_context_composition(agent, config) -> None:
     # 各行数据 - 轮次只在每个轮次的第一次迭代时显示
     prev_run_number = None
     for row in detailed_usage:
-        run_display = str(row['run_number']) if row['run_number'] != prev_run_number else ""
-        prev_run_number = row['run_number']
+        run_display = (
+            str(row["run_number"]) if row["run_number"] != prev_run_number else ""
+        )
+        prev_run_number = row["run_number"]
 
         # Format description using tracker's static method
         description = MetricsTracker.format_iteration_description(
-            iter_num=row['iteration_number'],
-            tool_names=row.get('tool_names', []),
-            input_messages=row.get('input_messages', []),
-            output_text=row.get('output_text', ''),
-            skipped_tool_calls=row.get('skipped_tool_calls', []),
+            iter_num=row["iteration_number"],
+            tool_names=row.get("tool_names", []),
+            input_messages=row.get("input_messages", []),
+            output_text=row.get("output_text", ""),
+            skipped_tool_calls=row.get("skipped_tool_calls", []),
         )
 
-        print(f"  {_pad_to_width(str(row['id']), 4)} "
-              f"{_pad_to_width(run_display, 5)} "
-              f"{_pad_to_width(str(row['iteration_number']), 5)} "
-              f"{_pad_to_width(fmt_token(row['tool_tokens']), 9)} "
-              f"{_pad_to_width(fmt_token(row['system_tokens']), 9)} "
-              f"{_pad_to_width(fmt_token(row['skill_tokens']), 9)} "
-              f"{_pad_to_width(fmt_token(row['summary_tokens']), 9)} "
-              f"{_pad_to_width(fmt_token(row['message_tokens']), 9)} "
-              f"{_pad_to_width(str(row['input_tokens']), 7)} "
-              f"{_pad_to_width(fmt_token(row['output_tool_tokens']), 13)} "
-              f"{_pad_to_width(fmt_token(row['output_text_tokens']), 9)} "
-              f"{_pad_to_width(str(row['total_tokens']), 7)} {description}")
+        print(
+            f"  {_pad_to_width(str(row['id']), 4)} "
+            f"{_pad_to_width(run_display, 5)} "
+            f"{_pad_to_width(str(row['iteration_number']), 5)} "
+            f"{_pad_to_width(fmt_token(row['tool_tokens']), 9)} "
+            f"{_pad_to_width(fmt_token(row['system_tokens']), 9)} "
+            f"{_pad_to_width(fmt_token(row['skill_tokens']), 9)} "
+            f"{_pad_to_width(fmt_token(row['summary_tokens']), 9)} "
+            f"{_pad_to_width(fmt_token(row['message_tokens']), 9)} "
+            f"{_pad_to_width(str(row['input_tokens']), 7)} "
+            f"{_pad_to_width(fmt_token(row['output_tool_tokens']), 13)} "
+            f"{_pad_to_width(fmt_token(row['output_text_tokens']), 9)} "
+            f"{_pad_to_width(str(row['total_tokens']), 7)} {description}"
+        )
 
     print("  " + "-" * 105)
     print("  [*] 表示按字符长度比例估算")
     print("  - 表示该值为 0")
 
     # 统计摘要
-    total_input = sum(r['input_tokens'] for r in detailed_usage)
-    total_output_tool = sum(r['output_tool_tokens'] for r in detailed_usage)
-    total_output_text = sum(r['output_text_tokens'] for r in detailed_usage)
-    total_all = sum(r['total_tokens'] for r in detailed_usage)
+    total_input = sum(r["input_tokens"] for r in detailed_usage)
+    total_output_tool = sum(r["output_tool_tokens"] for r in detailed_usage)
+    total_output_text = sum(r["output_text_tokens"] for r in detailed_usage)
+    total_all = sum(r["total_tokens"] for r in detailed_usage)
 
     print("\n## 总计")
     print(f"  {_pad_to_width('输入:', 12)} {total_input}")
@@ -2237,7 +2427,7 @@ def _show_context_budget(agent, config) -> None:
     - 摘要：历史摘要（compressor 生成）
     - 对话消息：messages 中的 user + assistant + tool 消息
     """
-    if not hasattr(agent, 'memory'):
+    if not hasattr(agent, "memory"):
         Console.print("Memory not available", style="warning")
         return
 
@@ -2252,13 +2442,13 @@ def _show_context_budget(agent, config) -> None:
 
     # 获取上下文限制
     context_limit = 8192
-    if config and hasattr(config, 'llm'):
+    if config and hasattr(config, "llm"):
         context_limit = config.llm.get_context_length()
 
     # 从 tracker 获取最后一轮的数据（精确值）
     breakdown = {}
 
-    if hasattr(agent, 'tracker') and agent.tracker:
+    if hasattr(agent, "tracker") and agent.tracker:
         detailed_usage = agent.tracker.get_detailed_usage()
         if detailed_usage:
             last_row = detailed_usage[-1]
@@ -2268,17 +2458,29 @@ def _show_context_budget(agent, config) -> None:
             base_ratio = agent.tracker.get_base_ratio()
 
             # 工具定义：使用基准值
-            tools_tokens = int(base_chars["tool_chars"] * base_ratio) if base_chars["tool_chars"] > 0 else 0
+            tools_tokens = (
+                int(base_chars["tool_chars"] * base_ratio)
+                if base_chars["tool_chars"] > 0
+                else 0
+            )
             if tools_tokens > 0:
                 breakdown["工具定义"] = tools_tokens
 
             # 系统提示：使用基准值
-            system_tokens = int(base_chars["system_chars"] * base_ratio) if base_chars["system_chars"] > 0 else 0
+            system_tokens = (
+                int(base_chars["system_chars"] * base_ratio)
+                if base_chars["system_chars"] > 0
+                else 0
+            )
             if system_tokens > 0:
                 breakdown["系统提示"] = system_tokens
 
             # 技能提示：使用基准值
-            skill_tokens = int(base_chars["skill_chars"] * base_ratio) if base_chars["skill_chars"] > 0 else 0
+            skill_tokens = (
+                int(base_chars["skill_chars"] * base_ratio)
+                if base_chars["skill_chars"] > 0
+                else 0
+            )
             if skill_tokens > 0:
                 breakdown["技能提示"] = skill_tokens
 
@@ -2288,7 +2490,11 @@ def _show_context_budget(agent, config) -> None:
                 breakdown["摘要"] = summary_tokens
 
             # 对话消息：最后一轮的消息 + 输出(工具) + 输出文本
-            messages_tokens = last_row.get("message_tokens", 0) + last_row.get("output_tool_tokens", 0) + last_row.get("output_text_tokens", 0)
+            messages_tokens = (
+                last_row.get("message_tokens", 0)
+                + last_row.get("output_tool_tokens", 0)
+                + last_row.get("output_text_tokens", 0)
+            )
             if messages_tokens > 0:
                 breakdown["对话消息"] = messages_tokens
     else:
@@ -2296,8 +2502,9 @@ def _show_context_budget(agent, config) -> None:
         base_ratio = 0.25
 
         # 工具定义
-        if hasattr(agent, 'tool_registry'):
+        if hasattr(agent, "tool_registry"):
             import json
+
             tools_schema = agent.tool_registry.get_all_schemas()
             if tools_schema:
                 tools_json = json.dumps(tools_schema, ensure_ascii=False)
@@ -2317,9 +2524,13 @@ def _show_context_budget(agent, config) -> None:
                 if content.startswith("[历史摘要]"):
                     breakdown["摘要"] = breakdown.get("摘要", 0) + estimated_tokens
                 elif "## Skills" in content or "skill" in content.lower():
-                    breakdown["技能提示"] = breakdown.get("技能提示", 0) + estimated_tokens
+                    breakdown["技能提示"] = (
+                        breakdown.get("技能提示", 0) + estimated_tokens
+                    )
                 else:
-                    breakdown["系统提示"] = breakdown.get("系统提示", 0) + estimated_tokens
+                    breakdown["系统提示"] = (
+                        breakdown.get("系统提示", 0) + estimated_tokens
+                    )
 
         # 对话消息
         messages_tokens = 0
@@ -2385,7 +2596,7 @@ def _show_context_budget(agent, config) -> None:
 
 def _show_iteration_breakdown(agent) -> None:
     """显示各轮 Token 消耗趋势"""
-    if not hasattr(agent, 'tracker'):
+    if not hasattr(agent, "tracker"):
         Console.print("Tracker not available", style="warning")
         return
 
@@ -2400,7 +2611,7 @@ def _show_iteration_breakdown(agent) -> None:
     print("=" * 50)
 
     # 找出最大值用于趋势条
-    max_total = max(i['total_tokens'] for i in iterations) if iterations else 1
+    max_total = max(i["total_tokens"] for i in iterations) if iterations else 1
 
     # 表头
     print(f"  {'轮次':<6} {'输入':<8} {'输出':<8} {'总计':<8} 趋势")
@@ -2408,10 +2619,10 @@ def _show_iteration_breakdown(agent) -> None:
 
     # 各轮数据
     for iter_data in iterations:
-        i = iter_data['iteration_number']
-        prompt = iter_data['prompt_tokens']
-        completion = iter_data['completion_tokens']
-        total = iter_data['total_tokens']
+        i = iter_data["iteration_number"]
+        prompt = iter_data["prompt_tokens"]
+        completion = iter_data["completion_tokens"]
+        total = iter_data["total_tokens"]
 
         # 趋势条（每个 █ 代表 max_total 的 5%）
         bar_len = int(total / max_total * 20) if max_total > 0 else 0
@@ -2422,10 +2633,10 @@ def _show_iteration_breakdown(agent) -> None:
     print("-" * 55)
 
     # 统计摘要
-    total_all = sum(i['total_tokens'] for i in iterations)
+    total_all = sum(i["total_tokens"] for i in iterations)
     avg = total_all / len(iterations) if iterations else 0
-    max_iter = max(iterations, key=lambda x: x['total_tokens'])
-    min_iter = min(iterations, key=lambda x: x['total_tokens'])
+    max_iter = max(iterations, key=lambda x: x["total_tokens"])
+    min_iter = min(iterations, key=lambda x: x["total_tokens"])
 
     print(f"  平均每轮: {avg:.0f} tokens")
     print(f"  最大: {max_iter['total_tokens']} (轮次 {max_iter['iteration_number']})")
@@ -2569,7 +2780,8 @@ def _init_config_file(config, force: bool = False) -> None:
             "verbose": config.agent.verbose,
             "user_name": config.agent.user_name,
             "agent_name": config.agent.agent_name,
-            "system_prompt": config.agent.system_prompt or "You are a helpful AI assistant.",
+            "system_prompt": config.agent.system_prompt
+            or "You are a helpful AI assistant.",
         },
         "memory": {
             "type": config.memory.type,
@@ -2627,7 +2839,13 @@ def _init_config_file(config, force: bool = False) -> None:
     # 如果文件不存在或强制覆盖，直接写入
     if not config_path.exists() or force:
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(default_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            yaml.dump(
+                default_config,
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
         Console.print(f"Config file created: {config_path}", style="success")
         return
 
@@ -2646,7 +2864,13 @@ def _init_config_file(config, force: bool = False) -> None:
 
         # 写入合并后的配置
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(merged_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            yaml.dump(
+                merged_config,
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
 
         Console.print(f"Config file updated: {config_path}", style="success")
         Console.print("Missing default values have been added.", style="info")
@@ -2667,6 +2891,7 @@ def _merge_config(default: dict, existing: dict) -> dict:
         合并后的配置
     """
     import copy
+
     result = copy.deepcopy(existing)
 
     for key, value in default.items():
@@ -2698,9 +2923,12 @@ def _init_project(agent) -> None:
 
         # 显示扫描结果摘要
         Console.print(f"Project: {info['project_name']}", style="info")
-        Console.print(f"Files: {info['structure']['total_files']} | Dirs: {info['structure']['total_dirs']}", style="info")
+        Console.print(
+            f"Files: {info['structure']['total_files']} | Dirs: {info['structure']['total_dirs']}",
+            style="info",
+        )
 
-        if info['tech_stack']:
+        if info["tech_stack"]:
             Console.print(f"Tech: {', '.join(info['tech_stack'])}", style="info")
 
         # 检查是否已存在 NANOPROJECT.md
@@ -2711,7 +2939,11 @@ def _init_project(agent) -> None:
         if output_path.exists():
             existing_content = output_path.read_text(encoding="utf-8")
             # 提取用户手动添加的内容（在 <!-- user-notes --> 标记区域）
-            user_notes_match = re.search(r'<!-- user-notes -->(.*?)<!-- /user-notes -->', existing_content, re.DOTALL)
+            user_notes_match = re.search(
+                r"<!-- user-notes -->(.*?)<!-- /user-notes -->",
+                existing_content,
+                re.DOTALL,
+            )
             if user_notes_match:
                 user_notes = user_notes_match.group(1).strip()
             Console.print("Updating existing NANOPROJECT.md...", style="info")
@@ -2749,8 +2981,7 @@ Please generate NANOPROJECT.md content (in Chinese, concise and professional):""
 
         # 调用 LLM
         response, _, _ = agent.llm.chat(
-            messages=[{"role": "user", "content": prompt}],
-            tools=None
+            messages=[{"role": "user", "content": prompt}], tools=None
         )
 
         # 添加头部信息
@@ -2795,11 +3026,15 @@ Please generate NANOPROJECT.md content (in Chinese, concise and professional):""
         output_path.write_text(full_content, encoding="utf-8")
 
         if existing_content:
-            Console.print(f"\nNANOPROJECT.md updated at: {output_path}", style="success")
+            Console.print(
+                f"\nNANOPROJECT.md updated at: {output_path}", style="success"
+            )
             if user_notes:
                 Console.print("User notes preserved.", style="info")
         else:
-            Console.print(f"\nNANOPROJECT.md created at: {output_path}", style="success")
+            Console.print(
+                f"\nNANOPROJECT.md created at: {output_path}", style="success"
+            )
         Console.print("Project summary generated by LLM.", style="success")
 
         # 将项目信息导入长期记忆（如果启用了 hybrid 模式）
@@ -2818,7 +3053,7 @@ def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
         summary: LLM 生成的摘要
     """
     # 检查是否启用了长期记忆
-    if not hasattr(agent.memory, 'long_term_memory'):
+    if not hasattr(agent.memory, "long_term_memory"):
         return
 
     try:
@@ -2837,7 +3072,7 @@ def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
         ltm.add(
             content=project_info,
             category="project_info",
-            metadata={"source": "/init", "project_name": info['project_name']}
+            metadata={"source": "/init", "project_name": info["project_name"]},
         )
 
         # 保存项目摘要（截取关键部分）
@@ -2845,13 +3080,15 @@ def _save_project_to_long_term_memory(agent, info: dict, summary: str) -> None:
         ltm.add(
             content=f"项目摘要:\n{summary_preview}",
             category="project_summary",
-            metadata={"source": "/init", "project_name": info['project_name']}
+            metadata={"source": "/init", "project_name": info["project_name"]},
         )
 
         Console.print("Project info saved to long-term memory.", style="success")
 
     except Exception as e:
-        Console.print(f"Warning: Could not save to long-term memory: {e}", style="warning")
+        Console.print(
+            f"Warning: Could not save to long-term memory: {e}", style="warning"
+        )
 
 
 if __name__ == "__main__":

@@ -14,19 +14,38 @@ class ProjectScanner:
 
     # 扫描时跳过的目录
     SKIP_DIRS = {
-        ".git", ".svn", ".hg",
-        "__pycache__", ".pytest_cache", ".mypy_cache",
-        "node_modules", "venv", ".venv", "env",
-        ".idea", ".vscode", ".nano_agent",
-        "dist", "build", "*.egg-info",
+        ".git",
+        ".svn",
+        ".hg",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        "node_modules",
+        "venv",
+        ".venv",
+        "env",
+        ".idea",
+        ".vscode",
+        ".nano_agent",
+        "dist",
+        "build",
+        "*.egg-info",
     }
 
     # 用于获取项目信息的文件
     INFO_FILES = {
-        "README.md", "README.rst", "README.txt",
-        "pyproject.toml", "setup.py", "requirements.txt",
-        "package.json", "Cargo.toml", "go.mod",
-        "Makefile", "Dockerfile", "docker-compose.yml",
+        "README.md",
+        "README.rst",
+        "README.txt",
+        "pyproject.toml",
+        "setup.py",
+        "requirements.txt",
+        "package.json",
+        "Cargo.toml",
+        "go.mod",
+        "Makefile",
+        "Dockerfile",
+        "docker-compose.yml",
     }
 
     def __init__(self, project_root: Path | None = None):
@@ -68,7 +87,9 @@ class ProjectScanner:
 
         for root, dirs, files in os.walk(self.project_root):
             # 跳过隐藏和排除的目录
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self.SKIP_DIRS]
+            dirs[:] = [
+                d for d in dirs if not d.startswith(".") and d not in self.SKIP_DIRS
+            ]
 
             rel_root = Path(root).relative_to(self.project_root)
 
@@ -82,9 +103,9 @@ class ProjectScanner:
                     structure["total_files"] += 1
 
         # 限制为顶层目录
-        structure["top_dirs"] = sorted(set(
-            d.split("/")[0] for d in structure["directories"] if "/" in d or d
-        ))[:20]
+        structure["top_dirs"] = sorted(
+            set(d.split("/")[0] for d in structure["directories"] if "/" in d or d)
+        )[:20]
 
         return structure
 
@@ -141,7 +162,9 @@ class ProjectScanner:
             # 获取当前分支
             result = subprocess.run(
                 ["git", "branch", "--show-current"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0:
                 git_info["branch"] = result.stdout.strip()
@@ -149,17 +172,23 @@ class ProjectScanner:
             # 获取最近提交
             result = subprocess.run(
                 ["git", "log", "--oneline", "-10"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0:
                 git_info["recent_commits"] = [
-                    line.strip() for line in result.stdout.strip().split("\n") if line.strip()
+                    line.strip()
+                    for line in result.stdout.strip().split("\n")
+                    if line.strip()
                 ]
 
             # 获取远程 URL
             result = subprocess.run(
                 ["git", "remote", "get-url", "origin"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0:
                 git_info["remote"] = result.stdout.strip()
@@ -179,7 +208,9 @@ class ProjectScanner:
             try:
                 content = readme_path.read_text(encoding="utf-8")
                 # 提取前 500 字符作为摘要
-                docs["readme_preview"] = content[:500] + "..." if len(content) > 500 else content
+                docs["readme_preview"] = (
+                    content[:500] + "..." if len(content) > 500 else content
+                )
             except Exception:
                 pass
 
@@ -187,7 +218,8 @@ class ProjectScanner:
         docs_dir = self.project_root / "docs"
         if docs_dir.exists() and docs_dir.is_dir():
             docs["docs_files"] = [
-                f.name for f in docs_dir.iterdir()
+                f.name
+                for f in docs_dir.iterdir()
                 if f.is_file() and f.suffix in [".md", ".rst", ".txt"]
             ]
 
@@ -217,13 +249,17 @@ class ProjectScanner:
         entry_patterns = ["main.py", "app.py", "__main__.py", "index.js", "main.go"]
 
         for root, dirs, files in os.walk(self.project_root):
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in self.SKIP_DIRS]
+            dirs[:] = [
+                d for d in dirs if not d.startswith(".") and d not in self.SKIP_DIRS
+            ]
 
             for f in files:
                 ext = Path(f).suffix
                 if ext in lang_exts:
                     lang = lang_exts[ext]
-                    code_info["languages"][lang] = code_info["languages"].get(lang, 0) + 1
+                    code_info["languages"][lang] = (
+                        code_info["languages"].get(lang, 0) + 1
+                    )
 
                 if f in entry_patterns:
                     rel_path = Path(root).relative_to(self.project_root) / f
@@ -308,11 +344,15 @@ class ProjectScanner:
             for lang, count in sorted(languages.items(), key=lambda x: -x[1]):
                 lines.append(f"- **{lang}**: {count} files")
 
-        lines.extend(["", "---", "", "## Notes", "", "_Add your project notes here..._", ""])
+        lines.extend(
+            ["", "---", "", "## Notes", "", "_Add your project notes here..._", ""]
+        )
 
         return "\n".join(lines)
 
-    def save(self, path: Path | None = None, info: dict[str, Any] | None = None) -> Path:
+    def save(
+        self, path: Path | None = None, info: dict[str, Any] | None = None
+    ) -> Path:
         """
         保存 NANOPROJECT.md 到文件。
 

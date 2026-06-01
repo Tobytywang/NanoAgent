@@ -52,6 +52,7 @@ class TestAgentBuilder:
     def mock_memory(self):
         """Create a mock memory for testing."""
         from nano_agent.memory import ShortTermMemory
+
         return ShortTermMemory()
 
     def test_initialization(self, mock_config):
@@ -219,11 +220,12 @@ class TestAgentBuilder:
         """Test builder supports method chaining."""
         builder = AgentBuilder(mock_config)
 
-        result = (builder
-            .with_llm_instance(mock_llm)
+        result = (
+            builder.with_llm_instance(mock_llm)
             .with_memory_instance(mock_memory)
             .with_tool_registry(ToolRegistry())
-            .with_skill_registry(SkillRegistry()))
+            .with_skill_registry(SkillRegistry())
+        )
 
         assert result == builder
 
@@ -277,7 +279,12 @@ class TestAgentBuilderIntegration:
     @pytest.mark.integration
     def test_build_full_agent(self, temp_dir):
         """Test building a complete agent with all components."""
-        from nano_agent.config.schema import Config, LLMConfig, AgentConfig, MemoryConfig
+        from nano_agent.config.schema import (
+            Config,
+            LLMConfig,
+            AgentConfig,
+            MemoryConfig,
+        )
         from nano_agent.llm import create_llm_from_config
         from nano_agent.memory import ShortTermMemory
 
@@ -294,13 +301,14 @@ class TestAgentBuilderIntegration:
 
         memory = ShortTermMemory()
 
-        orchestrator = (builder
-            .with_llm_instance(mock_llm)
+        orchestrator = (
+            builder.with_llm_instance(mock_llm)
             .with_memory_instance(memory)
             .with_tool_registry(ToolRegistry())
             .with_skill_registry(SkillRegistry())
             .with_tracker(MetricsTracker())
-            .build())
+            .build()
+        )
 
         assert orchestrator is not None
         assert orchestrator.agent is not None

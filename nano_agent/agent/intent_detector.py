@@ -14,17 +14,39 @@ class IntentKeywords:
 
     # Git operations keywords (ClassVar to avoid mutable default issues)
     GIT_STATUS: ClassVar[list[str]] = [
-        "提交", "commit", "push", "pull", "merge",
-        "分支", "branch", "checkout", "rebase",
-        "git", "clone", "fetch", "diff", "log",
-        "stash", "reset", "tag", "blame"
+        "提交",
+        "commit",
+        "push",
+        "pull",
+        "merge",
+        "分支",
+        "branch",
+        "checkout",
+        "rebase",
+        "git",
+        "clone",
+        "fetch",
+        "diff",
+        "log",
+        "stash",
+        "reset",
+        "tag",
+        "blame",
     ]
 
     # Environment keywords (ClassVar to avoid mutable default issues)
     ENVIRONMENT: ClassVar[list[str]] = [
-        "环境变量", "env", "配置文件", "config",
-        ".env", "settings", "setting", "配置",
-        "变量", "dotenv", "环境"
+        "环境变量",
+        "env",
+        "配置文件",
+        "config",
+        ".env",
+        "settings",
+        "setting",
+        "配置",
+        "变量",
+        "dotenv",
+        "环境",
     ]
 
 
@@ -105,8 +127,7 @@ class IntentDetector:
         """
         if intent in self.keywords:
             self.keywords[intent] = [
-                kw for kw in self.keywords[intent]
-                if kw not in keywords
+                kw for kw in self.keywords[intent] if kw not in keywords
             ]
 
     def get_keywords(self, intent: str) -> list[str]:

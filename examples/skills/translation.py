@@ -19,23 +19,22 @@ class TranslateTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "Text to translate"
-                },
+                "text": {"type": "string", "description": "Text to translate"},
                 "source_lang": {
                     "type": "string",
-                    "description": "Source language code (e.g., 'en', 'zh')"
+                    "description": "Source language code (e.g., 'en', 'zh')",
                 },
                 "target_lang": {
                     "type": "string",
-                    "description": "Target language code (e.g., 'en', 'zh')"
-                }
+                    "description": "Target language code (e.g., 'en', 'zh')",
+                },
             },
-            "required": ["text", "target_lang"]
+            "required": ["text", "target_lang"],
         }
 
-    def execute(self, text: str, target_lang: str, source_lang: str = "auto") -> ToolResult:
+    def execute(
+        self, text: str, target_lang: str, source_lang: str = "auto"
+    ) -> ToolResult:
         """
         Translate text between languages.
 
@@ -46,10 +45,7 @@ class TranslateTool(BaseTool):
         # Demo: Just return the text with a prefix
         # In production, call a real translation service
         result = f"[{target_lang.upper()}] {text}"
-        return ToolResult(
-            success=True,
-            output=f"Translated to {target_lang}: {result}"
-        )
+        return ToolResult(success=True, output=f"Translated to {target_lang}: {result}")
 
 
 class Skill(BaseSkill):

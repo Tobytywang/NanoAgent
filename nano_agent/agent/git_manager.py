@@ -20,10 +20,11 @@ from typing import Optional
 @dataclass
 class GitCommit:
     """Git commit information."""
-    hash: str           # Short commit hash (7 chars)
-    message: str        # Commit message
-    time: datetime      # Commit timestamp
-    author: str         # Commit author
+
+    hash: str  # Short commit hash (7 chars)
+    message: str  # Commit message
+    time: datetime  # Commit timestamp
+    author: str  # Commit author
 
 
 class GitManager:
@@ -61,7 +62,7 @@ class GitManager:
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             self._enabled = result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
@@ -85,7 +86,7 @@ class GitManager:
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             return bool(result.stdout.strip())
         except Exception:
@@ -115,7 +116,7 @@ class GitManager:
                 ["git", "add", "-A"],
                 cwd=self.repo_path,
                 capture_output=True,
-                timeout=10
+                timeout=10,
             )
 
             # Format commit message
@@ -127,7 +128,7 @@ class GitManager:
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0:
@@ -157,7 +158,7 @@ class GitManager:
                 ["git", "reset", "--hard", f"HEAD~{steps}"],
                 cwd=self.repo_path,
                 capture_output=True,
-                timeout=10
+                timeout=10,
             )
             return result.returncode == 0
         except Exception:
@@ -181,7 +182,7 @@ class GitManager:
                 ["git", "reset", "--soft", f"HEAD~{steps}"],
                 cwd=self.repo_path,
                 capture_output=True,
-                timeout=10
+                timeout=10,
             )
             return result.returncode == 0
         except Exception:
@@ -206,7 +207,7 @@ class GitManager:
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
 
             commits = []
@@ -215,12 +216,16 @@ class GitManager:
                     parts = line.split("|")
                     if len(parts) >= 4:
                         try:
-                            commits.append(GitCommit(
-                                hash=parts[0][:7],
-                                message=parts[1],
-                                time=datetime.strptime(parts[2][:19], "%Y-%m-%d %H:%M:%S"),
-                                author=parts[3]
-                            ))
+                            commits.append(
+                                GitCommit(
+                                    hash=parts[0][:7],
+                                    message=parts[1],
+                                    time=datetime.strptime(
+                                        parts[2][:19], "%Y-%m-%d %H:%M:%S"
+                                    ),
+                                    author=parts[3],
+                                )
+                            )
                         except ValueError:
                             continue
 
@@ -244,7 +249,7 @@ class GitManager:
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             return result.stdout.strip() if result.returncode == 0 else None
         except Exception:
@@ -258,7 +263,7 @@ class GitManager:
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             return result.stdout.strip()
         except Exception:

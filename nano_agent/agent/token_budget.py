@@ -33,14 +33,16 @@ class CalibrationData:
     """Single calibration data point: estimated vs actual prompt_tokens."""
 
     estimated: int  # Estimated prompt_tokens from estimate_tokens()
-    actual: int     # Actual prompt_tokens from LLM response
+    actual: int  # Actual prompt_tokens from LLM response
 
 
 @dataclass
 class TokenBudgetConfig:
     """Configuration for token budget management."""
 
-    initial_budget: int = 50000  # Initial token budget (increased for multi-turn conversations)
+    initial_budget: int = (
+        50000  # Initial token budget (increased for multi-turn conversations)
+    )
 
     # Multi-level warning thresholds (relative to initial budget)
     # Warnings issued when remaining ratio <= each threshold
@@ -101,7 +103,9 @@ class TokenBudget:
         self._calibration_factor: float = 1.0
 
         # Warning state tracking (v0.7.8)
-        self._last_warning_level: int = -1  # Track last warning level (0=50%, 1=30%, 2=20%, 3=10%)
+        self._last_warning_level: int = (
+            -1
+        )  # Track last warning level (0=50%, 1=30%, 2=20%, 3=10%)
         self._warnings_issued: int = 0  # Total warnings issued
         self._last_warning_iteration: int = 0  # Iteration counter for interval control
 
@@ -125,7 +129,7 @@ class TokenBudget:
 
         # Keep only the last N entries
         if len(self._usage_history) > self.config.calibration_window:
-            self._usage_history = self._usage_history[-self.config.calibration_window:]
+            self._usage_history = self._usage_history[-self.config.calibration_window :]
 
         # Consume tokens
         self.consume(usage.total_tokens)
@@ -144,9 +148,7 @@ class TokenBudget:
             return
 
         # Compute average ratio: actual / estimated
-        ratios = [
-            d.actual / max(d.estimated, 1) for d in self._calibration_data
-        ]
+        ratios = [d.actual / max(d.estimated, 1) for d in self._calibration_data]
         avg_ratio = sum(ratios) / len(ratios)
 
         # Clamp to [0.5, 2.0] to prevent extreme values
@@ -234,7 +236,10 @@ class TokenBudget:
         for level_idx, threshold in enumerate(self.config.warning_thresholds):
             if ratio <= threshold and level_idx > self._last_warning_level:
                 # Check interval to prevent spam
-                if current_iteration - self._last_warning_iteration >= self.config.warning_interval:
+                if (
+                    current_iteration - self._last_warning_iteration
+                    >= self.config.warning_interval
+                ):
                     self._last_warning_level = level_idx
                     self._last_warning_iteration = current_iteration
                     self._warnings_issued += 1

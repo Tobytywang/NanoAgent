@@ -27,10 +27,10 @@ class WeatherTool(BaseTool):
             "properties": {
                 "city": {
                     "type": "string",
-                    "description": "City name (e.g., Beijing, Shanghai, New York)"
+                    "description": "City name (e.g., Beijing, Shanghai, New York)",
                 }
             },
-            "required": ["city"]
+            "required": ["city"],
         }
 
     def execute(self, city: str) -> ToolResult:
@@ -52,13 +52,12 @@ class WeatherTool(BaseTool):
         city_lower = city.lower()
         if city_lower in weather_data:
             return ToolResult(
-                success=True,
-                output=f"{city} 天气：{weather_data[city_lower]}"
+                success=True, output=f"{city} 天气：{weather_data[city_lower]}"
             )
         else:
             return ToolResult(
                 success=True,
-                output=f"未找到 {city} 的天气信息。可用城市：北京、上海、广州、纽约、伦敦"
+                output=f"未找到 {city} 的天气信息。可用城市：北京、上海、广州、纽约、伦敦",
             )
 
 
@@ -66,20 +65,19 @@ class TimeTool(BaseTool):
     """Get current time."""
 
     name = "get_time"
-    description = "Get current date and time. Use this when the user asks about the current time."
+    description = (
+        "Get current date and time. Use this when the user asks about the current time."
+    )
 
     @property
     def parameters_schema(self):
-        return {
-            "type": "object",
-            "properties": {}
-        }
+        return {"type": "object", "properties": {}}
 
     def execute(self) -> ToolResult:
         """Get current time."""
         from datetime import datetime
+
         now = datetime.now()
         return ToolResult(
-            success=True,
-            output=f"当前时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
+            success=True, output=f"当前时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
         )

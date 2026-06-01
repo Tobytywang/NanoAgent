@@ -67,18 +67,21 @@ class SQLiteStorage(BaseStorage):
             条目 ID
         """
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO memory_entries
                 (id, session_id, role, content, timestamp, metadata)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                entry.id,
-                entry.session_id,
-                entry.role,
-                entry.content,
-                entry.timestamp,
-                json.dumps(entry.metadata)
-            ))
+            """,
+                (
+                    entry.id,
+                    entry.session_id,
+                    entry.role,
+                    entry.content,
+                    entry.timestamp,
+                    json.dumps(entry.metadata),
+                ),
+            )
             conn.commit()
         return entry.id
 
@@ -94,23 +97,28 @@ class SQLiteStorage(BaseStorage):
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT id, session_id, role, content, timestamp, metadata
                 FROM memory_entries
                 WHERE session_id = ?
                 ORDER BY timestamp ASC
-            """, (session_id,))
+            """,
+                (session_id,),
+            )
 
             entries = []
             for row in cursor.fetchall():
-                entries.append(MemoryEntry(
-                    id=row["id"],
-                    session_id=row["session_id"],
-                    role=row["role"],
-                    content=row["content"],
-                    timestamp=row["timestamp"],
-                    metadata=json.loads(row["metadata"]) if row["metadata"] else {}
-                ))
+                entries.append(
+                    MemoryEntry(
+                        id=row["id"],
+                        session_id=row["session_id"],
+                        role=row["role"],
+                        content=row["content"],
+                        timestamp=row["timestamp"],
+                        metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+                    )
+                )
             return entries
 
     def load_recent(self, session_id: str, limit: int) -> list[MemoryEntry]:
@@ -126,24 +134,29 @@ class SQLiteStorage(BaseStorage):
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT id, session_id, role, content, timestamp, metadata
                 FROM memory_entries
                 WHERE session_id = ?
                 ORDER BY timestamp DESC
                 LIMIT ?
-            """, (session_id, limit))
+            """,
+                (session_id, limit),
+            )
 
             entries = []
             for row in cursor.fetchall():
-                entries.append(MemoryEntry(
-                    id=row["id"],
-                    session_id=row["session_id"],
-                    role=row["role"],
-                    content=row["content"],
-                    timestamp=row["timestamp"],
-                    metadata=json.loads(row["metadata"]) if row["metadata"] else {}
-                ))
+                entries.append(
+                    MemoryEntry(
+                        id=row["id"],
+                        session_id=row["session_id"],
+                        role=row["role"],
+                        content=row["content"],
+                        timestamp=row["timestamp"],
+                        metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+                    )
+                )
             return list(reversed(entries))
 
     def delete_session(self, session_id: str) -> None:
@@ -154,9 +167,12 @@ class SQLiteStorage(BaseStorage):
             session_id: 会话标识符
         """
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 DELETE FROM memory_entries WHERE session_id = ?
-            """, (session_id,))
+            """,
+                (session_id,),
+            )
             conn.commit()
 
     def delete_summary(self, session_id: str) -> None:
@@ -167,9 +183,12 @@ class SQLiteStorage(BaseStorage):
             session_id: 会话标识符
         """
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 DELETE FROM session_summaries WHERE session_id = ?
-            """, (session_id,))
+            """,
+                (session_id,),
+            )
             conn.commit()
 
     def get_most_recent_session(self) -> str | None:
@@ -201,12 +220,15 @@ class SQLiteStorage(BaseStorage):
             消息数量少于阈值的会话 ID 列表
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT session_id
                 FROM memory_entries
                 GROUP BY session_id
                 HAVING COUNT(*) < ?
-            """, (threshold,))
+            """,
+                (threshold,),
+            )
             return [row[0] for row in cursor.fetchall()]
 
     def list_sessions(self) -> list[str]:
@@ -234,9 +256,12 @@ class SQLiteStorage(BaseStorage):
             会话存在返回 True
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT COUNT(*) FROM memory_entries WHERE session_id = ?
-            """, (session_id,))
+            """,
+                (session_id,),
+            )
             return cursor.fetchone()[0] > 0
 
     def get_session_info(self, session_id: str) -> dict[str, Any]:
@@ -250,20 +275,23 @@ class SQLiteStorage(BaseStorage):
             包含会话信息的字典
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT
                     COUNT(*) as message_count,
                     MIN(timestamp) as first_message,
                     MAX(timestamp) as last_message
                 FROM memory_entries
                 WHERE session_id = ?
-            """, (session_id,))
+            """,
+                (session_id,),
+            )
             row = cursor.fetchone()
             return {
                 "session_id": session_id,
                 "message_count": row[0],
                 "first_message": row[1],
-                "last_message": row[2]
+                "last_message": row[2],
             }
 
     def clear(self) -> None:
@@ -290,7 +318,7 @@ class SQLiteStorage(BaseStorage):
             return {
                 "total_entries": row[0],
                 "total_sessions": row[1],
-                "db_path": str(self.db_path)
+                "db_path": str(self.db_path),
             }
 
     def save_summary(self, session_id: str, summary: str, message_count: int) -> None:
@@ -303,17 +331,16 @@ class SQLiteStorage(BaseStorage):
             message_count: 会话中的消息数量
         """
         from datetime import datetime
+
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO session_summaries
                 (session_id, summary, message_count, created_at)
                 VALUES (?, ?, ?, ?)
-            """, (
-                session_id,
-                summary,
-                message_count,
-                datetime.now().isoformat()
-            ))
+            """,
+                (session_id, summary, message_count, datetime.now().isoformat()),
+            )
             conn.commit()
 
     def load_summary(self, session_id: str) -> dict | None:
@@ -328,18 +355,21 @@ class SQLiteStorage(BaseStorage):
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT session_id, summary, message_count, created_at
                 FROM session_summaries
                 WHERE session_id = ?
-            """, (session_id,))
+            """,
+                (session_id,),
+            )
             row = cursor.fetchone()
             if row:
                 return {
                     "session_id": row["session_id"],
                     "summary": row["summary"],
                     "message_count": row["message_count"],
-                    "created_at": row["created_at"]
+                    "created_at": row["created_at"],
                 }
             return None
 
@@ -354,7 +384,10 @@ class SQLiteStorage(BaseStorage):
             摘要存在返回 True
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT COUNT(*) FROM session_summaries WHERE session_id = ?
-            """, (session_id,))
+            """,
+                (session_id,),
+            )
             return cursor.fetchone()[0] > 0

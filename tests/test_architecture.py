@@ -34,7 +34,7 @@ class TestExecutionResult:
             iterations=1,
             tool_calls=[{"name": "test"}],
             tokens_used=100,
-            session_id="abc123"
+            session_id="abc123",
         )
         assert result.response == "Hello"
         assert result.success is True
@@ -51,7 +51,7 @@ class TestExecutionResult:
             iterations=1,
             tool_calls=[],
             tokens_used=0,
-            session_id=""
+            session_id="",
         )
         with pytest.raises(Exception):  # FrozenInstanceError
             result.response = "Changed"
@@ -66,7 +66,7 @@ class TestThinkResult:
             response_text="Thinking...",
             tool_calls=[],
             usage=LLMUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-            is_final=True
+            is_final=True,
         )
         assert result.response_text == "Thinking..."
         assert result.is_final is True
@@ -79,7 +79,7 @@ class TestThinkResult:
             response_text="Let me check",
             tool_calls=[tool_call],
             usage=LLMUsage(),
-            is_final=False
+            is_final=False,
         )
         assert result.is_final is False
         assert len(result.tool_calls) == 1
@@ -90,10 +90,7 @@ class TestExecutionEvent:
 
     def test_create_execution_event(self):
         """Test creating an ExecutionEvent."""
-        event = ExecutionEvent(
-            type="tool_call",
-            data={"tool": "test", "arguments": {}}
-        )
+        event = ExecutionEvent(type="tool_call", data={"tool": "test", "arguments": {}})
         assert event.type == "tool_call"
         assert event.data["tool"] == "test"
 
@@ -291,7 +288,9 @@ class TestAgentOrchestrator:
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         orchestrator = AgentOrchestrator(agent)
         assert orchestrator.session_id != ""
@@ -304,7 +303,9 @@ class TestAgentOrchestrator:
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         orchestrator = AgentOrchestrator(agent)
         result = orchestrator.run("Please analyze this data")  # Non-simple input
@@ -321,7 +322,7 @@ class TestAgentOrchestrator:
         llm.chat = Mock(
             side_effect=[
                 ("Let me check", [tool_call], LLMUsage()),
-                ("Done", [], LLMUsage())
+                ("Done", [], LLMUsage()),
             ]
         )
 
@@ -334,10 +335,14 @@ class TestAgentOrchestrator:
         mock_tool.description = "Test tool"
         mock_tool.parameters_schema = {}
         mock_tool.to_ollama_tool = Mock(return_value={})
-        mock_tool.execute = Mock(return_value=ToolResult(success=True, output="executed"))
+        mock_tool.execute = Mock(
+            return_value=ToolResult(success=True, output="executed")
+        )
         registry.register(mock_tool)
 
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
         orchestrator = AgentOrchestrator(agent)
 
         result = orchestrator.run_dry("Please analyze this data")  # Non-simple input
@@ -349,11 +354,19 @@ class TestAgentOrchestrator:
     def test_stats_accumulation(self):
         """Test that stats accumulate across runs."""
         llm = Mock()
-        llm.chat = Mock(return_value=("Hello", [], LLMUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)))
+        llm.chat = Mock(
+            return_value=(
+                "Hello",
+                [],
+                LLMUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        )
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         orchestrator = AgentOrchestrator(agent)
         orchestrator.run("Please analyze this data")  # Non-simple input
@@ -368,7 +381,9 @@ class TestAgentOrchestrator:
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         orchestrator = AgentOrchestrator(agent)
 
@@ -388,7 +403,9 @@ class TestAgentOrchestrator:
 
         memory = ShortTermMemory()
         registry = ToolRegistry()
-        agent = ReActAgent(llm=llm, memory=memory, tool_registry=registry, verbose=False)
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
 
         orchestrator = AgentOrchestrator(agent)
         old_session_id = orchestrator.session_id

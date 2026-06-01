@@ -19,7 +19,7 @@ class TestProjectScanner:
 
     def test_initialization_default_path(self):
         """Test scanner initializes with current directory."""
-        with patch('nano_agent.cli.scanner.Path.cwd') as mock_cwd:
+        with patch("nano_agent.cli.scanner.Path.cwd") as mock_cwd:
             mock_cwd.return_value = Path("/test/project")
 
             scanner = ProjectScanner()
@@ -161,12 +161,9 @@ class TestProjectScanner:
         git_dir = temp_dir / ".git"
         git_dir.mkdir()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             # Mock successful git commands
-            mock_run.return_value = Mock(
-                returncode=0,
-                stdout="main\n"
-            )
+            mock_run.return_value = Mock(returncode=0, stdout="main\n")
 
             git_info = scanner._get_git_info()
 
@@ -189,7 +186,7 @@ class TestProjectScanner:
         git_dir = temp_dir / ".git"
         git_dir.mkdir()
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired("git", 5)
 
             git_info = scanner._get_git_info()

@@ -9,7 +9,13 @@ import tempfile
 import os
 from pathlib import Path
 
-from nano_agent.config.schema import Config, LLMConfig, AgentConfig, MemoryConfig, ToolConfig
+from nano_agent.config.schema import (
+    Config,
+    LLMConfig,
+    AgentConfig,
+    MemoryConfig,
+    ToolConfig,
+)
 from nano_agent.config.loader import ConfigLoader
 
 
@@ -27,9 +33,7 @@ class TestConfigSchema:
     def test_custom_llm_config(self):
         """Test custom LLM configuration."""
         llm_config = LLMConfig(
-            model="qwen2",
-            base_url="http://localhost:8080",
-            timeout=60
+            model="qwen2", base_url="http://localhost:8080", timeout=60
         )
         assert llm_config.model == "qwen2"
         assert llm_config.timeout == 60
@@ -41,7 +45,7 @@ class TestConfigSchema:
             verbose=False,
             system_prompt="Custom prompt",
             user_name="小明",
-            agent_name="Nano"
+            agent_name="Nano",
         )
         assert agent_config.max_iterations == 5
         assert agent_config.verbose is False
@@ -128,8 +132,7 @@ llm:
     def test_save_config(self):
         """Test saving config to file."""
         config = Config(
-            llm=LLMConfig(model="test_model"),
-            agent=AgentConfig(max_iterations=3)
+            llm=LLMConfig(model="test_model"), agent=AgentConfig(max_iterations=3)
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -162,9 +165,7 @@ agent:
 
     def test_save_user_agent_names(self):
         """Test saving user_name and agent_name to config."""
-        config = Config(
-            agent=AgentConfig(user_name="Alice", agent_name="Bob")
-        )
+        config = Config(agent=AgentConfig(user_name="Alice", agent_name="Bob"))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "config.yaml")
@@ -232,6 +233,7 @@ class TestFindConfigFile:
 
             # Mock home directory
             import os
+
             original_home = os.environ.get("HOME")
             try:
                 os.environ["HOME"] = tmpdir
@@ -265,6 +267,7 @@ class TestFindConfigFile:
             project_dir.mkdir()
 
             import os
+
             original_home = os.environ.get("HOME")
             original_cwd = os.getcwd()
             try:
@@ -405,17 +408,9 @@ class TestConfigMerge:
         from nano_agent.cli.main import _merge_config
 
         default = {
-            "llm": {
-                "model": "default",
-                "extra": {"param1": "val1", "param2": "val2"}
-            }
+            "llm": {"model": "default", "extra": {"param1": "val1", "param2": "val2"}}
         }
-        existing = {
-            "llm": {
-                "model": "custom",
-                "extra": {"param1": "custom_val1"}
-            }
-        }
+        existing = {"llm": {"model": "custom", "extra": {"param1": "custom_val1"}}}
 
         merged = _merge_config(default, existing)
 

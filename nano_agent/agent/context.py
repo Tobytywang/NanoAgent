@@ -21,15 +21,16 @@ class NineSectionSummary:
 
     This structure preserves key information when compressing long conversations.
     """
-    user_request: str       # Original user request
+
+    user_request: str  # Original user request
     technical_concepts: str  # Technical concepts and decisions
-    files_and_code: str      # Files and code involved
-    errors_and_fixes: str    # Errors encountered and fixes applied
-    problem_solving: str     # Problem-solving process
-    user_messages: str       # Additional user messages
-    pending_tasks: str       # Pending tasks
-    current_work: str        # Current work status
-    next_steps: str          # Next steps planned
+    files_and_code: str  # Files and code involved
+    errors_and_fixes: str  # Errors encountered and fixes applied
+    problem_solving: str  # Problem-solving process
+    user_messages: str  # Additional user messages
+    pending_tasks: str  # Pending tasks
+    current_work: str  # Current work status
+    next_steps: str  # Next steps planned
 
     def to_message(self) -> dict:
         """
@@ -75,7 +76,7 @@ class NineSectionSummary:
             user_messages=self.user_messages or "无",
             pending_tasks=self.pending_tasks or "无",
             current_work=self.current_work or "无",
-            next_steps=self.next_steps or "无"
+            next_steps=self.next_steps or "无",
         )
         return {"role": "system", "content": content, "name": "context_summary"}
 
@@ -136,6 +137,7 @@ class ContextManager:
                 max_context_tokens = self._llm_config.get_context_length()
             else:
                 from ..config.schema import CONSERVATIVE_CONTEXT_FALLBACK
+
                 max_context_tokens = CONSERVATIVE_CONTEXT_FALLBACK
 
         messages = self.memory.get_all()
@@ -151,7 +153,9 @@ class ContextManager:
         ratio = tokens / max_context_tokens
 
         if self.verbose:
-            print(f"[Context] Tokens: {tokens}/{max_context_tokens} ({ratio:.1%}) [{token_source}]")
+            print(
+                f"[Context] Tokens: {tokens}/{max_context_tokens} ({ratio:.1%}) [{token_source}]"
+            )
 
         if ratio < self.config.pressure_threshold_low:
             return False
@@ -262,7 +266,9 @@ class ContextManager:
         # Circuit breaker: stop if too many failures
         if self.compress_failures >= self.config.max_compress_failures:
             if self.verbose:
-                print(f"[Context] Circuit breaker active: {self.compress_failures} failures")
+                print(
+                    f"[Context] Circuit breaker active: {self.compress_failures} failures"
+                )
             return False
 
         try:
@@ -322,8 +328,7 @@ class ContextManager:
 
         # Let exceptions propagate to caller for circuit breaker handling
         response, _, _ = self.llm.chat(
-            messages=[{"role": "user", "content": prompt}],
-            tools=None
+            messages=[{"role": "user", "content": prompt}], tools=None
         )
         return self._parse_summary(response)
 
@@ -346,7 +351,7 @@ class ContextManager:
             "用户补充": "",
             "待处理任务": "",
             "当前工作": "",
-            "下一步": ""
+            "下一步": "",
         }
 
         current_section = None
@@ -358,7 +363,9 @@ class ContextManager:
             # Check for section header
             found_section = None
             for section_name in sections:
-                if line.startswith(section_name + ":") or line.startswith(section_name + "："):
+                if line.startswith(section_name + ":") or line.startswith(
+                    section_name + "："
+                ):
                     found_section = section_name
                     # Extract content after colon
                     if ":" in line:
@@ -385,7 +392,7 @@ class ContextManager:
             user_messages=sections["用户补充"].strip(),
             pending_tasks=sections["待处理任务"].strip(),
             current_work=sections["当前工作"].strip(),
-            next_steps=sections["下一步"].strip()
+            next_steps=sections["下一步"].strip(),
         )
 
     def _replace_with_summary(self, summary: NineSectionSummary):
@@ -400,10 +407,16 @@ class ContextManager:
         messages = self.memory.get_all()
 
         # Keep system message
-        system_msg = messages[0] if messages and messages[0].get("role") == "system" else None
+        system_msg = (
+            messages[0] if messages and messages[0].get("role") == "system" else None
+        )
 
         # Keep recent messages (last 6)
-        recent = messages[-6:] if len(messages) > 6 else messages[1:] if system_msg else messages
+        recent = (
+            messages[-6:]
+            if len(messages) > 6
+            else messages[1:] if system_msg else messages
+        )
 
         # Build new message list
         new_messages = []
@@ -449,7 +462,9 @@ class ContextManager:
             # Add tool call info if present
             tool_calls = msg.get("tool_calls")
             if tool_calls:
-                tool_names = [tc.get("function", {}).get("name", "unknown") for tc in tool_calls]
+                tool_names = [
+                    tc.get("function", {}).get("name", "unknown") for tc in tool_calls
+                ]
                 content += f" [工具调用: {', '.join(tool_names)}]"
 
             lines.append(f"[{role}] {content}")

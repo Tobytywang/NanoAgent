@@ -68,7 +68,13 @@ class TestStandardToolOutput:
     def test_format_content_compact(self):
         sto = StandardToolOutput(
             format=OutputFormat.CONTENT,
-            data={"source": "test.py", "lines_total": 100, "lines_shown": 10, "start_line": 1, "content": "import os"},
+            data={
+                "source": "test.py",
+                "lines_total": 100,
+                "lines_shown": 10,
+                "start_line": 1,
+                "content": "import os",
+            },
             summary="test.py: 100 lines",
         )
         result = sto.to_llm_message(detailed=False)
@@ -79,7 +85,13 @@ class TestStandardToolOutput:
     def test_format_content_detailed(self):
         sto = StandardToolOutput(
             format=OutputFormat.CONTENT,
-            data={"source": "test.py", "lines_total": 100, "lines_shown": 10, "start_line": 1, "content": "import os"},
+            data={
+                "source": "test.py",
+                "lines_total": 100,
+                "lines_shown": 10,
+                "start_line": 1,
+                "content": "import os",
+            },
             summary="test.py: 100 lines",
         )
         result = sto.to_llm_message(detailed=True)
@@ -218,6 +230,7 @@ class TestShellStandardOutput:
 
     def test_metadata_has_standard_output(self):
         from nano_agent.tools.builtin.shell import ShellTool
+
         tool = ShellTool()
         result = tool.execute(command="echo hello")
         assert result.success
@@ -225,6 +238,7 @@ class TestShellStandardOutput:
 
     def test_format_is_status(self):
         from nano_agent.tools.builtin.shell import ShellTool
+
         tool = ShellTool()
         result = tool.execute(command="echo hello")
         sto = result.metadata["standard_output"]
@@ -232,6 +246,7 @@ class TestShellStandardOutput:
 
     def test_exit_code(self):
         from nano_agent.tools.builtin.shell import ShellTool
+
         tool = ShellTool()
         result = tool.execute(command="echo hello")
         sto = result.metadata["standard_output"]
@@ -243,6 +258,7 @@ class TestPythonExecutorStandardOutput:
 
     def test_metadata_has_standard_output(self):
         from nano_agent.tools.builtin.python_executor import PythonExecutorTool
+
         tool = PythonExecutorTool()
         result = tool.execute(code="print('hello')")
         assert result.success
@@ -250,6 +266,7 @@ class TestPythonExecutorStandardOutput:
 
     def test_format_is_status(self):
         from nano_agent.tools.builtin.python_executor import PythonExecutorTool
+
         tool = PythonExecutorTool()
         result = tool.execute(code="print('hello')")
         sto = result.metadata["standard_output"]

@@ -33,7 +33,9 @@ class BaseRegistry(Generic[T]):
         """
         key = name or getattr(item, "name", None)
         if key is None:
-            raise ValueError("Item must have a 'name' attribute or name must be provided")
+            raise ValueError(
+                "Item must have a 'name' attribute or name must be provided"
+            )
         self._items[key] = item
 
     def unregister(self, name: str) -> bool:

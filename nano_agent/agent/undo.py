@@ -47,12 +47,14 @@ class UndoStack:
             undo_data: 撤销此操作所需的数据
         """
         if undo_data:
-            self._records.append(UndoRecord(
-                tool_name=tool_name,
-                undo_data=undo_data,
-                timestamp=datetime.now().isoformat(),
-                round_id=self._current_round
-            ))
+            self._records.append(
+                UndoRecord(
+                    tool_name=tool_name,
+                    undo_data=undo_data,
+                    timestamp=datetime.now().isoformat(),
+                    round_id=self._current_round,
+                )
+            )
 
     def get_round_records(self) -> list[UndoRecord]:
         """

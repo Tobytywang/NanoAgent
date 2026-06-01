@@ -38,30 +38,30 @@ Examples:
             "properties": {
                 "content": {
                     "type": "string",
-                    "description": "The information to remember"
+                    "description": "The information to remember",
                 },
                 "category": {
                     "type": "string",
                     "enum": ["fact", "preference", "experience", "task", "note"],
-                    "description": "Type of memory (default: fact)"
+                    "description": "Type of memory (default: fact)",
                 },
                 "importance": {
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Importance score from 0 to 1 (default: 0.5)"
+                    "description": "Importance score from 0 to 1 (default: 0.5)",
                 },
                 "name_type": {
                     "type": "string",
                     "enum": ["user_name", "agent_name"],
-                    "description": "Type of name being stored (optional). Use 'user_name' for the user's name, 'agent_name' for the agent's own name."
+                    "description": "Type of name being stored (optional). Use 'user_name' for the user's name, 'agent_name' for the agent's own name.",
                 },
                 "name_value": {
                     "type": "string",
-                    "description": "The actual name value (optional). Required if name_type is specified."
-                }
+                    "description": "The actual name value (optional). Required if name_type is specified.",
+                },
             },
-            "required": ["content"]
+            "required": ["content"],
         }
 
     @property
@@ -89,27 +89,30 @@ Examples:
             return False
 
         # Delete the memory entry
-        if hasattr(memory, 'forget'):
+        if hasattr(memory, "forget"):
             return memory.forget(entry_id)
-        elif hasattr(memory, 'long_term_memory'):
+        elif hasattr(memory, "long_term_memory"):
             return memory.long_term_memory.delete(entry_id)
 
         return False
 
-    def execute(self, content: str, category: str = "fact", importance: float = 0.5, name_type: str = None, name_value: str = None) -> ToolResult:
+    def execute(
+        self,
+        content: str,
+        category: str = "fact",
+        importance: float = 0.5,
+        name_type: str = None,
+        name_value: str = None,
+    ) -> ToolResult:
         if not self._memory:
-            return ToolResult(
-                success=False,
-                output="",
-                error="Memory not configured"
-            )
+            return ToolResult(success=False, output="", error="Memory not configured")
 
         # Check if memory has long-term memory support using Protocol
         if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",
-                error="Long-term memory not available. Use hybrid memory type."
+                error="Long-term memory not available. Use hybrid memory type.",
             )
 
         try:
@@ -164,20 +167,25 @@ Examples:
                 # Sanitize detected value
                 if detected_name_value:
                     try:
-                        detected_name_value = detected_name_value.encode('utf-8', errors='replace').decode('utf-8')
+                        detected_name_value = detected_name_value.encode(
+                            "utf-8", errors="replace"
+                        ).decode("utf-8")
                     except (UnicodeDecodeError, UnicodeEncodeError):
                         pass
 
                 # Build metadata for storage if name detected
                 if detected_name_type and detected_name_value:
-                    storage_metadata = {"type": detected_name_type, "value": detected_name_value}
+                    storage_metadata = {
+                        "type": detected_name_type,
+                        "value": detected_name_value,
+                    }
 
             # Store in memory with metadata (returns tuple: entry_id, is_new)
             entry_id, is_new = self._memory.memorize(
                 content=content,
                 category=category,
                 importance=importance,
-                metadata=storage_metadata
+                metadata=storage_metadata,
             )
 
             # Return result with entry_id and name info for CLI callback
@@ -195,14 +203,10 @@ Examples:
                 success=True,
                 output=output,
                 metadata=result_metadata,
-                undo_data={"entry_id": entry_id, "is_new": is_new}
+                undo_data={"entry_id": entry_id, "is_new": is_new},
             )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                output="",
-                error=str(e)
-            )
+            return ToolResult(success=False, output="", error=str(e))
 
 
 class RecallTool(BaseTool):
@@ -226,42 +230,35 @@ class RecallTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query to find relevant memories"
+                    "description": "Search query to find relevant memories",
                 },
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 10,
-                    "description": "Maximum number of results (default: 5)"
-                }
+                    "description": "Maximum number of results (default: 5)",
+                },
             },
-            "required": ["query"]
+            "required": ["query"],
         }
 
     def execute(self, query: str, limit: int = 5) -> ToolResult:
         if not self._memory:
-            return ToolResult(
-                success=False,
-                output="",
-                error="Memory not configured"
-            )
+            return ToolResult(success=False, output="", error="Memory not configured")
 
         # Check if memory has long-term memory support using Protocol
         if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",
-                error="Long-term memory not available. Use hybrid memory type."
+                error="Long-term memory not available. Use hybrid memory type.",
             )
 
         try:
             entries = self._memory.recall(query, limit)
 
             if not entries:
-                return ToolResult(
-                    success=True,
-                    output="No matching memories found."
-                )
+                return ToolResult(success=True, output="No matching memories found.")
 
             # Format results
             results = []
@@ -272,15 +269,10 @@ class RecallTool(BaseTool):
                 )
 
             return ToolResult(
-                success=True,
-                output="Found memories:\n" + "\n".join(results)
+                success=True, output="Found memories:\n" + "\n".join(results)
             )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                output="",
-                error=str(e)
-            )
+            return ToolResult(success=False, output="", error=str(e))
 
 
 class ListMemoriesTool(BaseTool):
@@ -305,25 +297,21 @@ class ListMemoriesTool(BaseTool):
                 "category": {
                     "type": "string",
                     "enum": ["fact", "preference", "experience", "task", "note"],
-                    "description": "Filter by category (optional)"
+                    "description": "Filter by category (optional)",
                 }
-            }
+            },
         }
 
     def execute(self, category: str | None = None) -> ToolResult:
         if not self._memory:
-            return ToolResult(
-                success=False,
-                output="",
-                error="Memory not configured"
-            )
+            return ToolResult(success=False, output="", error="Memory not configured")
 
         # Check if memory has long-term memory support using Protocol
         if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",
-                error="Long-term memory not available. Use hybrid memory type."
+                error="Long-term memory not available. Use hybrid memory type.",
             )
 
         try:
@@ -333,10 +321,7 @@ class ListMemoriesTool(BaseTool):
                 entries = [e for e in entries if e.category == category]
 
             if not entries:
-                return ToolResult(
-                    success=True,
-                    output="No memories stored yet."
-                )
+                return ToolResult(success=True, output="No memories stored yet.")
 
             # Format results
             results = []
@@ -347,14 +332,10 @@ class ListMemoriesTool(BaseTool):
 
             return ToolResult(
                 success=True,
-                output=f"Total {len(entries)} memories:\n" + "\n".join(results)
+                output=f"Total {len(entries)} memories:\n" + "\n".join(results),
             )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                output="",
-                error=str(e)
-            )
+            return ToolResult(success=False, output="", error=str(e))
 
 
 class ForgetTool(BaseTool):
@@ -378,26 +359,22 @@ class ForgetTool(BaseTool):
             "properties": {
                 "memory_id": {
                     "type": "string",
-                    "description": "The ID of the memory to delete (e.g., ltm_abc123)"
+                    "description": "The ID of the memory to delete (e.g., ltm_abc123)",
                 }
             },
-            "required": ["memory_id"]
+            "required": ["memory_id"],
         }
 
     def execute(self, memory_id: str) -> ToolResult:
         if not self._memory:
-            return ToolResult(
-                success=False,
-                output="",
-                error="Memory not configured"
-            )
+            return ToolResult(success=False, output="", error="Memory not configured")
 
         # Check if memory has long-term memory support using Protocol
         if not isinstance(self._memory, LongTermMemoryCapable):
             return ToolResult(
                 success=False,
                 output="",
-                error="Long-term memory not available. Use hybrid memory type."
+                error="Long-term memory not available. Use hybrid memory type.",
             )
 
         try:
@@ -405,18 +382,11 @@ class ForgetTool(BaseTool):
 
             if success:
                 return ToolResult(
-                    success=True,
-                    output=f"Memory {memory_id} has been deleted."
+                    success=True, output=f"Memory {memory_id} has been deleted."
                 )
             else:
                 return ToolResult(
-                    success=False,
-                    output="",
-                    error=f"Memory {memory_id} not found."
+                    success=False, output="", error=f"Memory {memory_id} not found."
                 )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                output="",
-                error=str(e)
-            )
+            return ToolResult(success=False, output="", error=str(e))

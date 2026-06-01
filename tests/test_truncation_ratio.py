@@ -168,7 +168,10 @@ class TestMaxSummaryTokensActivation:
 
     def test_summary_truncated_when_over_budget(self):
         """When summary exceeds max_summary_tokens, it gets truncated."""
-        from nano_agent.agent.result_summarizer import SummarizerConfig, ToolResultSummarizer
+        from nano_agent.agent.result_summarizer import (
+            SummarizerConfig,
+            ToolResultSummarizer,
+        )
 
         config = SummarizerConfig(max_summary_tokens=10)
         summarizer = ToolResultSummarizer(config)
@@ -179,7 +182,10 @@ class TestMaxSummaryTokensActivation:
 
     def test_summary_not_truncated_when_under_budget(self):
         """Short summaries that fit within max_summary_tokens are kept intact."""
-        from nano_agent.agent.result_summarizer import SummarizerConfig, ToolResultSummarizer
+        from nano_agent.agent.result_summarizer import (
+            SummarizerConfig,
+            ToolResultSummarizer,
+        )
 
         config = SummarizerConfig(max_summary_tokens=500)
         summarizer = ToolResultSummarizer(config)
@@ -189,7 +195,10 @@ class TestMaxSummaryTokensActivation:
 
     def test_zero_max_summary_tokens_no_truncation(self):
         """When max_summary_tokens=0, no truncation is applied."""
-        from nano_agent.agent.result_summarizer import SummarizerConfig, ToolResultSummarizer
+        from nano_agent.agent.result_summarizer import (
+            SummarizerConfig,
+            ToolResultSummarizer,
+        )
 
         config = SummarizerConfig(max_summary_tokens=0)
         summarizer = ToolResultSummarizer(config)
@@ -211,10 +220,15 @@ class TestCompressorTruncation:
         # Create old messages with Chinese content
         old_messages = [
             {"role": "user", "content": "这是第一个用户的请求关于某个问题"},
-            {"role": "assistant", "content": "这是助手的回复内容包含了详细的分析和解决方案"},
+            {
+                "role": "assistant",
+                "content": "这是助手的回复内容包含了详细的分析和解决方案",
+            },
             {"role": "tool", "content": "这是工具的执行结果", "name": "file_read"},
         ] * 10  # Make it long enough
 
         summary = compressor._create_summary(old_messages)
         # The summary should fit within the token budget
-        assert estimate_text_tokens(summary["content"]) <= config.summary_max_tokens + 10  # Allow small overhead for "..." suffix
+        assert (
+            estimate_text_tokens(summary["content"]) <= config.summary_max_tokens + 10
+        )  # Allow small overhead for "..." suffix

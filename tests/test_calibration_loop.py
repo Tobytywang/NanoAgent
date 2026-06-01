@@ -221,6 +221,7 @@ class TestCalibrationConsumedByEstimate:
         # Create messages that estimate to ~80 tokens (below 100 threshold)
         messages = [{"role": "user", "content": "a" * 300}]
         from nano_agent.agent.token_utils import estimate_tokens
+
         estimated = estimate_tokens(messages)
         assert estimated < 100  # Below threshold without calibration
 
@@ -288,7 +289,9 @@ class TestCalibrationIntegration:
             pressure_threshold_high=0.95,
         )
 
-        cm = ContextManager(memory=memory, llm=None, config=config, llm_config=MagicMock())
+        cm = ContextManager(
+            memory=memory, llm=None, config=config, llm_config=MagicMock()
+        )
 
         # Without calibration: estimated ~60 tokens, ratio < 0.70 → no compression
         estimated_base = estimate_tokens(memory.get_all(), calibration_factor=1.0)

@@ -8,7 +8,12 @@ pytestmark = pytest.mark.unit
 import tempfile
 from pathlib import Path
 
-from nano_agent.tools.builtin.memory_tools import MemorizeTool, RecallTool, ListMemoriesTool, ForgetTool
+from nano_agent.tools.builtin.memory_tools import (
+    MemorizeTool,
+    RecallTool,
+    ListMemoriesTool,
+    ForgetTool,
+)
 from nano_agent.tools.base import ToolResult
 from nano_agent.memory import HybridMemory, FileStorage, LongTermMemory, ShortTermMemory
 
@@ -50,15 +55,12 @@ class TestMemorizeTool:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = MemorizeTool(memory=memory)
             result = tool.execute(
-                content="test fact to remember",
-                category="fact",
-                importance=0.8
+                content="test fact to remember", category="fact", importance=0.8
             )
 
             assert result.success is True
@@ -102,12 +104,11 @@ class TestRecallTool:
             long_term.add(
                 content="Python is a programming language",
                 keywords=["python", "programming"],
-                category="fact"
+                category="fact",
             )
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = RecallTool(memory=memory)
@@ -145,8 +146,7 @@ class TestListMemoriesTool:
             long_term.add(content="Memory 2", keywords=["test"])
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = ListMemoriesTool(memory=memory)
@@ -162,7 +162,9 @@ class TestForgetTableTool:
         """Test ForgetTool properties."""
         tool = ForgetTool()
         assert tool.name == "forget"
-        assert "delete" in tool.description.lower() or "remove" in tool.description.lower()
+        assert (
+            "delete" in tool.description.lower() or "remove" in tool.description.lower()
+        )
         assert "memory_id" in tool.parameters_schema["properties"]
 
     def test_forget_without_memory(self):
@@ -182,13 +184,11 @@ class TestForgetTableTool:
 
             # Add a memory and get its ID
             memory_id, is_new = long_term.add(
-                content="This will be forgotten",
-                keywords=["test"]
+                content="This will be forgotten", keywords=["test"]
             )
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = ForgetTool(memory=memory)
@@ -208,8 +208,7 @@ class TestNameExtraction:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = MemorizeTool(memory=memory)
@@ -227,8 +226,7 @@ class TestNameExtraction:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = MemorizeTool(memory=memory)
@@ -248,8 +246,7 @@ class TestNameExtraction:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = MemorizeTool(memory=memory)
@@ -267,8 +264,7 @@ class TestNameExtraction:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = MemorizeTool(memory=memory)
@@ -286,8 +282,7 @@ class TestNameExtraction:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = MemorizeTool(memory=memory)
@@ -305,15 +300,12 @@ class TestNameExtraction:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             tool = MemorizeTool(memory=memory)
             result = tool.execute(
-                content="用户的名字是天宇",
-                name_type="user_name",
-                name_value="天宇"
+                content="用户的名字是天宇", name_type="user_name", name_value="天宇"
             )
 
             assert result.success is True
@@ -332,16 +324,13 @@ class TestMemoryToolsIntegration:
             long_term = LongTermMemory(storage_path=d)
 
             memory = HybridMemory(
-                working_memory=working_memory,
-                long_term_memory=long_term
+                working_memory=working_memory, long_term_memory=long_term
             )
 
             # Memorize
             memorize_tool = MemorizeTool(memory=memory)
             result = memorize_tool.execute(
-                content="User prefers dark mode",
-                category="preference",
-                importance=0.9
+                content="User prefers dark mode", category="preference", importance=0.9
             )
             assert result.success is True
 

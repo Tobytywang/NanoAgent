@@ -28,14 +28,8 @@ class ConfidenceParser:
     """
 
     # Regex patterns for confidence markers
-    CONFIDENCE_PATTERN = re.compile(
-        r"\[CONFIDENCE:\s*(-?[0-9.]+)\]",
-        re.IGNORECASE
-    )
-    CAN_ANSWER_PATTERN = re.compile(
-        r"\[CAN_ANSWER:\s*(yes|no)\]",
-        re.IGNORECASE
-    )
+    CONFIDENCE_PATTERN = re.compile(r"\[CONFIDENCE:\s*(-?[0-9.]+)\]", re.IGNORECASE)
+    CAN_ANSWER_PATTERN = re.compile(r"\[CAN_ANSWER:\s*(yes|no)\]", re.IGNORECASE)
 
     def __init__(self, threshold: float = 0.9):
         """
@@ -106,9 +100,6 @@ class ConfidenceParser:
         result = self.parse(response)
 
         # Early stop if confidence >= threshold AND can_answer is True
-        should_stop = (
-            result.confidence >= self.threshold
-            and result.can_answer
-        )
+        should_stop = result.confidence >= self.threshold and result.can_answer
 
         return should_stop, result

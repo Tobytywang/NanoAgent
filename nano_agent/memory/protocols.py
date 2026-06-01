@@ -21,7 +21,7 @@ class LongTermMemoryCapable(Protocol):
         category: str = "note",
         keywords: list[str] | None = None,
         importance: float = 0.5,
-        metadata: dict | None = None
+        metadata: dict | None = None,
     ) -> tuple[str, bool]:
         """
         存储信息到长期内存。

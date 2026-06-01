@@ -3,7 +3,11 @@
 import pytest
 from nano_agent.config.schema import AggressiveOutputConfig
 from nano_agent.agent.output_simplifier import OutputSimplifier
-from nano_agent.agent.prompt_modules import MODULES, AGGRESSIVE_OUTPUT_CONTENTS, STYLE_PRESETS
+from nano_agent.agent.prompt_modules import (
+    MODULES,
+    AGGRESSIVE_OUTPUT_CONTENTS,
+    STYLE_PRESETS,
+)
 
 
 class TestAggressiveOutputConfig:
@@ -44,13 +48,23 @@ class TestOutputSimplifier:
         assert simplifier.simplify(text) == text
 
     def test_strip_emoji(self):
-        config = AggressiveOutputConfig(enabled=True, strip_emoji=True, strip_markdown_tables=False, strip_markdown_lists=False)
+        config = AggressiveOutputConfig(
+            enabled=True,
+            strip_emoji=True,
+            strip_markdown_tables=False,
+            strip_markdown_lists=False,
+        )
         simplifier = OutputSimplifier(config)
         assert "🎉" not in simplifier.simplify("Hello 🎉 world")
         assert "Hello" in simplifier.simplify("Hello 🎉 world")
 
     def test_strip_markdown_tables(self):
-        config = AggressiveOutputConfig(enabled=True, strip_emoji=False, strip_markdown_tables=True, strip_markdown_lists=False)
+        config = AggressiveOutputConfig(
+            enabled=True,
+            strip_emoji=False,
+            strip_markdown_tables=True,
+            strip_markdown_lists=False,
+        )
         simplifier = OutputSimplifier(config)
         text = "Results:\n| A | B |\n|---|---|\n| 1 | 2 |\nDone."
         result = simplifier.simplify(text)
@@ -58,7 +72,12 @@ class TestOutputSimplifier:
         assert "---" not in result
 
     def test_strip_markdown_lists(self):
-        config = AggressiveOutputConfig(enabled=True, strip_emoji=False, strip_markdown_tables=False, strip_markdown_lists=True)
+        config = AggressiveOutputConfig(
+            enabled=True,
+            strip_emoji=False,
+            strip_markdown_tables=False,
+            strip_markdown_lists=True,
+        )
         simplifier = OutputSimplifier(config)
         text = "Items:\n- First\n- Second\n- Third"
         result = simplifier.simplify(text)
@@ -66,8 +85,11 @@ class TestOutputSimplifier:
 
     def test_truncate_sentences_mild(self):
         config = AggressiveOutputConfig(
-            enabled=True, max_response_sentences=3,
-            strip_emoji=False, strip_markdown_tables=False, strip_markdown_lists=False,
+            enabled=True,
+            max_response_sentences=3,
+            strip_emoji=False,
+            strip_markdown_tables=False,
+            strip_markdown_lists=False,
         )
         simplifier = OutputSimplifier(config)
         text = "First sentence. Second sentence. Third sentence. Fourth sentence."
@@ -76,8 +98,11 @@ class TestOutputSimplifier:
 
     def test_truncate_sentences_aggressive(self):
         config = AggressiveOutputConfig(
-            enabled=True, max_response_sentences=1,
-            strip_emoji=False, strip_markdown_tables=False, strip_markdown_lists=False,
+            enabled=True,
+            max_response_sentences=1,
+            strip_emoji=False,
+            strip_markdown_tables=False,
+            strip_markdown_lists=False,
         )
         simplifier = OutputSimplifier(config)
         text = "First sentence. Second sentence."
@@ -86,8 +111,11 @@ class TestOutputSimplifier:
 
     def test_truncate_chars(self):
         config = AggressiveOutputConfig(
-            enabled=True, max_response_chars=20,
-            strip_emoji=False, strip_markdown_tables=False, strip_markdown_lists=False,
+            enabled=True,
+            max_response_chars=20,
+            strip_emoji=False,
+            strip_markdown_tables=False,
+            strip_markdown_lists=False,
         )
         simplifier = OutputSimplifier(config)
         text = "This is a very long response that should be truncated."
@@ -97,9 +125,13 @@ class TestOutputSimplifier:
 
     def test_chained_operations(self):
         config = AggressiveOutputConfig(
-            enabled=True, level="aggressive",
-            max_response_sentences=1, max_response_chars=0,
-            strip_emoji=True, strip_markdown_tables=True, strip_markdown_lists=True,
+            enabled=True,
+            level="aggressive",
+            max_response_sentences=1,
+            max_response_chars=0,
+            strip_emoji=True,
+            strip_markdown_tables=True,
+            strip_markdown_lists=True,
         )
         simplifier = OutputSimplifier(config)
         text = "Summary 📊\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n- Item 1\n- Item 2\n\nFirst point. Second point."
@@ -157,4 +189,6 @@ class TestAggressiveOutputPromptModule:
     def test_output_style_in_all_presets(self):
         """v0.7.15: output_style should be in all style presets."""
         for style in ("concise", "standard", "detailed"):
-            assert "output_style" in STYLE_PRESETS[style]["modules"], f"output_style missing from {style}"
+            assert (
+                "output_style" in STYLE_PRESETS[style]["modules"]
+            ), f"output_style missing from {style}"

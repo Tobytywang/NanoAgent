@@ -81,12 +81,14 @@ class TracingMiddleware(BaseMiddleware):
     def before(self, ctx: MiddlewareContext) -> ToolResult | None:
         """Record trace start."""
         ctx.state["trace_index"] = len(self._traces)
-        self._traces.append({
-            "tool": ctx.tool_name,
-            "arguments": ctx.arguments.copy(),
-            "start_time": ctx.start_time,
-            "status": "running"
-        })
+        self._traces.append(
+            {
+                "tool": ctx.tool_name,
+                "arguments": ctx.arguments.copy(),
+                "start_time": ctx.start_time,
+                "status": "running",
+            }
+        )
         return None
 
     def after(self, ctx: MiddlewareContext) -> None:
@@ -97,11 +99,13 @@ class TracingMiddleware(BaseMiddleware):
             self._traces[idx]["elapsed"] = ctx.end_time - ctx.start_time
             self._traces[idx]["status"] = "completed"
             self._traces[idx]["success"] = ctx.result.success
-            self._traces[idx]["output"] = ctx.result.output[:200] if ctx.result.output else ""
+            self._traces[idx]["output"] = (
+                ctx.result.output[:200] if ctx.result.output else ""
+            )
 
         # Trim old traces
         if len(self._traces) > self._max_traces:
-            self._traces = self._traces[-self._max_traces:]
+            self._traces = self._traces[-self._max_traces :]
 
     def error(self, ctx: MiddlewareContext) -> None:
         """Record trace error."""
@@ -132,9 +136,7 @@ class ConfirmationMiddleware(BaseMiddleware):
     priority = 50  # Run after logging/tracing
 
     def __init__(
-        self,
-        auto_confirm_safe: bool = True,
-        confirm_callback: callable = None
+        self, auto_confirm_safe: bool = True, confirm_callback: callable = None
     ):
         """
         Initialize confirmation middleware.
@@ -177,21 +179,25 @@ class ConfirmationMiddleware(BaseMiddleware):
             return ToolResult(
                 success=False,
                 output="",
-                error=f"Tool execution cancelled by user: {ctx.tool_name}"
+                error=f"Tool execution cancelled by user: {ctx.tool_name}",
             )
 
         return None
 
-    def _default_confirm(self, tool_name: str, arguments: dict, risk_level: RiskLevel) -> bool:
+    def _default_confirm(
+        self, tool_name: str, arguments: dict, risk_level: RiskLevel
+    ) -> bool:
         """Default console confirmation."""
         risk_icons = {
             RiskLevel.SAFE: "🟢",
             RiskLevel.MODERATE: "🟡",
-            RiskLevel.DANGEROUS: "🔴"
+            RiskLevel.DANGEROUS: "🔴",
         }
         icon = risk_icons.get(risk_level, "⚪")
 
-        print(f"\n{icon} Tool '{tool_name}' requires confirmation (risk: {risk_level.value})")
+        print(
+            f"\n{icon} Tool '{tool_name}' requires confirmation (risk: {risk_level.value})"
+        )
         print(f"   Arguments: {arguments}")
 
         try:
@@ -234,6 +240,7 @@ class CachingMiddleware(BaseMiddleware):
     def _cache_key(self, tool_name: str, arguments: dict) -> str:
         """Generate cache key from tool name and arguments."""
         import hashlib
+
         args_hash = hashlib.md5(str(sorted(arguments.items())).encode()).hexdigest()
         return f"{tool_name}:{args_hash}"
 
@@ -269,8 +276,12 @@ class CachingMiddleware(BaseMiddleware):
                 # Trim cache if too large
                 if len(self._cache) > self._max_cache_size:
                     # Remove oldest entries
-                    sorted_keys = sorted(self._cache.keys(), key=lambda k: self._cache[k][0])
-                    for old_key in sorted_keys[:len(self._cache) - self._max_cache_size]:
+                    sorted_keys = sorted(
+                        self._cache.keys(), key=lambda k: self._cache[k][0]
+                    )
+                    for old_key in sorted_keys[
+                        : len(self._cache) - self._max_cache_size
+                    ]:
                         del self._cache[old_key]
 
     def clear_cache(self) -> None:
@@ -279,7 +290,4 @@ class CachingMiddleware(BaseMiddleware):
 
     def get_cache_stats(self) -> dict[str, int]:
         """Get cache statistics."""
-        return {
-            "size": len(self._cache),
-            "max_size": self._max_cache_size
-        }
+        return {"size": len(self._cache), "max_size": self._max_cache_size}

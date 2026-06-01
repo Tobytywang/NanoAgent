@@ -9,16 +9,18 @@ from typing import Any
 
 class TokenCategory(Enum):
     """Token 消耗分类"""
-    SYSTEM = "system"        # 系统提示词（固定成本）
-    TOOLS = "tools"          # 工具输出（可优化成本）
-    HISTORY = "history"      # 历史消息（累积成本）
-    RESPONSE = "response"    # LLM 响应（输出成本）
-    COMPRESSED = "compressed" # 压缩节省（优化效果）
+
+    SYSTEM = "system"  # 系统提示词（固定成本）
+    TOOLS = "tools"  # 工具输出（可优化成本）
+    HISTORY = "history"  # 历史消息（累积成本）
+    RESPONSE = "response"  # LLM 响应（输出成本）
+    COMPRESSED = "compressed"  # 压缩节省（优化效果）
 
 
 @dataclass
 class TokenBreakdown:
     """Token 消耗明细"""
+
     category: TokenCategory
     tokens: int
     percentage: float
@@ -28,10 +30,11 @@ class TokenBreakdown:
 @dataclass
 class ToolTokenUsage:
     """工具 Token 使用记录"""
+
     tool_name: str
-    input_tokens: int   # 工具调用参数 Token
+    input_tokens: int  # 工具调用参数 Token
     output_tokens: int  # 工具输出 Token
-    call_count: int     # 调用次数
+    call_count: int  # 调用次数
 
 
 class TokenAnalyzer:
@@ -108,13 +111,15 @@ class TokenAnalyzer:
         self._category_totals[TokenCategory.RESPONSE] += completion_tokens
 
         # 记录本轮消耗
-        self._iteration_breakdowns.append({
-            "system": system_tokens,
-            "tools": tool_tokens,
-            "history": history_tokens,
-            "response": completion_tokens,
-            "total": prompt_tokens + completion_tokens,
-        })
+        self._iteration_breakdowns.append(
+            {
+                "system": system_tokens,
+                "tools": tool_tokens,
+                "history": history_tokens,
+                "response": completion_tokens,
+                "total": prompt_tokens + completion_tokens,
+            }
+        )
 
         # 记录工具调用参数（如果有）
         if tool_calls:
@@ -142,8 +147,7 @@ class TokenAnalyzer:
         """
         # 计算总消耗（不含压缩节省）
         total = sum(
-            v for k, v in self._category_totals.items()
-            if k != TokenCategory.COMPRESSED
+            v for k, v in self._category_totals.items() if k != TokenCategory.COMPRESSED
         )
 
         if total == 0:
@@ -153,12 +157,14 @@ class TokenAnalyzer:
         for category, tokens in self._category_totals.items():
             if tokens > 0:
                 percentage = (tokens / total * 100) if total > 0 else 0
-                breakdowns.append(TokenBreakdown(
-                    category=category,
-                    tokens=tokens,
-                    percentage=percentage,
-                    details=self._get_category_details(category),
-                ))
+                breakdowns.append(
+                    TokenBreakdown(
+                        category=category,
+                        tokens=tokens,
+                        percentage=percentage,
+                        details=self._get_category_details(category),
+                    )
+                )
 
         # 按消耗量排序
         breakdowns.sort(key=lambda x: x.tokens, reverse=True)
@@ -179,8 +185,7 @@ class TokenAnalyzer:
         """
         # 计算工具总字符数
         total_tool_chars = sum(
-            t.input_tokens + t.output_tokens
-            for t in self._tool_token_usage.values()
+            t.input_tokens + t.output_tokens for t in self._tool_token_usage.values()
         )
 
         # 获取工具实际消耗的 token 数（TOOLS 分类）
@@ -200,12 +205,14 @@ class TokenAnalyzer:
                 input_tokens = 0
                 output_tokens = 0
 
-            result.append(ToolTokenUsage(
-                tool_name=tool.tool_name,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                call_count=tool.call_count,
-            ))
+            result.append(
+                ToolTokenUsage(
+                    tool_name=tool.tool_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    call_count=tool.call_count,
+                )
+            )
 
         # 按总消耗排序
         result.sort(key=lambda x: x.input_tokens + x.output_tokens, reverse=True)
@@ -251,7 +258,8 @@ class TokenAnalyzer:
             ],
             "iteration_count": len(self._iteration_breakdowns),
             "total_tokens": sum(
-                v for k, v in self._category_totals.items()
+                v
+                for k, v in self._category_totals.items()
                 if k != TokenCategory.COMPRESSED
             ),
             "compression_savings": self._category_totals[TokenCategory.COMPRESSED],
@@ -299,6 +307,7 @@ class TokenAnalyzer:
             字符数
         """
         import json
+
         try:
             text = json.dumps(d)
             return len(text)
@@ -355,7 +364,6 @@ class TokenAnalyzer:
         if category == TokenCategory.TOOLS:
             # 返回各工具消耗
             return {
-                t.tool_name: t.output_tokens
-                for t in self._tool_token_usage.values()
+                t.tool_name: t.output_tokens for t in self._tool_token_usage.values()
             }
         return {}

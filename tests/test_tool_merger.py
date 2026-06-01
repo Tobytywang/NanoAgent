@@ -32,10 +32,14 @@ class TestToolCallMerger:
         merger = ToolCallMerger(config)
         calls = [
             ToolCall(
-                id="1", name="file_search", arguments={"directory": ".", "pattern": "*.py"}
+                id="1",
+                name="file_search",
+                arguments={"directory": ".", "pattern": "*.py"},
             ),
             ToolCall(
-                id="2", name="file_search", arguments={"directory": ".", "pattern": "*.ts"}
+                id="2",
+                name="file_search",
+                arguments={"directory": ".", "pattern": "*.ts"},
             ),
         ]
         result = merger.analyze_and_merge(calls)
@@ -64,10 +68,14 @@ class TestToolCallMerger:
         merger = ToolCallMerger()
         calls = [
             ToolCall(
-                id="1", name="file_search", arguments={"directory": "/a", "pattern": "*.py"}
+                id="1",
+                name="file_search",
+                arguments={"directory": "/a", "pattern": "*.py"},
             ),
             ToolCall(
-                id="2", name="file_search", arguments={"directory": "/b", "pattern": "*.py"}
+                id="2",
+                name="file_search",
+                arguments={"directory": "/b", "pattern": "*.py"},
             ),
         ]
         result = merger.analyze_and_merge(calls)
@@ -91,7 +99,9 @@ class TestToolCallMerger:
         merger = ToolCallMerger()
         calls = [
             ToolCall(id="1", name="shell_execute", arguments={"command": "ls"}),
-            ToolCall(id="2", name="shell_execute", arguments={"command": "rm file.txt"}),
+            ToolCall(
+                id="2", name="shell_execute", arguments={"command": "rm file.txt"}
+            ),
         ]
         result = merger.analyze_and_merge(calls)
         assert len(result) == 2
@@ -100,7 +110,9 @@ class TestToolCallMerger:
         """rm commands should not be merged."""
         merger = ToolCallMerger()
         calls = [
-            ToolCall(id="1", name="shell_execute", arguments={"command": "rm -rf /tmp/test"}),
+            ToolCall(
+                id="1", name="shell_execute", arguments={"command": "rm -rf /tmp/test"}
+            ),
             ToolCall(id="2", name="shell_execute", arguments={"command": "ls"}),
         ]
         result = merger.analyze_and_merge(calls)
@@ -111,7 +123,9 @@ class TestToolCallMerger:
         config = ToolMergeConfig(max_batch_size=2)
         merger = ToolCallMerger(config)
         calls = [
-            ToolCall(id=f"{i}", name="shell_execute", arguments={"command": f"echo {i}"})
+            ToolCall(
+                id=f"{i}", name="shell_execute", arguments={"command": f"echo {i}"}
+            )
             for i in range(5)
         ]
         result = merger.analyze_and_merge(calls)

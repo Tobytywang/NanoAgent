@@ -60,7 +60,9 @@ class SkillLoader:
 
         return definitions
 
-    def load_skill_class(self, module_path: str, class_name: str = "Skill") -> BaseSkill | None:
+    def load_skill_class(
+        self, module_path: str, class_name: str = "Skill"
+    ) -> BaseSkill | None:
         """动态加载技能包类"""
         try:
             # 支持从文件路径加载

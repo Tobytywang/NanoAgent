@@ -14,9 +14,9 @@ from typing import Callable
 class QueryComplexity(Enum):
     """Query complexity levels."""
 
-    SIMPLE = "simple"       # Greetings, simple questions - direct answer
-    MODERATE = "moderate"   # Single-step reasoning - max 1 tool call
-    COMPLEX = "complex"     # Multi-step reasoning - full ReAct loop
+    SIMPLE = "simple"  # Greetings, simple questions - direct answer
+    MODERATE = "moderate"  # Single-step reasoning - max 1 tool call
+    COMPLEX = "complex"  # Multi-step reasoning - full ReAct loop
 
 
 @dataclass

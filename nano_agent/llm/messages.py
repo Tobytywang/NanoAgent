@@ -10,6 +10,7 @@ import json
 @dataclass
 class Message:
     """Base message class."""
+
     role: Literal["system", "user", "assistant", "tool"]
     content: str = ""
     cache_control: dict | None = None  # For Anthropic Prompt Caching
@@ -23,7 +24,10 @@ class Message:
 
     @classmethod
     def with_cache_control(
-        cls, role: Literal["system", "user", "assistant", "tool"], content: str, cache_type: str = "ephemeral"
+        cls,
+        role: Literal["system", "user", "assistant", "tool"],
+        content: str,
+        cache_type: str = "ephemeral",
     ) -> "Message":
         """Create a message with cache_control for Anthropic Prompt Caching.
 
@@ -41,6 +45,7 @@ class Message:
 @dataclass
 class ToolCall:
     """Tool call request from the LLM."""
+
     id: str
     name: str
     arguments: dict  # Parsed JSON arguments
@@ -66,9 +71,7 @@ class ToolCall:
         else:
             arguments = args_str
         return cls(
-            id=data.get("id", ""),
-            name=func.get("name", ""),
-            arguments=arguments
+            id=data.get("id", ""), name=func.get("name", ""), arguments=arguments
         )
 
     @classmethod
@@ -80,7 +83,7 @@ class ToolCall:
         if isinstance(args_str, str):
             # Sanitize to remove invalid Unicode characters
             try:
-                args_str = args_str.encode('utf-8', errors='replace').decode('utf-8')
+                args_str = args_str.encode("utf-8", errors="replace").decode("utf-8")
             except (UnicodeDecodeError, UnicodeEncodeError):
                 pass
             try:
@@ -97,9 +100,7 @@ class ToolCall:
         else:
             arguments = args_str
         return cls(
-            id=data.get("id", ""),
-            name=func.get("name", ""),
-            arguments=arguments
+            id=data.get("id", ""), name=func.get("name", ""), arguments=arguments
         )
 
     def to_dict(self) -> dict:
@@ -107,10 +108,7 @@ class ToolCall:
         return {
             "id": self.id,
             "type": "function",
-            "function": {
-                "name": self.name,
-                "arguments": json.dumps(self.arguments)
-            }
+            "function": {"name": self.name, "arguments": json.dumps(self.arguments)},
         }
 
     def to_ollama_dict(self) -> dict:
@@ -120,14 +118,15 @@ class ToolCall:
             "type": "function",
             "function": {
                 "name": self.name,
-                "arguments": self.arguments  # Ollama expects dict, not JSON string
-            }
+                "arguments": self.arguments,  # Ollama expects dict, not JSON string
+            },
         }
 
 
 @dataclass
 class AssistantMessage(Message):
     """Assistant message, may contain tool calls."""
+
     content: str = ""
     role: Literal["assistant"] = "assistant"
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -142,6 +141,7 @@ class AssistantMessage(Message):
 @dataclass
 class ToolResultMessage(Message):
     """Tool execution result message."""
+
     content: str = ""
     role: Literal["tool"] = "tool"
     tool_call_id: str = ""
@@ -150,13 +150,14 @@ class ToolResultMessage(Message):
         return {
             "role": self.role,
             "content": self.content,
-            "tool_call_id": self.tool_call_id
+            "tool_call_id": self.tool_call_id,
         }
 
 
 @dataclass
 class SystemMessage(Message):
     """System message for setting context."""
+
     content: str = ""
     role: Literal["system"] = "system"
 
@@ -164,5 +165,6 @@ class SystemMessage(Message):
 @dataclass
 class UserMessage(Message):
     """User message."""
+
     content: str = ""
     role: Literal["user"] = "user"

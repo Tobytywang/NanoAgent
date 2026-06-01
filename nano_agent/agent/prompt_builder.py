@@ -22,6 +22,7 @@ from .intent_detector import IntentDetector
 @dataclass
 class PromptBuilderConfig:
     """Prompt 构建器配置"""
+
     style: str = "standard"
     modules: list[str] = field(default_factory=list)
     token_budget: int = 2000
@@ -135,7 +136,9 @@ class ExcelConfigManager:
 
         return styles
 
-    def save(self, modules: dict[str, PromptModule] | None = None, styles: dict | None = None):
+    def save(
+        self, modules: dict[str, PromptModule] | None = None, styles: dict | None = None
+    ):
         """
         保存配置到 Excel
 
@@ -247,7 +250,9 @@ class PromptBuilder:
         self.config = config or PromptBuilderConfig()
         self._modules: dict[str, PromptModule] = {}
         self._dynamic_content: dict[str, str] = {}
-        self._intent_detector = IntentDetector()  # Intent detector for dynamic activation
+        self._intent_detector = (
+            IntentDetector()
+        )  # Intent detector for dynamic activation
         self._load_modules()
 
     def _load_modules(self):
@@ -364,15 +369,21 @@ class PromptBuilder:
         try:
             import subprocess
 
-            branch = subprocess.check_output(
-                ["git", "branch", "--show-current"],
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
+            branch = (
+                subprocess.check_output(
+                    ["git", "branch", "--show-current"], stderr=subprocess.DEVNULL
+                )
+                .decode()
+                .strip()
+            )
 
-            status = subprocess.check_output(
-                ["git", "status", "--short"],
-                stderr=subprocess.DEVNULL
-            ).decode().strip()[:100]
+            status = (
+                subprocess.check_output(
+                    ["git", "status", "--short"], stderr=subprocess.DEVNULL
+                )
+                .decode()
+                .strip()[:100]
+            )
 
             return f"""## Git Status
 - Branch: {branch}
@@ -489,9 +500,7 @@ class PromptBuilder:
         ]
 
         # 按优先级排序
-        stable_modules_list = [
-            self._modules[name] for name in stable_module_names
-        ]
+        stable_modules_list = [self._modules[name] for name in stable_module_names]
         stable_modules_list.sort(key=lambda m: m.priority)
 
         parts = []

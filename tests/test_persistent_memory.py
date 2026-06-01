@@ -22,9 +22,7 @@ class TestMemoryEntry:
     def test_create_entry(self):
         """Test creating a memory entry."""
         entry = MemoryEntry.create(
-            session_id="test_session",
-            role="user",
-            content="Hello, world!"
+            session_id="test_session", role="user", content="Hello, world!"
         )
 
         assert entry.session_id == "test_session"
@@ -39,7 +37,7 @@ class TestMemoryEntry:
             session_id="test",
             role="assistant",
             content="Response",
-            metadata={"tool_calls": [{"id": "123"}]}
+            metadata={"tool_calls": [{"id": "123"}]},
         )
 
         assert entry.metadata == {"tool_calls": [{"id": "123"}]}
@@ -47,9 +45,7 @@ class TestMemoryEntry:
     def test_to_dict_and_from_dict(self):
         """Test serialization and deserialization."""
         entry = MemoryEntry.create(
-            session_id="test",
-            role="user",
-            content="Test message"
+            session_id="test", role="user", content="Test message"
         )
 
         data = entry.to_dict()
@@ -73,15 +69,9 @@ class TestFileStorage:
 
     def test_save_and_load_session(self, temp_storage):
         """Test saving and loading a session."""
-        entry1 = MemoryEntry.create(
-            session_id="session1",
-            role="user",
-            content="Hello"
-        )
+        entry1 = MemoryEntry.create(session_id="session1", role="user", content="Hello")
         entry2 = MemoryEntry.create(
-            session_id="session1",
-            role="assistant",
-            content="Hi there!"
+            session_id="session1", role="assistant", content="Hi there!"
         )
 
         temp_storage.save(entry1)
@@ -101,9 +91,7 @@ class TestFileStorage:
         """Test loading recent entries."""
         for i in range(5):
             entry = MemoryEntry.create(
-                session_id="session1",
-                role="user",
-                content=f"Message {i}"
+                session_id="session1", role="user", content=f"Message {i}"
             )
             temp_storage.save(entry)
 
@@ -114,11 +102,7 @@ class TestFileStorage:
 
     def test_delete_session(self, temp_storage):
         """Test deleting a session."""
-        entry = MemoryEntry.create(
-            session_id="session1",
-            role="user",
-            content="Test"
-        )
+        entry = MemoryEntry.create(session_id="session1", role="user", content="Test")
         temp_storage.save(entry)
 
         assert temp_storage.session_exists("session1")
@@ -147,11 +131,7 @@ class TestFileStorage:
 
     def test_get_session_info(self, temp_storage):
         """Test getting session info."""
-        entry = MemoryEntry.create(
-            session_id="session1",
-            role="user",
-            content="Test"
-        )
+        entry = MemoryEntry.create(session_id="session1", role="user", content="Test")
         temp_storage.save(entry)
 
         info = temp_storage.get_session_info("session1")
@@ -166,9 +146,7 @@ class TestPersistentMemory:
     def test_init_new_session(self, temp_storage):
         """Test initializing a new session."""
         memory = PersistentMemory(
-            storage=temp_storage,
-            max_messages=50,
-            system_prompt="Test prompt"
+            storage=temp_storage, max_messages=50, system_prompt="Test prompt"
         )
 
         assert memory.session_id  # Should have generated session id
@@ -178,9 +156,7 @@ class TestPersistentMemory:
     def test_init_with_specific_session_id(self, temp_storage):
         """Test initializing with a specific session id."""
         memory = PersistentMemory(
-            storage=temp_storage,
-            session_id="my_session",
-            max_messages=50
+            storage=temp_storage, session_id="my_session", max_messages=50
         )
 
         assert memory.session_id == "my_session"
@@ -188,9 +164,7 @@ class TestPersistentMemory:
     def test_add_and_persist_messages(self, temp_storage):
         """Test adding messages and persisting them."""
         memory = PersistentMemory(
-            storage=temp_storage,
-            max_messages=50,
-            system_prompt="Test"
+            storage=temp_storage, max_messages=50, system_prompt="Test"
         )
         session_id = memory.session_id
 
@@ -202,7 +176,7 @@ class TestPersistentMemory:
             storage=temp_storage,
             session_id=session_id,
             max_messages=50,
-            system_prompt="Test"
+            system_prompt="Test",
         )
 
         assert memory2.is_loaded()  # Should have loaded
@@ -325,18 +299,14 @@ class TestPersistentMemory:
     def test_stable_system_prompt_persists_across_sessions(self, temp_storage):
         """Test that stable system prompt is an in-memory attribute only."""
         memory = PersistentMemory(
-            storage=temp_storage,
-            session_id="test_session",
-            max_messages=50
+            storage=temp_storage, session_id="test_session", max_messages=50
         )
         memory.set_stable_system_prompt("Stable prompt")
         memory.add_user_message("Hello")
 
         # Create new instance with same session
         memory2 = PersistentMemory(
-            storage=temp_storage,
-            session_id="test_session",
-            max_messages=50
+            storage=temp_storage, session_id="test_session", max_messages=50
         )
         # stable_system_prompt is NOT persisted (it's regenerated each session)
         assert memory2.stable_system_prompt == ""
@@ -361,9 +331,7 @@ class TestMemoryConfig:
         from nano_agent.config.schema import MemoryConfig
 
         config = MemoryConfig(
-            type="persistent",
-            storage_path="/custom/path",
-            session_id="my_session"
+            type="persistent", storage_path="/custom/path", session_id="my_session"
         )
         assert config.type == "persistent"
         assert config.storage_path == "/custom/path"

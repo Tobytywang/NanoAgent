@@ -19,6 +19,7 @@ from typing import Callable
 @dataclass
 class PromptModule:
     """Prompt 模块定义"""
+
     name: str
     description: str
     content: str
@@ -56,7 +57,6 @@ When confident (0.8+), provide your answer directly.""",
         is_stable=True,
         category="core",
     ),
-
     "tools": PromptModule(
         name="tools",
         description="工具描述占位符",
@@ -68,7 +68,6 @@ When confident (0.8+), provide your answer directly.""",
         is_stable=True,
         category="core",
     ),
-
     # ============ 效率模块 (priority 20-29) ============
     "efficiency": PromptModule(
         name="efficiency",
@@ -85,7 +84,6 @@ When confident (0.8+), provide your answer directly.""",
         is_stable=True,
         category="efficiency",
     ),
-
     "modification": PromptModule(
         name="modification",
         description="修改约束",
@@ -101,7 +99,6 @@ When confident (0.8+), provide your answer directly.""",
         is_stable=True,
         category="efficiency",
     ),
-
     # ============ 安全模块 (priority 30-39) ============
     "constitution": PromptModule(
         name="constitution",
@@ -117,7 +114,6 @@ When confident (0.8+), provide your answer directly.""",
         is_stable=True,
         category="security",
     ),
-
     "risk_awareness": PromptModule(
         name="risk_awareness",
         description="风险意识",
@@ -136,7 +132,6 @@ Safe: read, test, edit local files""",
         is_stable=True,
         category="security",
     ),
-
     "security_rules": PromptModule(
         name="security_rules",
         description="代码安全规则",
@@ -154,7 +149,6 @@ Prevent vulnerabilities:
         is_stable=True,
         category="security",
     ),
-
     # ============ 输出模块 (priority 40-49) ============
     "output_style": PromptModule(
         name="output_style",
@@ -171,7 +165,6 @@ Prevent vulnerabilities:
         is_stable=True,
         category="output",
     ),
-
     "aggressive_output": PromptModule(
         name="aggressive_output",
         description="激进输出简化",
@@ -183,7 +176,6 @@ Prevent vulnerabilities:
         is_stable=True,
         category="output",
     ),
-
     "language": PromptModule(
         name="language",
         description="语言设置",
@@ -195,7 +187,6 @@ Prevent vulnerabilities:
         is_stable=True,
         category="output",
     ),
-
     # ============ 上下文模块 (priority 50-59) ============
     "environment": PromptModule(
         name="environment",
@@ -208,7 +199,6 @@ Prevent vulnerabilities:
         is_stable=False,  # 动态内容，不适合缓存
         category="context",
     ),
-
     "git_status": PromptModule(
         name="git_status",
         description="Git 状态（动态）",
@@ -220,7 +210,6 @@ Prevent vulnerabilities:
         is_stable=False,  # 动态内容，不适合缓存
         category="context",
     ),
-
     # ============ 记忆模块 (priority 60-69) ============
     "memory_guide": PromptModule(
         name="memory_guide",
@@ -272,12 +261,32 @@ STYLE_PRESETS = {
     },
     "standard": {
         "description": "标准模式 (~800 tokens)",
-        "modules": ["core", "tools", "efficiency", "modification", "constitution", "risk_awareness", "output_style", "language"],
+        "modules": [
+            "core",
+            "tools",
+            "efficiency",
+            "modification",
+            "constitution",
+            "risk_awareness",
+            "output_style",
+            "language",
+        ],
         "token_budget": 1000,
     },
     "detailed": {
         "description": "详细模式 (~1500 tokens)",
-        "modules": ["core", "tools", "efficiency", "modification", "constitution", "risk_awareness", "security_rules", "output_style", "memory_guide", "language"],
+        "modules": [
+            "core",
+            "tools",
+            "efficiency",
+            "modification",
+            "constitution",
+            "risk_awareness",
+            "security_rules",
+            "output_style",
+            "memory_guide",
+            "language",
+        ],
         "token_budget": 2000,
     },
 }

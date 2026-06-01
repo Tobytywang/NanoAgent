@@ -16,6 +16,7 @@ class ShellTool(BaseTool):
     name = "shell_execute"
     description = "Execute shell commands. Automatically adapts to the operating system (Windows/macOS/Linux)."
     risk_level = RiskLevel.DANGEROUS  # Can execute arbitrary commands
+    can_offload = True  # Large command output can be offloaded
 
     @property
     def parameters_schema(self) -> dict:
@@ -24,15 +25,15 @@ class ShellTool(BaseTool):
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The shell command to execute"
+                    "description": "The shell command to execute",
                 },
                 "timeout": {
                     "type": "integer",
                     "description": "Execution timeout in seconds (default: 30)",
-                    "default": 30
-                }
+                    "default": 30,
+                },
             },
-            "required": ["command"]
+            "required": ["command"],
         }
 
     def _get_platform(self) -> Literal["windows", "linux", "darwin"]:
@@ -68,10 +69,7 @@ class ShellTool(BaseTool):
                 shell_args = ["/bin/bash", "-c", command]
 
             result = subprocess.run(
-                shell_args,
-                capture_output=True,
-                text=True,
-                timeout=timeout
+                shell_args, capture_output=True, text=True, timeout=timeout
             )
 
             # Build output
@@ -95,20 +93,18 @@ class ShellTool(BaseTool):
             return ToolResult(
                 success=result.returncode == 0,
                 output=output,
-                error=None if result.returncode == 0 else f"Exit code: {result.returncode}",
+                error=(
+                    None
+                    if result.returncode == 0
+                    else f"Exit code: {result.returncode}"
+                ),
                 metadata={"standard_output": standard_output},
             )
         except subprocess.TimeoutExpired:
             return ToolResult(
-                success=False,
-                output="",
-                error=f"Command timed out ({timeout} seconds)"
+                success=False, output="", error=f"Command timed out ({timeout} seconds)"
             )
         except FileNotFoundError as e:
-            return ToolResult(
-                success=False,
-                output="",
-                error=f"Shell not found: {e}"
-            )
+            return ToolResult(success=False, output="", error=f"Shell not found: {e}")
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

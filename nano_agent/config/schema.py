@@ -5,7 +5,6 @@ Configuration data structures.
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-
 # Default context lengths for common models (in tokens)
 MODEL_CONTEXT_LENGTHS = {
     # OpenAI models
@@ -55,7 +54,7 @@ def _model_prefix_matches(model_name: str, key: str) -> bool:
     """
     if not model_name.startswith(key):
         return False
-    remainder = model_name[len(key):]
+    remainder = model_name[len(key) :]
     if not remainder:
         return True
     return remainder[0] in _MODEL_SEPARATORS
@@ -64,7 +63,10 @@ def _model_prefix_matches(model_name: str, key: str) -> bool:
 @dataclass
 class LLMConfig:
     """LLM configuration."""
-    provider: str = "ollama"  # ollama, openai, deepseek, moonshot, openai_compatible, or any custom provider
+
+    provider: str = (
+        "ollama"  # ollama, openai, deepseek, moonshot, openai_compatible, or any custom provider
+    )
     model: str = "llama3"
     base_url: str = "http://localhost:11434"
     api_key: str | None = None
@@ -123,6 +125,7 @@ class LLMConfig:
 @dataclass
 class AgentConfig:
     """Agent configuration."""
+
     max_iterations: int = 10
     verbose: bool = True
     system_prompt: str | None = None
@@ -133,6 +136,7 @@ class AgentConfig:
 @dataclass
 class MemoryConfig:
     """Memory configuration."""
+
     max_messages: int = 50
     type: Literal["short_term", "persistent", "hybrid"] = "short_term"
     # Storage options
@@ -149,6 +153,7 @@ class MemoryConfig:
 @dataclass
 class ToolConfig:
     """Tool configuration."""
+
     enabled: list[str] = field(default_factory=lambda: ["all"])
     disabled: list[str] = field(default_factory=list)
 
@@ -156,14 +161,18 @@ class ToolConfig:
 @dataclass
 class PluginsConfig:
     """Plugin configuration for external tools."""
-    directories: list[str] = field(default_factory=list)  # Directories to scan for tools
-    modules: list[str] = field(default_factory=list)      # Python modules to import
-    files: list[str] = field(default_factory=list)        # Specific files to load
+
+    directories: list[str] = field(
+        default_factory=list
+    )  # Directories to scan for tools
+    modules: list[str] = field(default_factory=list)  # Python modules to import
+    files: list[str] = field(default_factory=list)  # Specific files to load
 
 
 @dataclass
 class SkillsConfig:
     """Skills configuration."""
+
     enabled: list[str] = field(default_factory=list)  # 启用的技能包名称
     directory: str = ".nano_agent/skills"  # 技能包目录
     configs: dict = field(default_factory=dict)  # 各技能包的额外配置
@@ -172,6 +181,7 @@ class SkillsConfig:
 @dataclass
 class LoggingConfig:
     """Logging configuration."""
+
     level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     console: bool = True
     file: str | None = None  # Optional log file path
@@ -180,40 +190,43 @@ class LoggingConfig:
 @dataclass
 class ContextConfig:
     """Context management configuration."""
+
     # Pressure thresholds (relative to model context window)
-    pressure_threshold_low: float = 0.70    # 70% triggers light cleanup
-    pressure_threshold_mid: float = 0.85    # 85% triggers summary mark
-    pressure_threshold_high: float = 0.95   # 95% triggers model compression
+    pressure_threshold_low: float = 0.70  # 70% triggers light cleanup
+    pressure_threshold_mid: float = 0.85  # 85% triggers summary mark
+    pressure_threshold_high: float = 0.95  # 95% triggers model compression
 
     # Model context window size (auto-detected from LLM config if None)
     max_context_tokens: int | None = None
 
     # Compression configuration
-    max_compress_failures: int = 3          # Circuit breaker threshold
-    summary_max_tokens: int = 4000          # Max tokens for summary
+    max_compress_failures: int = 3  # Circuit breaker threshold
+    summary_max_tokens: int = 4000  # Max tokens for summary
 
     # Light cleanup configuration
-    temp_message_age: int = 5               # Rounds before temp messages expire
+    temp_message_age: int = 5  # Rounds before temp messages expire
 
 
 @dataclass
 class ConfirmationConfig:
     """Confirmation mechanism configuration."""
+
     enabled: bool = True
-    confirm_safe: bool = False        # Require confirmation for SAFE tools
-    confirm_moderate: bool = False    # Require confirmation for MODERATE tools
-    confirm_dangerous: bool = True    # Require confirmation for DANGEROUS tools
+    confirm_safe: bool = False  # Require confirmation for SAFE tools
+    confirm_moderate: bool = False  # Require confirmation for MODERATE tools
+    confirm_dangerous: bool = True  # Require confirmation for DANGEROUS tools
     whitelist: list[str] = field(default_factory=list)  # Tools that bypass confirmation
 
 
 @dataclass
 class GitConfig:
     """Git integration configuration."""
+
     enabled: bool = True
     auto_commit: bool = True
     commit_mode: Literal["step", "round", "manual"] = "step"
     commit_prefix: str = "[NanoAgent]"  # Commit message prefix
-    branch_prefix: str = "nano-"        # Working branch prefix (optional)
+    branch_prefix: str = "nano-"  # Working branch prefix (optional)
 
 
 @dataclass
@@ -236,11 +249,11 @@ class AggressiveOutputConfig:
 
     enabled: bool = False
     level: Literal["mild", "aggressive", "extreme"] = "mild"
-    max_response_sentences: int = 0   # 0=unlimited; mild=3, aggressive=1, extreme=1
+    max_response_sentences: int = 0  # 0=unlimited; mild=3, aggressive=1, extreme=1
     strip_emoji: bool = True
     strip_markdown_tables: bool = True
     strip_markdown_lists: bool = False  # True for aggressive/extreme
-    max_response_chars: int = 0         # 0=unlimited; extreme=200
+    max_response_chars: int = 0  # 0=unlimited; extreme=200
 
 
 @dataclass
@@ -249,6 +262,18 @@ class StandardizedOutputConfig:
 
     enabled: bool = True
     detailed: bool = False  # True=full detail, False=compact
+
+
+@dataclass
+class ToolOffloadConfig:
+    """Tool result offloading configuration (v0.7.17)."""
+
+    enabled: bool = True
+    size_threshold_tokens: int = 1000  # Offload when result exceeds this
+    offload_dir: str = "/tmp/nano_agent_offload"
+    auto_cleanup: bool = True
+    summary_max_tokens: int = 200
+    excluded_tools: list[str] = field(default_factory=lambda: ["memorize", "recall"])
 
 
 @dataclass
@@ -276,6 +301,11 @@ class CacheConfig:
         default_factory=lambda: ["file_write", "memorize", "forget"]
     )
     max_cache_size: int = 100  # Maximum number of cached results
+    # v0.7.17: Multi-turn cache persistence
+    persist: bool = False  # Persist cache to disk across sessions
+    persist_dir: str = ".nano_agent/cache"  # Cache persistence directory
+    warmup_on_restore: bool = True  # Warmup cache when restoring session
+    mtime_invalidation: bool = True  # Invalidate cache on file modification
 
 
 @dataclass
@@ -317,7 +347,9 @@ class SmartOptimizationConfig:
 
     # === Token Budget Management ===
     budget_enabled: bool = True  # Enable token budget tracking
-    initial_budget: int = 50000  # Initial token budget per session (increased from 20000)
+    initial_budget: int = (
+        50000  # Initial token budget per session (increased from 20000)
+    )
 
     # Multi-level warning thresholds (v0.7.8)
     budget_warning_thresholds: list[float] = field(
@@ -402,7 +434,13 @@ class PromptConfig:
     # Stable modules for LLM API caching optimization
     # These modules are built once and cached, reducing API costs
     stable_modules: list[str] = field(
-        default_factory=lambda: ["core", "tools", "efficiency", "modification", "language"]
+        default_factory=lambda: [
+            "core",
+            "tools",
+            "efficiency",
+            "modification",
+            "language",
+        ]
     )
 
     # Enable prefix caching (Anthropic Prompt Caching, OpenAI Automatic Caching)
@@ -428,7 +466,14 @@ class Config:
     cache: CacheConfig = field(default_factory=CacheConfig)
     compressor: CompressorConfig = field(default_factory=CompressorConfig)
     project_file: ProjectFileConfig = field(default_factory=ProjectFileConfig)
-    smart_optimization: SmartOptimizationConfig = field(default_factory=SmartOptimizationConfig)
+    smart_optimization: SmartOptimizationConfig = field(
+        default_factory=SmartOptimizationConfig
+    )
     prompt: PromptConfig = field(default_factory=PromptConfig)
-    aggressive_output: AggressiveOutputConfig = field(default_factory=AggressiveOutputConfig)
-    standardized_output: StandardizedOutputConfig = field(default_factory=StandardizedOutputConfig)
+    aggressive_output: AggressiveOutputConfig = field(
+        default_factory=AggressiveOutputConfig
+    )
+    standardized_output: StandardizedOutputConfig = field(
+        default_factory=StandardizedOutputConfig
+    )
+    offload: ToolOffloadConfig = field(default_factory=ToolOffloadConfig)

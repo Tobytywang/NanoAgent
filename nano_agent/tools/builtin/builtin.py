@@ -11,7 +11,9 @@ from .monitoring_tools import GetStatsTool
 from .web_search import WebSearchTool
 
 
-def register_builtin_tools(registry: ToolRegistry, memory=None, tracker=None, context_length: int = 8192) -> None:
+def register_builtin_tools(
+    registry: ToolRegistry, memory=None, tracker=None, context_length: int = 8192
+) -> None:
     """
     Register all built-in tools to the registry.
 
@@ -56,5 +58,5 @@ BUILTIN_TOOLS = [
     "recall",
     "list_memories",
     "forget",
-    "get_stats"
+    "get_stats",
 ]

@@ -71,6 +71,7 @@ class TestMemoryInterfaceConsistency:
     def test_persistent_memory_has_stable_system_prompt(self):
         """PersistentMemory must have stable_system_prompt attribute."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = FileStorage(base_dir=tmpdir)
             memory = PersistentMemory(storage=storage, max_messages=50)
@@ -81,6 +82,7 @@ class TestMemoryInterfaceConsistency:
     def test_hybrid_memory_delegates_stable_system_prompt(self):
         """HybridMemory must delegate stable_system_prompt to working memory."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # Test with ShortTermMemory
             long_term = LongTermMemory()

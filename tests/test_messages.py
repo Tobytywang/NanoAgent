@@ -11,7 +11,7 @@ from nano_agent.llm.messages import (
     AssistantMessage,
     ToolResultMessage,
     SystemMessage,
-    UserMessage
+    UserMessage,
 )
 
 
@@ -46,8 +46,8 @@ class TestToolCall:
             "id": "call_123",
             "function": {
                 "name": "python_execute",
-                "arguments": '{"code": "print(1+1)"}'
-            }
+                "arguments": '{"code": "print(1+1)"}',
+            },
         }
         tc = ToolCall.from_ollama_format(data)
         assert tc.id == "call_123"
@@ -60,8 +60,8 @@ class TestToolCall:
             "id": "call_456",
             "function": {
                 "name": "file_read",
-                "arguments": {"file_path": "/tmp/test.txt"}
-            }
+                "arguments": {"file_path": "/tmp/test.txt"},
+            },
         }
         tc = ToolCall.from_ollama_format(data)
         assert tc.id == "call_456"
@@ -102,10 +102,7 @@ class TestToolResultMessage:
 
     def test_to_dict(self):
         """Test tool result message conversion."""
-        msg = ToolResultMessage(
-            content="Result output",
-            tool_call_id="call_123"
-        )
+        msg = ToolResultMessage(content="Result output", tool_call_id="call_123")
         result = msg.to_dict()
         assert result["role"] == "tool"
         assert result["content"] == "Result output"

@@ -21,10 +21,10 @@ from nano_agent.config.schema import (
 )
 from nano_agent.agent.context import ContextManager, NineSectionSummary
 
-
 # ============================================================
 # Task 4: _model_prefix_matches — prefix-safe matching
 # ============================================================
+
 
 class TestModelPrefixMatches:
     """Prevent llama3 from matching llama3.1."""
@@ -69,6 +69,7 @@ class TestModelPrefixMatches:
 # ============================================================
 # Tasks 1, 5, 7: get_context_length() four-layer fallback
 # ============================================================
+
 
 class TestGetContextLength:
     """Test the four-layer fallback chain."""
@@ -157,6 +158,7 @@ class TestGetContextLength:
 # Task 6: ContextManager uses llm_config
 # ============================================================
 
+
 class TestContextManagerLlmConfig:
     """ContextManager should derive max_context_tokens from llm_config."""
 
@@ -201,17 +203,20 @@ class TestContextManagerLlmConfig:
 # Task 2 & 3: query_context_length on LLM clients
 # ============================================================
 
+
 class TestQueryContextLength:
     """Verify query_context_length exists and returns correct types."""
 
     def test_ollama_has_method(self):
         from nano_agent.llm.ollama import OllamaLLM
+
         ollama = OllamaLLM(model="llama3")
         assert hasattr(ollama, "query_context_length")
         assert callable(ollama.query_context_length)
 
     def test_openai_compatible_has_method(self):
         from nano_agent.llm.openai_compatible import OpenAICompatibleLLM
+
         llm = OpenAICompatibleLLM(model="gpt-4o", api_key="test-key")
         assert hasattr(llm, "query_context_length")
         assert callable(llm.query_context_length)
@@ -223,6 +228,7 @@ class TestQueryContextLength:
         class MinimalLLM(BaseLLM):
             def __init__(self, model="", base_url=""):
                 pass
+
             def chat(self, messages, tools=None, system_stable=None, **kwargs):
                 return ("", [], None)
 

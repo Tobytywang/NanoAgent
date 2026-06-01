@@ -11,17 +11,21 @@ from nano_agent.memory.storage import MemoryEntry
 from nano_agent.memory.long_term import LongTermEntry
 from nano_agent.tools.base import BaseTool, ToolResult
 from nano_agent.config.schema import (
-    Config, LLMConfig, AgentConfig, MemoryConfig,
-    ToolConfig, PluginsConfig, SkillsConfig, LoggingConfig
+    Config,
+    LLMConfig,
+    AgentConfig,
+    MemoryConfig,
+    ToolConfig,
+    PluginsConfig,
+    SkillsConfig,
+    LoggingConfig,
 )
-
 
 # === Message Factories ===
 
+
 def create_message(
-    role: str = "user",
-    content: str = "test message",
-    **kwargs
+    role: str = "user", content: str = "test message", **kwargs
 ) -> dict[str, Any]:
     """
     Create a test message dictionary.
@@ -45,8 +49,7 @@ def create_user_message(content: str = "Hello") -> dict[str, Any]:
 
 
 def create_assistant_message(
-    content: str = "Response",
-    tool_calls: list | None = None
+    content: str = "Response", tool_calls: list | None = None
 ) -> dict[str, Any]:
     """Create an assistant message."""
     msg = create_message(role="assistant", content=content)
@@ -61,24 +64,20 @@ def create_system_message(content: str = "System prompt") -> dict[str, Any]:
 
 
 def create_tool_result_message(
-    tool_call_id: str = "call_123",
-    content: str = "Tool result"
+    tool_call_id: str = "call_123", content: str = "Tool result"
 ) -> dict[str, Any]:
     """Create a tool result message."""
-    return create_message(
-        role="tool",
-        content=content,
-        tool_call_id=tool_call_id
-    )
+    return create_message(role="tool", content=content, tool_call_id=tool_call_id)
 
 
 # === Memory Entry Factories ===
+
 
 def create_memory_entry(
     session_id: str = "test_session",
     role: str = "user",
     content: str = "test content",
-    metadata: dict | None = None
+    metadata: dict | None = None,
 ) -> MemoryEntry:
     """
     Create a test MemoryEntry.
@@ -93,10 +92,7 @@ def create_memory_entry(
         MemoryEntry instance
     """
     return MemoryEntry.create(
-        session_id=session_id,
-        role=role,
-        content=content,
-        metadata=metadata
+        session_id=session_id, role=role, content=content, metadata=metadata
     )
 
 
@@ -105,7 +101,7 @@ def create_long_term_entry(
     category: str = "fact",
     keywords: list[str] | None = None,
     importance: float = 0.5,
-    source_session: str = "test_session"
+    source_session: str = "test_session",
 ) -> LongTermEntry:
     """
     Create a test LongTermEntry.
@@ -125,11 +121,12 @@ def create_long_term_entry(
         category=category,
         keywords=keywords or ["test"],
         source_session=source_session,
-        importance=importance
+        importance=importance,
     )
 
 
 # === Config Factories ===
+
 
 def create_config(**overrides) -> Config:
     """
@@ -177,11 +174,12 @@ def create_memory_config(**overrides) -> MemoryConfig:
 
 # === Tool Factories ===
 
+
 def create_mock_tool(
     name: str = "mock_tool",
     description: str = "A mock tool for testing",
     output: str = "mock result",
-    should_fail: bool = False
+    should_fail: bool = False,
 ) -> BaseTool:
     """
     Create a mock tool for testing.
@@ -195,6 +193,7 @@ def create_mock_tool(
     Returns:
         Mock tool instance
     """
+
     class MockTool(BaseTool):
         def __init__(self):
             self.name = name
@@ -206,10 +205,8 @@ def create_mock_tool(
         def parameters_schema(self) -> dict:
             return {
                 "type": "object",
-                "properties": {
-                    "input": {"type": "string"}
-                },
-                "required": ["input"]
+                "properties": {"input": {"type": "string"}},
+                "required": ["input"],
             }
 
         def execute(self, input: str = "", **kwargs) -> ToolResult:

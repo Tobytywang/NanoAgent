@@ -11,12 +11,12 @@ class OutputSimplifier:
 
     EMOJI_PATTERN = re.compile(
         "["
-        "\U0001F600-\U0001F64F"  # emoticons
-        "\U0001F300-\U0001F5FF"  # symbols & pictographs
-        "\U0001F680-\U0001F6FF"  # transport & map
-        "\U0001F1E0-\U0001F1FF"  # flags
-        "\U00002702-\U000027B0"  # dingbats
-        "\U000024C2-\U0001F251"
+        "\U0001f600-\U0001f64f"  # emoticons
+        "\U0001f300-\U0001f5ff"  # symbols & pictographs
+        "\U0001f680-\U0001f6ff"  # transport & map
+        "\U0001f1e0-\U0001f1ff"  # flags
+        "\U00002702-\U000027b0"  # dingbats
+        "\U000024c2-\U0001f251"
         "\U0001f926-\U0001f937"
         "\U00010000-\U0010ffff"
         "♀-♂"
@@ -61,7 +61,10 @@ class OutputSimplifier:
         if self.config.max_response_sentences > 0:
             text = self._truncate_sentences(text, self.config.max_response_sentences)
 
-        if self.config.max_response_chars > 0 and len(text) > self.config.max_response_chars:
+        if (
+            self.config.max_response_chars > 0
+            and len(text) > self.config.max_response_chars
+        ):
             text = text[: self.config.max_response_chars].rstrip()
             if not text.endswith((".", "。", "!", "！", "?", "？")):
                 text += "..."

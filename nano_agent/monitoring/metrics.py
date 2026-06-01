@@ -132,9 +132,7 @@ class RunMetrics:
     @property
     def successful_tool_calls(self) -> int:
         """Number of successful tool calls."""
-        return sum(
-            1 for i in self.iterations for t in i.tool_executions if t.success
-        )
+        return sum(1 for i in self.iterations for t in i.tool_executions if t.success)
 
     @property
     def failed_tool_calls(self) -> int:

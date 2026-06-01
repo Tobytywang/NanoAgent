@@ -8,8 +8,13 @@ layer (AgentOrchestrator) for the NanoAgent framework.
 from .base import BaseAgent
 from .react import ReActAgent
 from .types import (
-    ExecutionResult, ThinkResult, ExecutionEvent, AgentEvent,
-    Plan, PlanPhase, RiskLevel
+    ExecutionResult,
+    ThinkResult,
+    ExecutionEvent,
+    AgentEvent,
+    Plan,
+    PlanPhase,
+    RiskLevel,
 )
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
@@ -23,6 +28,7 @@ from .router import QueryRouter, QueryComplexity, RoutingResult
 from .confidence import ConfidenceParser, ConfidenceResult
 from .prejudgment import QueryPrejudgment, PrejudgmentResult
 from .output_simplifier import OutputSimplifier
+from .tool_offload import ToolOffloadManager, OffloadedResult
 
 __all__ = [
     # Base
@@ -70,4 +76,7 @@ __all__ = [
     "QueryPrejudgment",
     "PrejudgmentResult",
     "OutputSimplifier",
+    # Tool offloading (v0.7.17)
+    "ToolOffloadManager",
+    "OffloadedResult",
 ]

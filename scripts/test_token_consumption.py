@@ -18,13 +18,7 @@ REQUIRED_CONSECUTIVE = 10
 
 def run_command(cmd, cwd=None, capture=True):
     """Run a shell command."""
-    result = subprocess.run(
-        cmd,
-        shell=True,
-        cwd=cwd,
-        capture_output=capture,
-        text=True
-    )
+    result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=capture, text=True)
     return result
 
 
@@ -32,7 +26,9 @@ def update_nano_agent():
     """Step 2: Update nano-agent in TYNote."""
     print("Step 2: Updating nano-agent...")
     # Activate venv and install
-    run_command(f"source {TYNOTE_REPO}/.env/bin/activate && pip install -e {NANO_AGENT_REPO} -q")
+    run_command(
+        f"source {TYNOTE_REPO}/.env/bin/activate && pip install -e {NANO_AGENT_REPO} -q"
+    )
     print("  Done")
 
 
@@ -41,11 +37,12 @@ def list_sessions():
     print("Step 3: Listing sessions...")
     result = run_command(f"cd {TYNOTE_REPO} && python3 -m nano_agent.cli.main -l")
     sessions = []
-    for line in result.stdout.split('\n'):
-        if 'session_' in line:
+    for line in result.stdout.split("\n"):
+        if "session_" in line:
             # Extract session ID
             import re
-            match = re.search(r'session_[a-f0-9]+', line)
+
+            match = re.search(r"session_[a-f0-9]+", line)
             if match:
                 sessions.append(match.group())
     print(f"  Found sessions: {sessions}")
@@ -64,7 +61,7 @@ def run_conversation_test():
     print("Step 5-8: Running conversation test...")
 
     # Create test script
-    test_script = f'''
+    test_script = f"""
 import sys
 sys.path.insert(0, "{NANO_AGENT_REPO}")
 
@@ -93,11 +90,11 @@ if hasattr(agent, 'tracker') and hasattr(agent.tracker, 'run_metrics'):
     metrics = agent.tracker.run_metrics
     total_tokens = getattr(metrics, 'total_tokens', 0)
     print(f"TOTAL_TOKENS:{{total_tokens}}")
-'''
+"""
 
     # Write and run test
     test_file = "/tmp/nano_test_run.py"
-    with open(test_file, 'w') as f:
+    with open(test_file, "w") as f:
         f.write(test_script)
 
     result = run_command(f"cd {TYNOTE_REPO} && python3 {test_file}")
@@ -107,9 +104,9 @@ if hasattr(agent, 'tracker') and hasattr(agent.tracker, 'run_metrics'):
 
     # Extract token count
     total_tokens = None
-    for line in result.stdout.split('\n'):
-        if 'TOTAL_TOKENS:' in line:
-            total_tokens = int(line.split(':')[1])
+    for line in result.stdout.split("\n"):
+        if "TOTAL_TOKENS:" in line:
+            total_tokens = int(line.split(":")[1])
             break
 
     # Fallback: read report.json
@@ -118,7 +115,7 @@ if hasattr(agent, 'tracker') and hasattr(agent.tracker, 'run_metrics'):
         if report_path.exists():
             with open(report_path) as f:
                 data = json.load(f)
-                total_tokens = data.get('total_tokens', 99999)
+                total_tokens = data.get("total_tokens", 99999)
 
     return total_tokens or 99999
 
@@ -129,7 +126,7 @@ def check_report_tokens():
     if report_path.exists():
         with open(report_path) as f:
             data = json.load(f)
-            return data.get('total_tokens', 99999)
+            return data.get("total_tokens", 99999)
     return 99999
 
 
@@ -165,17 +162,15 @@ def main():
 
             # Check result
             passed = tokens < TARGET_TOKENS
-            results.append({
-                'test': total_tests,
-                'tokens': tokens,
-                'passed': passed
-            })
+            results.append({"test": total_tests, "tokens": tokens, "passed": passed})
 
             print(f"\nResult: {tokens} tokens - {'PASS ✓' if passed else 'FAIL ✗'}")
 
             if passed:
                 consecutive_passes += 1
-                print(f"Consecutive passes: {consecutive_passes}/{REQUIRED_CONSECUTIVE}")
+                print(
+                    f"Consecutive passes: {consecutive_passes}/{REQUIRED_CONSECUTIVE}"
+                )
             else:
                 consecutive_passes = 0
                 print(f"Consecutive passes reset to 0")
@@ -204,7 +199,7 @@ def main():
     # Print summary
     print("\nTest Summary:")
     for r in results:
-        status = "✓" if r['passed'] else "✗"
+        status = "✓" if r["passed"] else "✗"
         print(f"  Test {r['test']}: {r['tokens']} tokens {status}")
 
 

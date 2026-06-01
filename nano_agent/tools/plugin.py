@@ -54,13 +54,15 @@ class PluginLoader:
                     isinstance(obj, type)
                     and issubclass(obj, BaseTool)
                     and obj is not BaseTool
-                    and hasattr(obj, 'name')
+                    and hasattr(obj, "name")
                 ):
                     try:
                         tool_instance = obj()
                         tools.append(tool_instance)
                         self.registry.register(tool_instance)
-                        self._loaded_plugins[tool_instance.name] = f"{module_path}.{name}"
+                        self._loaded_plugins[tool_instance.name] = (
+                            f"{module_path}.{name}"
+                        )
                     except Exception:
                         pass  # Skip tools that fail to instantiate
 
@@ -80,7 +82,7 @@ class PluginLoader:
             List of loaded tools
         """
         path = Path(file_path)
-        if not path.exists() or not path.suffix == '.py':
+        if not path.exists() or not path.suffix == ".py":
             return []
 
         tools = []
@@ -105,7 +107,7 @@ class PluginLoader:
                     isinstance(obj, type)
                     and issubclass(obj, BaseTool)
                     and obj is not BaseTool
-                    and hasattr(obj, 'name')
+                    and hasattr(obj, "name")
                 ):
                     try:
                         tool_instance = obj()
@@ -121,9 +123,7 @@ class PluginLoader:
             return []
 
     def load_from_directory(
-        self,
-        directory: str | Path,
-        pattern: str = "tool_*.py"
+        self, directory: str | Path, pattern: str = "tool_*.py"
     ) -> list[BaseTool]:
         """
         Load tools from all matching files in a directory.

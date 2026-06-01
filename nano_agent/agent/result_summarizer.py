@@ -128,7 +128,9 @@ class ToolResultSummarizer:
                 key_lines.append("\n# Structure:")
                 key_lines.extend(signatures[:10])  # Limit signatures
                 if len(signatures) > 10:
-                    key_lines.append(f"# ... and {len(signatures) - 10} more definitions")
+                    key_lines.append(
+                        f"# ... and {len(signatures) - 10} more definitions"
+                    )
                 skipped_sections.append(f"{len(signatures)} definitions")
 
         # Add first lines context
@@ -136,7 +138,9 @@ class ToolResultSummarizer:
         key_lines.extend(lines[: self.config.keep_first_lines])
 
         # Add skip indicator
-        skipped = len(lines) - self.config.keep_first_lines - self.config.keep_last_lines
+        skipped = (
+            len(lines) - self.config.keep_first_lines - self.config.keep_last_lines
+        )
         key_lines.append(f"\n# ... [{skipped} lines skipped] ...")
 
         # Add last lines context
@@ -189,7 +193,9 @@ class ToolResultSummarizer:
             # Limit output
             if len(meaningful) > self.config.max_lines:
                 result_parts.extend(meaningful[: self.config.max_lines])
-                result_parts.append(f"... [{len(meaningful) - self.config.max_lines} more lines]")
+                result_parts.append(
+                    f"... [{len(meaningful) - self.config.max_lines} more lines]"
+                )
             else:
                 result_parts.extend(meaningful)
 
@@ -238,7 +244,9 @@ class ToolResultSummarizer:
 
         first = lines[: self.config.keep_first_lines]
         last = lines[-self.config.keep_last_lines :]
-        skipped = len(lines) - self.config.keep_first_lines - self.config.keep_last_lines
+        skipped = (
+            len(lines) - self.config.keep_first_lines - self.config.keep_last_lines
+        )
 
         return (
             "\n".join(first)
@@ -285,12 +293,16 @@ class ToolResultSummarizer:
 
         # Add stdout
         if stdout_lines:
-            meaningful_stdout = [l for l in stdout_lines if l.strip() and not self._is_noise(l.strip())]
+            meaningful_stdout = [
+                l for l in stdout_lines if l.strip() and not self._is_noise(l.strip())
+            ]
             if meaningful_stdout:
                 result_parts.append("# Output:")
                 if len(meaningful_stdout) > self.config.max_lines:
-                    result_parts.extend(meaningful_stdout[:self.config.max_lines])
-                    result_parts.append(f"... [{len(meaningful_stdout) - self.config.max_lines} more lines]")
+                    result_parts.extend(meaningful_stdout[: self.config.max_lines])
+                    result_parts.append(
+                        f"... [{len(meaningful_stdout) - self.config.max_lines} more lines]"
+                    )
                 else:
                     result_parts.extend(meaningful_stdout)
 
@@ -324,18 +336,32 @@ class ToolResultSummarizer:
 
         for line in lines:
             # Look for title patterns (v0.7.15: support 【title】 format)
-            if line.startswith("Title:") or line.startswith("# ") or line.startswith("【"):
+            if (
+                line.startswith("Title:")
+                or line.startswith("# ")
+                or line.startswith("【")
+            ):
                 if current_result:
                     results.append(current_result)
                 title = line.replace("Title:", "").replace("# ", "").strip()
                 if title.startswith("【") and title.endswith("】"):
                     title = title[1:-1]
                 current_result = {"title": title}
-            elif line.startswith("URL:") or line.startswith("http") or line.startswith("来源:"):
-                current_result["url"] = line.replace("URL:", "").replace("来源:", "").strip()
+            elif (
+                line.startswith("URL:")
+                or line.startswith("http")
+                or line.startswith("来源:")
+            ):
+                current_result["url"] = (
+                    line.replace("URL:", "").replace("来源:", "").strip()
+                )
             elif line.startswith("Snippet:") or line.startswith("Description:"):
-                snippet = line.replace("Snippet:", "").replace("Description:", "").strip()
-                current_result["snippet"] = snippet[:100] + "..." if len(snippet) > 100 else snippet
+                snippet = (
+                    line.replace("Snippet:", "").replace("Description:", "").strip()
+                )
+                current_result["snippet"] = (
+                    snippet[:100] + "..." if len(snippet) > 100 else snippet
+                )
 
         if current_result:
             results.append(current_result)

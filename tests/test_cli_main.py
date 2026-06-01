@@ -54,7 +54,7 @@ class TestGracefulExitManager:
         """Test double Ctrl+C triggers exit with summary."""
         GracefulExitManager.ctrl_c_count = 1
 
-        with patch.object(GracefulExitManager, 'exit_with_summary') as mock_exit:
+        with patch.object(GracefulExitManager, "exit_with_summary") as mock_exit:
             GracefulExitManager.handler(None, None)
             mock_exit.assert_called_once()
 
@@ -231,7 +231,7 @@ class TestFindConfigFile:
 
         monkeypatch.chdir(empty_dir)
 
-        with patch('nano_agent.cli.main.Path.home') as mock_home:
+        with patch("nano_agent.cli.main.Path.home") as mock_home:
             mock_home.return_value = temp_dir / "home"
 
             path, source = _find_config_file()
@@ -246,7 +246,7 @@ class TestFindConfigFile:
 
         monkeypatch.chdir(empty_dir)
 
-        with patch('nano_agent.cli.main.Path.home') as mock_home:
+        with patch("nano_agent.cli.main.Path.home") as mock_home:
             mock_home.return_value = temp_dir / "empty_home"
 
             path, source = _find_config_file()
@@ -284,7 +284,7 @@ class TestMergeConfig:
             "memory": {
                 "type": "short_term",
                 "max_messages": 100,
-                "nested": {"key": "value"}
+                "nested": {"key": "value"},
             }
         }
         existing = {
@@ -314,54 +314,60 @@ class TestMainFunction:
 
     def test_main_help_flag(self, capsys):
         """Test -h/--help displays help message."""
-        with patch('sys.argv', ['nano-agent', '-h']):
+        with patch("sys.argv", ["nano-agent", "-h"]):
             with pytest.raises(SystemExit) as exc_info:
                 from nano_agent.cli.main import main
+
                 main()
             # Help exits with 0
             assert exc_info.value.code == 0
 
     def test_main_list_sessions_flag(self, temp_dir, monkeypatch):
         """Test -l flag lists sessions."""
-        with patch('sys.argv', ['nano-agent', '-l']):
-            with patch('nano_agent.cli.main._list_sessions') as mock_list:
+        with patch("sys.argv", ["nano-agent", "-l"]):
+            with patch("nano_agent.cli.main._list_sessions") as mock_list:
                 from nano_agent.cli.main import main
+
                 main()
                 mock_list.assert_called_once()
 
     def test_main_delete_session_flag(self):
         """Test -d flag deletes session."""
-        with patch('sys.argv', ['nano-agent', '-d', 'session_123']):
-            with patch('nano_agent.cli.main._delete_session') as mock_delete:
+        with patch("sys.argv", ["nano-agent", "-d", "session_123"]):
+            with patch("nano_agent.cli.main._delete_session") as mock_delete:
                 from nano_agent.cli.main import main
+
                 main()
-                mock_delete.assert_called_once_with('session_123', None)
+                mock_delete.assert_called_once_with("session_123", None)
 
     def test_main_show_session_flag(self):
         """Test -s flag shows session details."""
-        with patch('sys.argv', ['nano-agent', '-s', 'session_123']):
-            with patch('nano_agent.cli.main._show_session') as mock_show:
+        with patch("sys.argv", ["nano-agent", "-s", "session_123"]):
+            with patch("nano_agent.cli.main._show_session") as mock_show:
                 from nano_agent.cli.main import main
+
                 main()
-                mock_show.assert_called_once_with('session_123', None)
+                mock_show.assert_called_once_with("session_123", None)
 
     def test_main_clean_sessions_flag(self):
         """Test --clean-sessions flag triggers cleanup."""
-        with patch('sys.argv', ['nano-agent', '--clean-sessions']):
-            with patch('nano_agent.cli.main._cleanup_sessions') as mock_cleanup:
-                with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("sys.argv", ["nano-agent", "--clean-sessions"]):
+            with patch("nano_agent.cli.main._cleanup_sessions") as mock_cleanup:
+                with patch("nano_agent.cli.main._find_config_file") as mock_find:
                     mock_find.return_value = (None, "default")
-                    with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+                    with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                         mock_load.return_value = Config()
                         from nano_agent.cli.main import main
+
                         main()
                         mock_cleanup.assert_called_once()
 
     def test_main_migrate_sessions_flag(self):
         """Test --migrate-sessions flag triggers migration."""
-        with patch('sys.argv', ['nano-agent', '--migrate-sessions']):
-            with patch('nano_agent.cli.main._migrate_sessions') as mock_migrate:
+        with patch("sys.argv", ["nano-agent", "--migrate-sessions"]):
+            with patch("nano_agent.cli.main._migrate_sessions") as mock_migrate:
                 from nano_agent.cli.main import main
+
                 main()
                 mock_migrate.assert_called_once_with(None, dry_run=False)
 
@@ -371,14 +377,15 @@ class TestCreateAgentFunction:
 
     def test_create_agent_with_default_config(self):
         """Test creating agent with default configuration."""
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.cli.main.create_llm_from_config') as mock_llm:
+                with patch("nano_agent.cli.main.create_llm_from_config") as mock_llm:
                     mock_llm.return_value = Mock(model="test-model")
-                    with patch('nano_agent.cli.main.update_gitignore'):
+                    with patch("nano_agent.cli.main.update_gitignore"):
                         from nano_agent.cli.main import create_agent
+
                         orchestrator = create_agent()
                         assert orchestrator is not None
 
@@ -387,14 +394,15 @@ class TestCreateAgentFunction:
         config_path = temp_dir / "config.yaml"
         config_path.write_text("llm:\n  model: custom-model\n")
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (config_path, "specified")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.cli.main.create_llm_from_config') as mock_llm:
+                with patch("nano_agent.cli.main.create_llm_from_config") as mock_llm:
                     mock_llm.return_value = Mock(model="custom-model")
-                    with patch('nano_agent.cli.main.update_gitignore'):
+                    with patch("nano_agent.cli.main.update_gitignore"):
                         from nano_agent.cli.main import create_agent
+
                         orchestrator = create_agent(str(config_path))
                         assert orchestrator is not None
 
@@ -436,8 +444,8 @@ class TestSlashCommands:
         def mock_print(text, **kwargs):
             outputs.append(text)
 
-        with patch('builtins.input', mock_input):
-            with patch('builtins.print', mock_print):
+        with patch("builtins.input", mock_input):
+            with patch("builtins.print", mock_print):
                 with pytest.raises(SystemExit):
                     run_interactive(mock_orchestrator, mock_config)
 
@@ -451,8 +459,8 @@ class TestSlashCommands:
         def mock_input(prompt):
             return inputs.pop(0) if inputs else "/exit"
 
-        with patch('builtins.input', mock_input):
-            with patch('builtins.print'):
+        with patch("builtins.input", mock_input):
+            with patch("builtins.print"):
                 with pytest.raises(SystemExit):
                     run_interactive(mock_orchestrator, mock_config)
                 # Clear command should work without errors
@@ -470,8 +478,8 @@ class TestSlashCommands:
         def mock_print(text, **kwargs):
             outputs.append(text)
 
-        with patch('builtins.input', mock_input):
-            with patch('builtins.print', mock_print):
+        with patch("builtins.input", mock_input):
+            with patch("builtins.print", mock_print):
                 with pytest.raises(SystemExit):
                     run_interactive(mock_orchestrator, mock_config)
 
@@ -484,8 +492,8 @@ class TestSlashCommands:
         def mock_input(prompt):
             return inputs.pop(0) if inputs else "/exit"
 
-        with patch('builtins.input', mock_input):
-            with patch('builtins.print'):
+        with patch("builtins.input", mock_input):
+            with patch("builtins.print"):
                 with pytest.raises(SystemExit):
                     run_interactive(mock_orchestrator, mock_config)
 
@@ -497,11 +505,11 @@ class TestSessionManagement:
         """Test _list_sessions lists all sessions."""
         from nano_agent.cli.main import _list_sessions
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.cli.main._get_storage') as mock_storage:
+                with patch("nano_agent.cli.main._get_storage") as mock_storage:
                     storage_mock = Mock()
                     storage_mock.list_sessions.return_value = ["session1", "session2"]
                     storage_mock.get_session_info.return_value = {
@@ -519,11 +527,11 @@ class TestSessionManagement:
         """Test _delete_session removes session."""
         from nano_agent.cli.main import _delete_session
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.cli.main._get_storage') as mock_storage:
+                with patch("nano_agent.cli.main._get_storage") as mock_storage:
                     storage_mock = Mock()
                     storage_mock.session_exists.return_value = True
                     storage_mock.delete_session = Mock(return_value=True)
@@ -543,11 +551,11 @@ class TestSessionManagement:
         mock_entry.role = "user"
         mock_entry.content = "Hello"
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.cli.main._get_storage') as mock_storage:
+                with patch("nano_agent.cli.main._get_storage") as mock_storage:
                     storage_mock = Mock()
                     storage_mock.session_exists.return_value = True
                     storage_mock.load_session.return_value = [mock_entry]
@@ -595,7 +603,9 @@ class TestStatsFunctions:
         # Mock get_detailed_usage to return empty list (no detailed data)
         mock_agent.tracker.get_detailed_usage.return_value = []
         # Mock get_last_iteration_tokens for context calculation
-        mock_agent.tracker.get_last_iteration_tokens.return_value = {"prompt_tokens": 500}
+        mock_agent.tracker.get_last_iteration_tokens.return_value = {
+            "prompt_tokens": 500
+        }
 
         # Should not raise
         _show_run_stats(mock_agent, config)
@@ -636,7 +646,9 @@ class TestStatsFunctions:
             ]
         }
         # Mock get_last_iteration_tokens for context calculation
-        mock_agent.tracker.get_last_iteration_tokens.return_value = {"prompt_tokens": 500}
+        mock_agent.tracker.get_last_iteration_tokens.return_value = {
+            "prompt_tokens": 500
+        }
 
         # Capture output
         captured_output = io.StringIO()
@@ -698,7 +710,7 @@ class TestConfigFunctions:
         config = Config()
         config_path = temp_dir / "config.yaml"
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (config_path, "test")
             _init_config_file(config, force=True)
 
@@ -716,7 +728,7 @@ class TestProjectInit:
         agent = Mock()
         agent.run.return_value = Mock(response="Project initialized")
 
-        with patch('nano_agent.cli.main.ProjectScanner') as mock_scanner:
+        with patch("nano_agent.cli.main.ProjectScanner") as mock_scanner:
             scanner_instance = Mock()
             scanner_instance.scan.return_value = {"name": "test-project"}
             scanner_instance.generate_markdown.return_value = "# Test Project"
@@ -765,7 +777,7 @@ class TestProjectContext:
         config = Config()
         config.agent = AgentConfig()
 
-        with patch('pathlib.Path.cwd', return_value=temp_dir):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
             context = _load_project_context(config)
 
             # Should return empty string when no NANOPROJECT.md
@@ -785,7 +797,7 @@ class TestProjectContext:
         config.project_file = Mock()
         config.project_file.mode = "full"
 
-        with patch('pathlib.Path.cwd', return_value=temp_dir):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
             context = _load_project_context(config)
 
             assert "Test Project" in context
@@ -817,7 +829,7 @@ tests/test_main.py
         config.project_file = Mock()
         config.project_file.mode = "condensed"
 
-        with patch('pathlib.Path.cwd', return_value=temp_dir):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
             context = _load_project_context(config)
 
             # Should contain condensed content
@@ -836,7 +848,7 @@ tests/test_main.py
         config.project_file = Mock()
         config.project_file.mode = "reference"
 
-        with patch('pathlib.Path.cwd', return_value=temp_dir):
+        with patch("pathlib.Path.cwd", return_value=temp_dir):
             context = _load_project_context(config)
 
             # Should only contain reference, not full content
@@ -950,7 +962,7 @@ class TestSessionSummary:
 
         summary = "Test summary content"
 
-        with patch('nano_agent.cli.main._get_storage') as mock_storage:
+        with patch("nano_agent.cli.main._get_storage") as mock_storage:
             storage_mock = Mock()
             mock_storage.return_value = storage_mock
 
@@ -976,7 +988,9 @@ class TestUndoHandler:
         config.agent = AgentConfig()
         name_update_state = {"pending_updates": [], "prev_values": {}}
 
-        with patch('nano_agent.cli.main._find_config_file', return_value=(None, "default")):
+        with patch(
+            "nano_agent.cli.main._find_config_file", return_value=(None, "default")
+        ):
             result = _handle_undo(agent, config, name_update_state)
 
         agent.undo_current_round.assert_called_once()
@@ -1013,10 +1027,12 @@ class TestUndoHandler:
 
         name_update_state = {
             "pending_updates": [("user_name", "OldUser"), ("agent_name", "OldAgent")],
-            "prev_values": {"user_name": "OldUser", "agent_name": "OldAgent"}
+            "prev_values": {"user_name": "OldUser", "agent_name": "OldAgent"},
         }
 
-        with patch('nano_agent.cli.main._find_config_file', return_value=(None, "default")):
+        with patch(
+            "nano_agent.cli.main._find_config_file", return_value=(None, "default")
+        ):
             result = _handle_undo(agent, config, name_update_state)
 
         assert "user_name" in result
@@ -1159,7 +1175,7 @@ class TestHandleConfigCommand:
         config.agent = AgentConfig()
         config.llm = LLMConfig()
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (temp_dir / "config.yaml", "test")
             _handle_config_command(agent, config, "init")
 
@@ -1252,7 +1268,9 @@ class TestRunInteractiveLoop:
         orchestrator.agent.events = Mock()
         orchestrator.agent.events.on = Mock()
         orchestrator.agent.llm = Mock()
-        orchestrator.agent.run.return_value = Mock(response="Test response", success=True)
+        orchestrator.agent.run.return_value = Mock(
+            response="Test response", success=True
+        )
         orchestrator._config_source = "test config"
         return orchestrator
 
@@ -1278,10 +1296,10 @@ class TestRunInteractiveLoop:
 
         inputs = ["", "/exit"]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('builtins.print'):
-                with patch('signal.signal'):
-                    with patch('os.getcwd', return_value="/test"):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("builtins.print"):
+                with patch("signal.signal"):
+                    with patch("os.getcwd", return_value="/test"):
                         # Should handle empty input gracefully
                         pass
 
@@ -1291,10 +1309,10 @@ class TestRunInteractiveLoop:
 
         inputs = ["Hello", "/exit"]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('builtins.print'):
-                with patch('signal.signal'):
-                    with patch('os.getcwd', return_value="/test"):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("builtins.print"):
+                with patch("signal.signal"):
+                    with patch("os.getcwd", return_value="/test"):
                         # Agent should process input
                         pass
 
@@ -1304,11 +1322,11 @@ class TestRunInteractiveLoop:
 
         inputs = ["help", "/exit"]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('builtins.print'):
-                with patch('signal.signal'):
-                    with patch('os.getcwd', return_value="/test"):
-                        with patch('nano_agent.cli.main._show_help') as mock_help:
+        with patch("builtins.input", side_effect=inputs):
+            with patch("builtins.print"):
+                with patch("signal.signal"):
+                    with patch("os.getcwd", return_value="/test"):
+                        with patch("nano_agent.cli.main._show_help") as mock_help:
                             pass
 
     def test_clear_command_resets_memory(self, mock_orchestrator, mock_config):
@@ -1317,20 +1335,20 @@ class TestRunInteractiveLoop:
 
         inputs = ["/clear", "/exit"]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('builtins.print'):
-                with patch('signal.signal'):
-                    with patch('os.getcwd', return_value="/test"):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("builtins.print"):
+                with patch("signal.signal"):
+                    with patch("os.getcwd", return_value="/test"):
                         pass
 
     def test_tools_command_lists_tools(self, mock_orchestrator, mock_config):
         """Test /tools command lists available tools."""
         inputs = ["/tools", "/exit"]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('builtins.print'):
-                with patch('signal.signal'):
-                    with patch('os.getcwd', return_value="/test"):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("builtins.print"):
+                with patch("signal.signal"):
+                    with patch("os.getcwd", return_value="/test"):
                         pass
 
     def test_exit_command_exits_loop(self, mock_orchestrator, mock_config):
@@ -1341,7 +1359,7 @@ class TestRunInteractiveLoop:
         GracefulExitManager.agent = mock_orchestrator.agent
         GracefulExitManager.config = mock_config
 
-        with patch.object(GracefulExitManager, 'exit_with_summary') as mock_exit:
+        with patch.object(GracefulExitManager, "exit_with_summary") as mock_exit:
             mock_exit.side_effect = SystemExit(0)
             with pytest.raises(SystemExit):
                 GracefulExitManager.exit_with_summary()
@@ -1350,10 +1368,10 @@ class TestRunInteractiveLoop:
         """Test 'quit' command exits without summary."""
         inputs = ["quit"]
 
-        with patch('builtins.input', side_effect=inputs):
-            with patch('builtins.print'):
-                with patch('signal.signal'):
-                    with patch('os.getcwd', return_value="/test"):
+        with patch("builtins.input", side_effect=inputs):
+            with patch("builtins.print"):
+                with patch("signal.signal"):
+                    with patch("os.getcwd", return_value="/test"):
                         pass
 
 
@@ -1364,15 +1382,17 @@ class TestMigrateSessions:
         """Test _migrate_sessions with dry_run=True."""
         from nano_agent.cli.main import _migrate_sessions
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.memory.migration.list_all_sessions') as mock_list:
+                with patch(
+                    "nano_agent.memory.migration.list_all_sessions"
+                ) as mock_list:
                     mock_list.return_value = {
                         "file_storage": {"sessions": [], "info": {}},
                         "sqlite_storage": {"sessions": []},
-                        "total_unique_sessions": 0
+                        "total_unique_sessions": 0,
                     }
 
                     # Should not raise
@@ -1387,22 +1407,26 @@ class TestMigrateSessions:
         config.memory.storage_type = "sqlite"
         config.memory.storage_path = str(temp_dir / "test.db")
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = config
-                with patch('nano_agent.memory.migration.list_all_sessions') as mock_list:
+                with patch(
+                    "nano_agent.memory.migration.list_all_sessions"
+                ) as mock_list:
                     mock_list.return_value = {
                         "file_storage": {"sessions": [], "info": {}},
                         "sqlite_storage": {"sessions": []},
-                        "total_unique_sessions": 0
+                        "total_unique_sessions": 0,
                     }
-                    with patch('nano_agent.memory.migration.migrate_file_to_sqlite') as mock_migrate:
+                    with patch(
+                        "nano_agent.memory.migration.migrate_file_to_sqlite"
+                    ) as mock_migrate:
                         mock_migrate.return_value = {
                             "total_file_sessions": 0,
                             "migrated": [],
                             "errors": [],
-                            "already_in_sqlite": []
+                            "already_in_sqlite": [],
                         }
 
                         _migrate_sessions(None, dry_run=False)
@@ -1415,13 +1439,16 @@ class TestCleanupSessions:
         """Test _cleanup_sessions removes low-value sessions."""
         from nano_agent.cli.main import _cleanup_sessions
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.cli.main._get_storage') as mock_storage:
+                with patch("nano_agent.cli.main._get_storage") as mock_storage:
                     storage_mock = Mock()
-                    storage_mock.get_sessions_below_threshold.return_value = ["session1", "session2"]
+                    storage_mock.get_sessions_below_threshold.return_value = [
+                        "session1",
+                        "session2",
+                    ]
                     storage_mock.get_session_info.return_value = {
                         "message_count": 1,
                     }
@@ -1435,11 +1462,11 @@ class TestCleanupSessions:
         """Test _cleanup_sessions when no low-value sessions."""
         from nano_agent.cli.main import _cleanup_sessions
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (None, "default")
-            with patch('nano_agent.cli.main.ConfigLoader.load') as mock_load:
+            with patch("nano_agent.cli.main.ConfigLoader.load") as mock_load:
                 mock_load.return_value = Config()
-                with patch('nano_agent.cli.main._get_storage') as mock_storage:
+                with patch("nano_agent.cli.main._get_storage") as mock_storage:
                     storage_mock = Mock()
                     storage_mock.get_sessions_below_threshold.return_value = []
                     mock_storage.return_value = storage_mock
@@ -1457,7 +1484,7 @@ class TestSetCleanThreshold:
         config_path = temp_dir / "config.yaml"
         config_path.write_text("agent:\n  max_iterations: 10\n")
 
-        with patch('nano_agent.cli.main._find_config_file') as mock_find:
+        with patch("nano_agent.cli.main._find_config_file") as mock_find:
             mock_find.return_value = (config_path, "test")
 
             _set_clean_threshold(str(config_path), 5)
@@ -1475,7 +1502,7 @@ class TestHandleSkillCommand:
         agent.skill_loader.list_loaded_skills.return_value = ["coding", "testing"]
         agent.skill_loader.reload_skill = Mock(return_value=True)
 
-        with patch('nano_agent.cli.main._update_agent_skills'):
+        with patch("nano_agent.cli.main._update_agent_skills"):
             _handle_skill_command(agent, "reload coding")
 
         agent.skill_loader.reload_skill.assert_called_once_with("coding")
@@ -1502,7 +1529,7 @@ class TestHandleSkillCommand:
         agent.skill_loader.list_loaded_skills.return_value = ["coding"]
         agent.skill_loader.unload_skill = Mock(return_value=True)
 
-        with patch('nano_agent.cli.main._update_agent_skills'):
+        with patch("nano_agent.cli.main._update_agent_skills"):
             _handle_skill_command(agent, "unload coding")
 
         agent.skill_loader.unload_skill.assert_called_once_with("coding")
@@ -1525,7 +1552,7 @@ class TestShowHelp:
         """Test _show_help outputs help text."""
         from nano_agent.cli.main import _show_help
 
-        with patch('builtins.print') as mock_print:
+        with patch("builtins.print") as mock_print:
             _show_help()
 
             # Should print multiple lines
@@ -1542,11 +1569,21 @@ class TestShowIterationBreakdown:
         agent = Mock()
         agent.tracker = Mock()
         agent.tracker.get_iteration_token_list.return_value = [
-            {"iteration_number": 1, "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
-            {"iteration_number": 2, "prompt_tokens": 150, "completion_tokens": 75, "total_tokens": 225},
+            {
+                "iteration_number": 1,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+            },
+            {
+                "iteration_number": 2,
+                "prompt_tokens": 150,
+                "completion_tokens": 75,
+                "total_tokens": 225,
+            },
         ]
 
-        with patch('builtins.print'):
+        with patch("builtins.print"):
             _show_iteration_breakdown(agent)
 
     def test_show_iteration_breakdown_empty(self):
@@ -1557,7 +1594,7 @@ class TestShowIterationBreakdown:
         agent.tracker = Mock()
         agent.tracker.get_iteration_token_list.return_value = []
 
-        with patch('builtins.print'):
+        with patch("builtins.print"):
             _show_iteration_breakdown(agent)
 
     def test_show_iteration_breakdown_no_tracker(self):
@@ -1566,7 +1603,7 @@ class TestShowIterationBreakdown:
 
         agent = Mock(spec=[])  # No tracker attribute
 
-        with patch('builtins.print'):
+        with patch("builtins.print"):
             _show_iteration_breakdown(agent)
 
 
@@ -1605,7 +1642,7 @@ class TestShowContextComposition:
         config = Config()
         config.llm = LLMConfig()
 
-        with patch('builtins.print'):
+        with patch("builtins.print"):
             _show_context_composition(agent, config)
 
 

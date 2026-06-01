@@ -16,6 +16,7 @@ class Budget:
     Defines limits on various dimensions of execution to prevent
     runaway behavior and control costs.
     """
+
     max_iterations: int = 10
     max_tokens: int = 100000
     max_tool_calls: int = 50
@@ -51,9 +52,9 @@ class BudgetChecker:
             True if all dimensions are within budget, False otherwise
         """
         return (
-            iterations < self.budget.max_iterations and
-            tokens_used < self.budget.max_tokens and
-            tool_calls < self.budget.max_tool_calls
+            iterations < self.budget.max_iterations
+            and tokens_used < self.budget.max_tokens
+            and tool_calls < self.budget.max_tool_calls
         )
 
     def check_iterations(self, iterations: int) -> bool:

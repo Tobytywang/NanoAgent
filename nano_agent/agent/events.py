@@ -21,7 +21,9 @@ class EventEmitter:
     def __init__(self):
         self._handlers: dict[AgentEvent, list[Callable[[AgentEvent, dict], None]]] = {}
 
-    def on(self, event: AgentEvent, handler: Callable[[AgentEvent, dict], None]) -> None:
+    def on(
+        self, event: AgentEvent, handler: Callable[[AgentEvent, dict], None]
+    ) -> None:
         """
         Register an event listener.
 
@@ -33,7 +35,9 @@ class EventEmitter:
             self._handlers[event] = []
         self._handlers[event].append(handler)
 
-    def off(self, event: AgentEvent, handler: Callable[[AgentEvent, dict], None] = None) -> None:
+    def off(
+        self, event: AgentEvent, handler: Callable[[AgentEvent, dict], None] = None
+    ) -> None:
         """
         Remove an event listener.
 

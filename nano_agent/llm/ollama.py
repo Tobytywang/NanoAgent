@@ -21,7 +21,7 @@ class OllamaLLM(BaseLLM):
         model: str = "llama3",
         base_url: str = DEFAULT_BASE_URL,
         timeout: int = 120,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize Ollama client.
@@ -39,9 +39,7 @@ class OllamaLLM(BaseLLM):
         self.extra_params = kwargs
 
     def _build_payload(
-        self,
-        messages: list[Message] | list[dict],
-        tools: list[dict] | None = None
+        self, messages: list[Message] | list[dict], tools: list[dict] | None = None
     ) -> dict:
         """Build the request payload for Ollama API."""
         # Handle both Message objects and dict objects
@@ -53,7 +51,8 @@ class OllamaLLM(BaseLLM):
                 if "tool_calls" in m:
                     msg_copy = m.copy()
                     msg_copy["tool_calls"] = [
-                        self._convert_tool_call_for_ollama(tc) for tc in msg_copy["tool_calls"]
+                        self._convert_tool_call_for_ollama(tc)
+                        for tc in msg_copy["tool_calls"]
                     ]
                     formatted_messages.append(msg_copy)
                 else:
@@ -65,7 +64,7 @@ class OllamaLLM(BaseLLM):
             "model": self.model,
             "messages": formatted_messages,
             "stream": False,
-            **self.extra_params
+            **self.extra_params,
         }
         if tools:
             payload["tools"] = tools
@@ -79,6 +78,7 @@ class OllamaLLM(BaseLLM):
         # If arguments is a JSON string, parse it
         if isinstance(args, str):
             import json
+
             try:
                 args = json.loads(args)
             except json.JSONDecodeError:
@@ -89,8 +89,8 @@ class OllamaLLM(BaseLLM):
             "type": "function",
             "function": {
                 "name": func.get("name", ""),
-                "arguments": args  # Ollama expects dict, not JSON string
-            }
+                "arguments": args,  # Ollama expects dict, not JSON string
+            },
         }
 
     def query_context_length(self) -> int | None:
@@ -125,7 +125,7 @@ class OllamaLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
-        **kwargs
+        **kwargs,
     ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
         Call Ollama API and get a response.
@@ -144,7 +144,7 @@ class OllamaLLM(BaseLLM):
             self.api_url,
             json=payload,
             timeout=self.timeout,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
         if not response.ok:
             logger = get_logger()
@@ -185,7 +185,7 @@ class OllamaLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
-        **kwargs
+        **kwargs,
     ) -> Generator[str, None, None]:
         """
         Stream the response from Ollama.
@@ -206,7 +206,7 @@ class OllamaLLM(BaseLLM):
             json=payload,
             timeout=self.timeout,
             stream=True,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         ) as response:
             response.raise_for_status()
             for line in response.iter_lines():

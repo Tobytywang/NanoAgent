@@ -18,7 +18,6 @@ from nano_agent.config.schema import SmartOptimizationConfig
 from nano_agent.config.loader import ConfigLoader
 from nano_agent.llm.base import LLMUsage
 
-
 # === PrejudgmentResult tests ===
 
 
@@ -74,16 +73,12 @@ class TestQueryPrejudgmentParsing:
         assert answer == "你好！有什么可以帮助你的？"
 
     def test_parse_moderate_marker(self):
-        complexity, answer = self.prejudgment._parse_response(
-            "[COMPLEXITY: moderate]"
-        )
+        complexity, answer = self.prejudgment._parse_response("[COMPLEXITY: moderate]")
         assert complexity == QueryComplexity.MODERATE
         assert answer is None
 
     def test_parse_complex_marker(self):
-        complexity, answer = self.prejudgment._parse_response(
-            "[COMPLEXITY: complex]"
-        )
+        complexity, answer = self.prejudgment._parse_response("[COMPLEXITY: complex]")
         assert complexity == QueryComplexity.COMPLEX
         assert answer is None
 
@@ -95,9 +90,7 @@ class TestQueryPrejudgmentParsing:
         assert answer == "Hi there!"
 
     def test_parse_mixed_case_complexity(self):
-        complexity, _ = self.prejudgment._parse_response(
-            "[COMPLEXITY: Moderate]"
-        )
+        complexity, _ = self.prejudgment._parse_response("[COMPLEXITY: Moderate]")
         assert complexity == QueryComplexity.MODERATE
 
     def test_parse_no_marker_defaults_complex(self):
@@ -108,9 +101,7 @@ class TestQueryPrejudgmentParsing:
         assert answer is None
 
     def test_parse_invalid_marker_defaults_complex(self):
-        complexity, answer = self.prejudgment._parse_response(
-            "[COMPLEXITY: unknown]"
-        )
+        complexity, answer = self.prejudgment._parse_response("[COMPLEXITY: unknown]")
         assert complexity == QueryComplexity.COMPLEX
         assert answer is None
 
@@ -129,9 +120,7 @@ class TestQueryPrejudgmentParsing:
         assert "Here is the answer." in answer
 
     def test_parse_simple_empty_answer(self):
-        complexity, answer = self.prejudgment._parse_response(
-            "[COMPLEXITY: simple]"
-        )
+        complexity, answer = self.prejudgment._parse_response("[COMPLEXITY: simple]")
         assert complexity == QueryComplexity.SIMPLE
         assert answer is None
 
@@ -144,8 +133,11 @@ class TestQueryPrejudgmentWithMockLLM:
 
     def _make_mock_llm(self, response_text: str, total_tokens: int = 50):
         llm = Mock()
-        usage = LLMUsage(prompt_tokens=20, completion_tokens=total_tokens - 20,
-                         total_tokens=total_tokens)
+        usage = LLMUsage(
+            prompt_tokens=20,
+            completion_tokens=total_tokens - 20,
+            total_tokens=total_tokens,
+        )
         llm.chat.return_value = (response_text, [], usage)
         return llm
 
@@ -204,7 +196,11 @@ class TestQueryPrejudgmentWithMockLLM:
         assert call_args.kwargs.get("tools") is None
         assert call_args.kwargs.get("system_stable") is None
         # Verify messages contain the query
-        messages = call_args.args[0] if call_args.args else call_args.kwargs.get("messages", [])
+        messages = (
+            call_args.args[0]
+            if call_args.args
+            else call_args.kwargs.get("messages", [])
+        )
         assert any("hello" in str(m) for m in messages)
 
     def test_prejudge_factual_question(self):
@@ -334,7 +330,12 @@ class TestPrejudgmentConfig:
 
     def test_config_loader_save_roundtrip(self, tmp_path):
         """Test that prejudgment config survives save/load roundtrip."""
-        from nano_agent.config.schema import Config, LLMConfig, AgentConfig, MemoryConfig
+        from nano_agent.config.schema import (
+            Config,
+            LLMConfig,
+            AgentConfig,
+            MemoryConfig,
+        )
 
         config = Config(
             llm=LLMConfig(),

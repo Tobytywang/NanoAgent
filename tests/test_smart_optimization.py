@@ -15,8 +15,8 @@ from nano_agent.agent.router import QueryRouter, QueryComplexity, RoutingResult
 from nano_agent.agent.confidence import ConfidenceParser, ConfidenceResult
 from nano_agent.config.schema import SmartOptimizationConfig
 
-
 # === TokenBudget Tests ===
+
 
 class TestTokenBudget:
     """Tests for TokenBudget class."""
@@ -24,7 +24,9 @@ class TestTokenBudget:
     def test_initial_state(self):
         """Test initial budget state."""
         budget = TokenBudget()
-        assert budget.remaining == 50000  # Updated from 20000 to support longer conversations
+        assert (
+            budget.remaining == 50000
+        )  # Updated from 20000 to support longer conversations
         assert budget.initial_budget == 50000
         assert budget._total_consumed == 0
 
@@ -47,7 +49,9 @@ class TestTokenBudget:
         budget = TokenBudget()
         budget.consume(55000)  # More than initial (50000)
         assert budget.remaining == 0  # Clamped to 0
-        assert budget._total_consumed == 55000  # Total consumed tracks actual consumption
+        assert (
+            budget._total_consumed == 55000
+        )  # Total consumed tracks actual consumption
 
     def test_should_warn(self):
         """Test warning threshold (backward compatible with new thresholds)."""
@@ -122,6 +126,7 @@ class TestTokenBudget:
 
 # === QueryRouter Tests ===
 
+
 class TestQueryRouter:
     """Tests for QueryRouter class."""
 
@@ -195,7 +200,10 @@ class TestQueryRouter:
 
         result = router.classify("你好")
         # Should not be classified as simple
-        assert result.complexity != QueryComplexity.SIMPLE or result.suggested_max_tools != 0
+        assert (
+            result.complexity != QueryComplexity.SIMPLE
+            or result.suggested_max_tools != 0
+        )
 
     def test_is_simple_method(self):
         """Test is_simple convenience method."""
@@ -218,15 +226,14 @@ class TestQueryRouter:
 
     def test_custom_patterns(self):
         """Test custom patterns."""
-        router = QueryRouter(
-            custom_simple_patterns=[r"^test\s+simple$"]
-        )
+        router = QueryRouter(custom_simple_patterns=[r"^test\s+simple$"])
 
         result = router.classify("test simple")
         assert result.complexity == QueryComplexity.SIMPLE
 
 
 # === ConfidenceParser Tests ===
+
 
 class TestConfidenceParser:
     """Tests for ConfidenceParser class."""
@@ -380,6 +387,7 @@ class TestConfidenceParser:
 
 # === SmartOptimizationConfig Tests ===
 
+
 class TestSmartOptimizationConfig:
     """Tests for SmartOptimizationConfig."""
 
@@ -393,12 +401,21 @@ class TestSmartOptimizationConfig:
 
         # Budget (v0.7.8 updated)
         assert config.budget_enabled == True
-        assert config.initial_budget == 50000  # Increased from 20000 to support longer conversations
-        assert config.budget_warning_thresholds == [0.5, 0.3, 0.2, 0.1]  # Multi-level thresholds
+        assert (
+            config.initial_budget == 50000
+        )  # Increased from 20000 to support longer conversations
+        assert config.budget_warning_thresholds == [
+            0.5,
+            0.3,
+            0.2,
+            0.1,
+        ]  # Multi-level thresholds
         assert config.budget_warning_mode == "console"
         assert config.budget_warning_interval == 1
         assert config.budget_force_summarize == True
-        assert config.budget_llm_summary_enabled == True  # LLM summary enabled by default
+        assert (
+            config.budget_llm_summary_enabled == True
+        )  # LLM summary enabled by default
 
         # Routing
         assert config.routing_enabled == True
@@ -441,6 +458,7 @@ class TestSmartOptimizationConfig:
 
 
 # === Integration Tests ===
+
 
 class TestSmartOptimizationIntegration:
     """Integration tests for smart optimization."""

@@ -16,6 +16,7 @@ class FileReadTool(BaseTool):
     name = "file_read"
     description = "Read the contents of a file. Supports text files with optional line range selection."
     risk_level = RiskLevel.SAFE  # Read-only operation
+    can_offload = True  # Large file contents can be offloaded
 
     @property
     def parameters_schema(self) -> dict:
@@ -24,27 +25,24 @@ class FileReadTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "The absolute path to the file"
+                    "description": "The absolute path to the file",
                 },
                 "start_line": {
                     "type": "integer",
                     "description": "Starting line number (1-based), default is 1",
-                    "default": 1
+                    "default": 1,
                 },
                 "num_lines": {
                     "type": "integer",
                     "description": "Number of lines to read, 0 means all lines",
-                    "default": 0
-                }
+                    "default": 0,
+                },
             },
-            "required": ["file_path"]
+            "required": ["file_path"],
         }
 
     def execute(
-        self,
-        file_path: str,
-        start_line: int = 1,
-        num_lines: int = 0
+        self, file_path: str, start_line: int = 1, num_lines: int = 0
     ) -> ToolResult:
         """
         Read file contents.
@@ -62,16 +60,12 @@ class FileReadTool(BaseTool):
 
             if not path.exists():
                 return ToolResult(
-                    success=False,
-                    output="",
-                    error=f"File does not exist: {path}"
+                    success=False, output="", error=f"File does not exist: {path}"
                 )
 
             if not path.is_file():
                 return ToolResult(
-                    success=False,
-                    output="",
-                    error=f"Path is not a file: {path}"
+                    success=False, output="", error=f"Path is not a file: {path}"
                 )
 
             with open(path, "r", encoding="utf-8") as f:
@@ -110,7 +104,7 @@ class FileReadTool(BaseTool):
             return ToolResult(
                 success=False,
                 output="",
-                error="File is not a text file or uses unsupported encoding"
+                error="File is not a text file or uses unsupported encoding",
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
@@ -130,20 +124,17 @@ class FileWriteTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "The absolute path to the file"
+                    "description": "The absolute path to the file",
                 },
-                "content": {
-                    "type": "string",
-                    "description": "The content to write"
-                },
+                "content": {"type": "string", "description": "The content to write"},
                 "mode": {
                     "type": "string",
                     "enum": ["write", "append"],
                     "description": "Write mode: 'write' (overwrite) or 'append'",
-                    "default": "write"
-                }
+                    "default": "write",
+                },
             },
-            "required": ["file_path", "content"]
+            "required": ["file_path", "content"],
         }
 
     @property
@@ -187,10 +178,7 @@ class FileWriteTool(BaseTool):
             return False
 
     def execute(
-        self,
-        file_path: str,
-        content: str,
-        mode: Literal["write", "append"] = "write"
+        self, file_path: str, content: str, mode: Literal["write", "append"] = "write"
     ) -> ToolResult:
         """
         Write content to a file.
@@ -230,13 +218,11 @@ class FileWriteTool(BaseTool):
                 undo_data = {
                     "path": str(path),
                     "previous_content": previous_content,
-                    "file_existed": file_existed
+                    "file_existed": file_existed,
                 }
 
             return ToolResult(
-                success=True,
-                output=f"{action} file: {path}",
-                undo_data=undo_data
+                success=True, output=f"{action} file: {path}", undo_data=undo_data
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
@@ -248,6 +234,7 @@ class FileSearchTool(BaseTool):
     name = "file_search"
     description = "Search for files matching a pattern in a directory."
     risk_level = RiskLevel.SAFE  # Read-only operation
+    can_offload = True  # Large search results can be offloaded
 
     @property
     def parameters_schema(self) -> dict:
@@ -256,26 +243,23 @@ class FileSearchTool(BaseTool):
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "The directory to search in"
+                    "description": "The directory to search in",
                 },
                 "pattern": {
                     "type": "string",
-                    "description": "File name pattern (supports * and ? wildcards)"
+                    "description": "File name pattern (supports * and ? wildcards)",
                 },
                 "recursive": {
                     "type": "boolean",
                     "description": "Whether to search recursively",
-                    "default": True
-                }
+                    "default": True,
+                },
             },
-            "required": ["directory", "pattern"]
+            "required": ["directory", "pattern"],
         }
 
     def execute(
-        self,
-        directory: str,
-        pattern: str,
-        recursive: bool = True
+        self, directory: str, pattern: str, recursive: bool = True
     ) -> ToolResult:
         """
         Search for files matching a pattern.
@@ -295,14 +279,14 @@ class FileSearchTool(BaseTool):
                 return ToolResult(
                     success=False,
                     output="",
-                    error=f"Directory does not exist: {base_path}"
+                    error=f"Directory does not exist: {base_path}",
                 )
 
             if not base_path.is_dir():
                 return ToolResult(
                     success=False,
                     output="",
-                    error=f"Path is not a directory: {base_path}"
+                    error=f"Path is not a directory: {base_path}",
                 )
 
             # Support pipe separator for multiple patterns
@@ -318,8 +302,7 @@ class FileSearchTool(BaseTool):
 
             if not all_matches:
                 return ToolResult(
-                    success=True,
-                    output=f"No files matching '{pattern}' found"
+                    success=True, output=f"No files matching '{pattern}' found"
                 )
 
             # Sort and limit results
@@ -330,9 +313,14 @@ class FileSearchTool(BaseTool):
             )
 
             if len(sorted_matches) > max_results:
-                result_str += f"\n... and {len(sorted_matches) - max_results} more results"
+                result_str += (
+                    f"\n... and {len(sorted_matches) - max_results} more results"
+                )
 
-            items = [{"path": str(m.relative_to(base_path))} for m in sorted_matches[:max_results]]
+            items = [
+                {"path": str(m.relative_to(base_path))}
+                for m in sorted_matches[:max_results]
+            ]
             standard_output = StandardToolOutput(
                 format=OutputFormat.LIST,
                 data={

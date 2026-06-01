@@ -14,12 +14,21 @@ class TestTokenBudgetConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = TokenBudgetConfig()
-        assert config.initial_budget == 50000  # Updated from 20000 for longer conversations
-        assert config.warning_thresholds == [0.5, 0.3, 0.2, 0.1]  # Multi-level thresholds (v0.7.8)
+        assert (
+            config.initial_budget == 50000
+        )  # Updated from 20000 for longer conversations
+        assert config.warning_thresholds == [
+            0.5,
+            0.3,
+            0.2,
+            0.1,
+        ]  # Multi-level thresholds (v0.7.8)
         assert config.warning_mode == "console"
         assert config.warning_interval == 1
         assert config.force_summarize is True
-        assert config.llm_summary_enabled is True  # LLM summary enabled by default (v0.7.8)
+        assert (
+            config.llm_summary_enabled is True
+        )  # LLM summary enabled by default (v0.7.8)
         assert config.calibration_enabled is True
         assert config.calibration_window == 5
         assert config.min_calibration_samples == 3
@@ -296,8 +305,7 @@ class TestTokenBudgetProgressiveWarnings:
     def test_check_warning_at_50_percent(self):
         """Test warning at 50% threshold."""
         config = TokenBudgetConfig(
-            initial_budget=1000,
-            warning_thresholds=[0.5, 0.3, 0.2, 0.1]
+            initial_budget=1000, warning_thresholds=[0.5, 0.3, 0.2, 0.1]
         )
         budget = TokenBudget(config)
 
@@ -312,8 +320,7 @@ class TestTokenBudgetProgressiveWarnings:
     def test_check_warning_progressive_levels(self):
         """Test progressive warning levels."""
         config = TokenBudgetConfig(
-            initial_budget=1000,
-            warning_thresholds=[0.5, 0.3, 0.2, 0.1]
+            initial_budget=1000, warning_thresholds=[0.5, 0.3, 0.2, 0.1]
         )
         budget = TokenBudget(config)
 
@@ -339,10 +346,7 @@ class TestTokenBudgetProgressiveWarnings:
 
     def test_check_warning_no_duplicate(self):
         """Test no duplicate warnings at same level."""
-        config = TokenBudgetConfig(
-            initial_budget=1000,
-            warning_thresholds=[0.5]
-        )
+        config = TokenBudgetConfig(initial_budget=1000, warning_thresholds=[0.5])
         budget = TokenBudget(config)
 
         budget.consume(500)  # 50% remaining
@@ -358,7 +362,7 @@ class TestTokenBudgetProgressiveWarnings:
         config = TokenBudgetConfig(
             initial_budget=1000,
             warning_thresholds=[0.5, 0.3],
-            warning_interval=2  # Need 2 iterations between warnings
+            warning_interval=2,  # Need 2 iterations between warnings
         )
         budget = TokenBudget(config)
 
@@ -395,10 +399,7 @@ class TestTokenBudgetProgressiveWarnings:
 
     def test_silent_mode(self):
         """Test silent warning mode."""
-        config = TokenBudgetConfig(
-            initial_budget=1000,
-            warning_mode="silent"
-        )
+        config = TokenBudgetConfig(initial_budget=1000, warning_mode="silent")
         budget = TokenBudget(config)
 
         budget.consume(500)

@@ -18,10 +18,10 @@ from nano_agent.config.schema import (
 from nano_agent.agent.context import ContextManager
 from nano_agent.llm.base import BaseLLM, LLMUsage
 
-
 # ============================================================
 # Test doubles
 # ============================================================
+
 
 class FakeLLM(BaseLLM):
     """Fake LLM that returns preset responses and records calls."""
@@ -79,25 +79,35 @@ def make_heavy_messages(rounds: int = 50):
     """
     msgs = []
     for i in range(rounds):
-        msgs.append({
-            "role": "user",
-            "content": "This is a substantial conversation message that contains enough text to consume significant context window space. " * 20,
-        })
-        msgs.append({
-            "role": "assistant",
-            "content": "I have processed your request and here is my analysis of the situation with detailed findings and recommendations. " * 20,
-        })
-        msgs.append({
-            "role": "tool",
-            "content": "Tool execution result: the operation completed successfully with the following output data and status information. " * 20,
-            "tool_call_id": f"call_{i}",
-        })
+        msgs.append(
+            {
+                "role": "user",
+                "content": "This is a substantial conversation message that contains enough text to consume significant context window space. "
+                * 20,
+            }
+        )
+        msgs.append(
+            {
+                "role": "assistant",
+                "content": "I have processed your request and here is my analysis of the situation with detailed findings and recommendations. "
+                * 20,
+            }
+        )
+        msgs.append(
+            {
+                "role": "tool",
+                "content": "Tool execution result: the operation completed successfully with the following output data and status information. "
+                * 20,
+                "tool_call_id": f"call_{i}",
+            }
+        )
     return msgs
 
 
 # ============================================================
 # E2E-1: Config → LLM → set_llm_client → get_context_length
 # ============================================================
+
 
 class TestE2EConfigToContextLength:
     """Full pipeline: config + LLM injection → correct context length."""
@@ -155,6 +165,7 @@ class TestE2EConfigToContextLength:
 # ============================================================
 # E2E-2: ContextManager uses llm_config, not hardcoded 128000
 # ============================================================
+
 
 class TestE2EContextManagerCompression:
     """Same message load, different window sizes → different behavior."""
@@ -222,6 +233,7 @@ class TestE2EContextManagerCompression:
 # E2E-3: AgentBuilder full pipeline — llm_config reaches agent
 # ============================================================
 
+
 class TestE2EAgentBuilderPipeline:
     """Verify llm_config flows from Config through AgentBuilder to Agent."""
 
@@ -250,7 +262,9 @@ class TestE2EAgentBuilderPipeline:
         builder.with_memory_instance(FakeMemory())
 
         orchestrator = builder.build()
-        assert orchestrator.agent.context_manager._llm_config.get_context_length() == 8192
+        assert (
+            orchestrator.agent.context_manager._llm_config.get_context_length() == 8192
+        )
 
     def test_agent_context_manager_with_override(self):
         from nano_agent.core.builder import AgentBuilder
@@ -264,7 +278,9 @@ class TestE2EAgentBuilderPipeline:
         builder.with_memory_instance(FakeMemory())
 
         orchestrator = builder.build()
-        assert orchestrator.agent.context_manager._llm_config.get_context_length() == 32768
+        assert (
+            orchestrator.agent.context_manager._llm_config.get_context_length() == 32768
+        )
 
     def test_set_llm_client_injected_by_builder(self):
         """After builder.build(), config.llm should have the LLM client set."""
@@ -292,6 +308,7 @@ class TestE2EAgentBuilderPipeline:
 # ============================================================
 # E2E-4: Conservative fallback — unknown model never gets 128000
 # ============================================================
+
 
 class TestE2EConservativeFallback:
     """Unknown models must get 8192, not 128000."""

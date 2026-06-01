@@ -37,9 +37,7 @@ def test_token_consumption(style: str = "concise"):
 
     # Create components
     llm = OllamaLLM(
-        model=config.llm.model,
-        base_url=config.llm.base_url,
-        timeout=config.llm.timeout
+        model=config.llm.model, base_url=config.llm.base_url, timeout=config.llm.timeout
     )
     memory = ShortTermMemory(max_messages=config.memory.max_messages)
     tool_registry = ToolRegistry()
@@ -114,10 +112,10 @@ def test_token_consumption(style: str = "concise"):
 def main():
     """Run tests with different output styles."""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("v0.7.2 Token Consumption Test")
     print("Goal: Two rounds < 8k tokens in concise mode")
-    print("="*60)
+    print("=" * 60)
 
     # Test concise mode
     concise_tokens = test_token_consumption("concise")
@@ -125,9 +123,9 @@ def main():
     # Test standard mode for comparison
     standard_tokens = test_token_consumption("standard")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Summary")
-    print("="*60)
+    print("=" * 60)
     print(f"Concise mode: {concise_tokens} tokens")
     print(f"Standard mode: {standard_tokens} tokens")
     print(f"Target: < 8000 tokens")
@@ -136,7 +134,9 @@ def main():
     if concise_tokens < 8000:
         print("\n✅ v0.7.2 goal achieved!")
     else:
-        print(f"\n❌ Goal not achieved. Need {concise_tokens - 8000} more tokens reduction.")
+        print(
+            f"\n❌ Goal not achieved. Need {concise_tokens - 8000} more tokens reduction."
+        )
 
 
 if __name__ == "__main__":

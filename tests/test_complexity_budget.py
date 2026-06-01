@@ -10,7 +10,6 @@ import pytest
 from nano_agent.agent.router import QueryRouter, QueryComplexity, RoutingResult
 from nano_agent.agent.token_budget import TokenBudget, TokenBudgetConfig
 
-
 pytestmark = pytest.mark.unit
 
 

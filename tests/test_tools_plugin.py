@@ -25,10 +25,8 @@ class MockTool(BaseTool):
     def parameters_schema(self):
         return {
             "type": "object",
-            "properties": {
-                "input": {"type": "string"}
-            },
-            "required": ["input"]
+            "properties": {"input": {"type": "string"}},
+            "required": ["input"],
         }
 
     def execute(self, input: str = "") -> ToolResult:
@@ -218,11 +216,7 @@ class TestLoadPluginsFromConfig:
         plugin_dir = temp_dir / "plugins"
         plugin_dir.mkdir()
 
-        config = {
-            "plugins": {
-                "directories": [str(plugin_dir)]
-            }
-        }
+        config = {"plugins": {"directories": [str(plugin_dir)]}}
 
         tools = load_plugins_from_config(config, registry)
 
@@ -233,11 +227,7 @@ class TestLoadPluginsFromConfig:
         """Test loading plugins from modules config."""
         registry = ToolRegistry()
 
-        config = {
-            "plugins": {
-                "modules": ["nonexistent_module"]
-            }
-        }
+        config = {"plugins": {"modules": ["nonexistent_module"]}}
 
         tools = load_plugins_from_config(config, registry)
 
@@ -265,11 +255,7 @@ class FileTool(BaseTool):
         return ToolResult(success=True, output="file")
 """)
 
-        config = {
-            "plugins": {
-                "files": [str(tool_file)]
-            }
-        }
+        config = {"plugins": {"files": [str(tool_file)]}}
 
         tools = load_plugins_from_config(config, registry)
 
@@ -288,7 +274,7 @@ class FileTool(BaseTool):
             "plugins": {
                 "directories": [str(plugin_dir)],
                 "modules": ["nonexistent_module"],
-                "files": ["/nonexistent/file.py"]
+                "files": ["/nonexistent/file.py"],
             }
         }
 

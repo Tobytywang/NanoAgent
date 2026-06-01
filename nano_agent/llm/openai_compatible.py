@@ -28,7 +28,7 @@ class OpenAICompatibleLLM(BaseLLM):
         api_key_env: str = "OPENAI_API_KEY",
         timeout: int = 120,
         temperature: float = 0.7,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize OpenAI-compatible client.
@@ -65,7 +65,7 @@ class OpenAICompatibleLLM(BaseLLM):
         self,
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
-        system_stable: str | None = None
+        system_stable: str | None = None,
     ) -> dict:
         """Build the request payload in OpenAI format.
 
@@ -104,7 +104,7 @@ class OpenAICompatibleLLM(BaseLLM):
             "model": self.model,
             "messages": formatted_messages,
             "temperature": self.temperature,
-            **self.extra_params
+            **self.extra_params,
         }
 
         if tools:
@@ -116,7 +116,7 @@ class OpenAICompatibleLLM(BaseLLM):
         """Get request headers with authorization."""
         return {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Authorization": f"Bearer {self.api_key}",
         }
 
     def query_context_length(self) -> int | None:
@@ -149,7 +149,7 @@ class OpenAICompatibleLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
-        **kwargs
+        **kwargs,
     ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
         Call OpenAI-compatible API and get a response.
@@ -170,7 +170,7 @@ class OpenAICompatibleLLM(BaseLLM):
             self.api_url,
             json=payload,
             timeout=self.timeout,
-            headers=self._get_headers()
+            headers=self._get_headers(),
         )
         response.raise_for_status()
         data = response.json()
@@ -183,7 +183,7 @@ class OpenAICompatibleLLM(BaseLLM):
         # Sanitize content to remove invalid Unicode characters (surrogates)
         if content:
             try:
-                content = content.encode('utf-8', errors='replace').decode('utf-8')
+                content = content.encode("utf-8", errors="replace").decode("utf-8")
             except (UnicodeDecodeError, UnicodeEncodeError):
                 pass
 
@@ -208,7 +208,7 @@ class OpenAICompatibleLLM(BaseLLM):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
-        **kwargs
+        **kwargs,
     ) -> Generator[str, None, None]:
         """
         Stream the response from OpenAI-compatible API.
@@ -229,7 +229,7 @@ class OpenAICompatibleLLM(BaseLLM):
             json=payload,
             timeout=self.timeout,
             stream=True,
-            headers=self._get_headers()
+            headers=self._get_headers(),
         ) as response:
             response.raise_for_status()
             # Use errors='replace' to handle malformed UTF-8 sequences

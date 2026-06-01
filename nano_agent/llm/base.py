@@ -55,7 +55,7 @@ class BaseLLM(ABC):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
-        **kwargs
+        **kwargs,
     ) -> tuple[str, list[ToolCall], LLMUsage]:
         """
         Send messages and get a response.
@@ -77,7 +77,7 @@ class BaseLLM(ABC):
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,
         system_stable: str | None = None,
-        **kwargs
+        **kwargs,
     ) -> Generator[str, None, None]:
         """
         Stream the response (optional implementation).
@@ -91,5 +91,7 @@ class BaseLLM(ABC):
             Text chunks from the response
         """
         # Default implementation: just return the full response
-        response, _, _ = self.chat(messages, tools, system_stable=system_stable, **kwargs)
+        response, _, _ = self.chat(
+            messages, tools, system_stable=system_stable, **kwargs
+        )
         yield response
