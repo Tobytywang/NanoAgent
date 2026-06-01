@@ -15,6 +15,8 @@ Prompt 模块定义
 from dataclasses import dataclass
 from typing import Callable
 
+from .token_utils import estimate_text_tokens
+
 
 @dataclass
 class PromptModule:
@@ -29,6 +31,13 @@ class PromptModule:
     enabled: bool = True
     is_stable: bool = True  # 是否属于稳定部分（适合缓存）
     category: str = "core"  # 模块分类
+
+    @property
+    def effective_token_estimate(self) -> int:
+        """Dynamic token estimate using actual text analysis, with fallback."""
+        if self.content and "{tools_description}" not in self.content:
+            return estimate_text_tokens(self.content)
+        return self.token_estimate
 
 
 # 预定义模块

@@ -523,6 +523,13 @@ Stall Detection (v0.7.16):
 - `stall_similarity_threshold: float = 0.7` — 签名相似度阈值
 - `stall_hint_injection: bool = True` — 检测到停滞时注入转向提示
 
+Calibration & Estimation Audit (v0.7.18):
+- `calibration_enabled: bool = True` — 启用校准
+- `calibration_window: int = 5` — 校准窗口（最近 N 次调用）
+- `min_calibration_samples: int = 3` — 最少采样数
+- `estimation_audit_enabled: bool = True` — 启用估算审计
+- `estimation_deviation_warning_threshold: float = 0.50` — 偏差告警阈值
+
 
 ---
 
@@ -1148,6 +1155,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.18 | 估算审计与准确性增强（`EstimationAudit`、`effective_token_estimate`、`/stats estimation`、偏差告警） |
 | v0.7.16 | 复杂度预算 Profile 与 Stall Detection（`RoutingResult.suggested_budget_ratio`、`TokenBudget.set_budget_ratio`、`StallDetector`、`StallConfig`、`AgentEvent.STALL_DETECTED`） |
 | v0.7.15 | 激进输出精简与工具输出标准化（`AggressiveOutputConfig`、`OutputSimplifier`、`StandardToolOutput`、`OutputFormat`） |
 | v0.7.14 | 预判机制（`QueryPrejudgment`、`PrejudgmentResult`、两级路由：规则优先 + LLM 补充） |

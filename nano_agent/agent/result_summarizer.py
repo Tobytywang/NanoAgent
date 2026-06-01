@@ -50,7 +50,9 @@ class ToolResultSummarizer:
     def __init__(self, config: Optional[SummarizerConfig] = None):
         self.config = config or SummarizerConfig()
 
-    def summarize(self, output: str, tool_name: str) -> str:
+    def summarize(
+        self, output: str, tool_name: str, calibration_factor: float = 1.0
+    ) -> str:
         """
         Summarize tool output based on tool type.
 
@@ -79,7 +81,11 @@ class ToolResultSummarizer:
 
         # v0.7.13: Enforce max_summary_tokens budget
         if self.config.max_summary_tokens > 0:
-            max_chars = calculate_max_chars(result, self.config.max_summary_tokens)
+            max_chars = calculate_max_chars(
+                result,
+                self.config.max_summary_tokens,
+                calibration_factor=calibration_factor,
+            )
             if len(result) > max_chars:
                 result = result[:max_chars] + "\n... [摘要已截断]"
 
@@ -417,7 +423,7 @@ class ToolResultSummarizer:
 
         return docstrings
 
-    def estimate_tokens(self, text: str) -> int:
+    def estimate_tokens(self, text: str, calibration_factor: float = 1.0) -> int:
         """
         Estimate token count for text.
 
@@ -425,8 +431,9 @@ class ToolResultSummarizer:
 
         Args:
             text: Text to estimate
+            calibration_factor: Calibration factor from TokenBudget (v0.7.18)
 
         Returns:
             Estimated token count
         """
-        return estimate_text_tokens(text)
+        return estimate_text_tokens(text, calibration_factor=calibration_factor)

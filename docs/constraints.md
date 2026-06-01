@@ -110,6 +110,13 @@ smart_optimization:
 | `calibration_window` | `5` | 校准窗口（最近 5 次调用） |
 | `min_calibration_samples` | `3` | 最少采样数（3 次后才启动校准） |
 
+**估算审计** (v0.7.18)：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `estimation_audit_enabled` | `True` | 启用估算偏差审计 |
+| `estimation_deviation_warning_threshold` | `0.50` | 偏差告警阈值（>50% 触发 WARNING） |
+
 ```yaml
 smart_optimization:
   initial_budget: 80000        # 增大预算支持更长对话

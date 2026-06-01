@@ -16,6 +16,7 @@ from .metrics import (
 )
 from .raw_data import RawLLMCallData, RawToolExecutionData
 from .token_analyzer import TokenAnalyzer
+from ..agent.estimation_audit import EstimationAudit, EstimationAuditConfig
 
 
 class MetricsTracker:
@@ -56,6 +57,12 @@ class MetricsTracker:
         self._base_tool_chars: int = 0
         self._base_system_chars: int = 0
         self._base_skill_chars: int = 0
+        # v0.7.18: base_ratio 首轮修正
+        self._base_ratio_initialized: bool = False
+        self._base_ratio_iteration: int = 0
+
+        # v0.7.18: Estimation audit
+        self._estimation_audit = EstimationAudit()
 
     def start_run(self, user_input: str) -> None:
         """
@@ -263,6 +270,14 @@ class MetricsTracker:
         tool_calls_dict = self._convert_tool_calls(raw_data.tool_calls)
 
         # Create metrics
+        estimated_tokens = getattr(raw_data, "estimated_tokens", 0)
+        calibration_factor = getattr(raw_data, "calibration_factor", 1.0)
+
+        # Calculate deviation_pct
+        deviation_pct = 0.0
+        if estimated_tokens > 0:
+            deviation_pct = abs(prompt_tokens - estimated_tokens) / estimated_tokens
+
         self._current_iteration.llm_call = LLMCallMetrics(
             timestamp=datetime.now(),
             model=model,
@@ -275,6 +290,8 @@ class MetricsTracker:
             output_text=raw_data.response_text,
             tool_calls=tool_calls_dict,
             tools_schema=raw_data.tools_schema or [],
+            estimated_tokens=estimated_tokens,
+            deviation_pct=deviation_pct,
         )
 
         # Increment LLM call count
@@ -287,6 +304,14 @@ class MetricsTracker:
             input_messages=raw_data.messages,
             tool_calls=tool_calls_dict,
         )
+
+        # v0.7.18: Record estimation audit
+        if estimated_tokens > 0 and prompt_tokens > 0:
+            self._estimation_audit.record(
+                estimated=estimated_tokens,
+                actual=prompt_tokens,
+                calibration_factor=calibration_factor,
+            )
 
     def record_raw_tool_execution(self, raw_data: RawToolExecutionData) -> None:
         """
@@ -693,6 +718,19 @@ class MetricsTracker:
         """
         return self._base_ratio if self._base_ratio > 0 else 0.25
 
+    def get_estimation_audit_summary(self) -> dict:
+        """Get estimation audit summary (v0.7.18).
+
+        Returns:
+            Dict with avg/max deviation, convergence info, etc.
+        """
+        return self._estimation_audit.get_summary()
+
+    @property
+    def estimation_audit(self) -> EstimationAudit:
+        """Get the estimation audit instance (v0.7.18)."""
+        return self._estimation_audit
+
     def get_base_chars(self) -> dict[str, int]:
         """
         Get the base character lengths for stable estimation.
@@ -765,3 +803,6 @@ class MetricsTracker:
         self._base_tool_chars = 0  # 重置基准字符长度
         self._base_system_chars = 0
         self._base_skill_chars = 0
+        self._base_ratio_initialized = False
+        self._base_ratio_iteration = 0
+        self._estimation_audit.reset()

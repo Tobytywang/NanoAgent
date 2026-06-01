@@ -253,6 +253,14 @@ class ConfigLoader:
             stall_patience=data.get("stall_patience", 3),
             stall_similarity_threshold=data.get("stall_similarity_threshold", 0.7),
             stall_hint_injection=data.get("stall_hint_injection", True),
+            # v0.7.18: Calibration & estimation audit
+            calibration_enabled=data.get("calibration_enabled", True),
+            calibration_window=data.get("calibration_window", 5),
+            min_calibration_samples=data.get("min_calibration_samples", 3),
+            estimation_audit_enabled=data.get("estimation_audit_enabled", True),
+            estimation_deviation_warning_threshold=data.get(
+                "estimation_deviation_warning_threshold", 0.50
+            ),
         )
 
     @classmethod
@@ -405,6 +413,12 @@ class ConfigLoader:
                 "stall_patience": config.smart_optimization.stall_patience,
                 "stall_similarity_threshold": config.smart_optimization.stall_similarity_threshold,
                 "stall_hint_injection": config.smart_optimization.stall_hint_injection,
+                # v0.7.18: Calibration & estimation audit
+                "calibration_enabled": config.smart_optimization.calibration_enabled,
+                "calibration_window": config.smart_optimization.calibration_window,
+                "min_calibration_samples": config.smart_optimization.min_calibration_samples,
+                "estimation_audit_enabled": config.smart_optimization.estimation_audit_enabled,
+                "estimation_deviation_warning_threshold": config.smart_optimization.estimation_deviation_warning_threshold,
             },
             "aggressive_output": {
                 "enabled": config.aggressive_output.enabled,

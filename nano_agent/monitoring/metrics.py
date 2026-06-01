@@ -24,6 +24,9 @@ class LLMCallMetrics:
     tool_calls: list[dict] = field(default_factory=list)
     # 新增：工具定义 schema（用于 token 分类）
     tools_schema: list[dict] = field(default_factory=list)
+    # 新增：估算审计 (v0.7.18)
+    estimated_tokens: int = 0
+    deviation_pct: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -39,6 +42,8 @@ class LLMCallMetrics:
             "output_text": self.output_text,
             "tool_calls": self.tool_calls,
             "tools_schema": self.tools_schema,
+            "estimated_tokens": self.estimated_tokens,
+            "deviation_pct": round(self.deviation_pct, 4),
         }
 
 

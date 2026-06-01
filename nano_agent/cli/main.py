@@ -1994,6 +1994,13 @@ def _show_config(config, agent) -> None:
                 str(config.smart_optimization.prejudgment_max_answer_tokens),
             )
         )
+    # v0.7.18: Calibration & Audit
+    print(format_line("校准:", str(config.smart_optimization.calibration_enabled)))
+    print(
+        format_line(
+            "估算审计:", str(config.smart_optimization.estimation_audit_enabled)
+        )
+    )
 
     # Prompt 配置 (v0.7.6)
     print("\n## Prompt 设置")
@@ -2239,9 +2246,14 @@ def _handle_stats_command(agent, config, command: str) -> None:
         _enable_run_stats()
     elif parts[0].lower() == "off":
         _disable_run_stats()
+    elif parts[0].lower() == "estimation":
+        # v0.7.18: Show estimation audit data
+        _show_estimation_audit(agent, config)
     else:
         Console.print(f"Unknown subcommand: {parts[0]}", style="error")
-        Console.print("Available: status, context, breakdown, on, off", style="info")
+        Console.print(
+            "Available: status, context, breakdown, estimation, on, off", style="info"
+        )
 
 
 def _show_stats_status(agent, config) -> None:
@@ -2594,6 +2606,42 @@ def _show_context_budget(agent, config) -> None:
     print("\n" + "=" * 50 + "\n")
 
 
+def _show_estimation_audit(agent, config) -> None:
+    """显示估算偏差审计 (v0.7.18)"""
+    if not hasattr(agent, "tracker"):
+        Console.print("Tracker not available", style="warning")
+        return
+
+    audit = agent.tracker.estimation_audit
+    summary = audit.get_summary()
+
+    print("\n" + "=" * 50)
+    print("估算偏差审计")
+    print("=" * 50)
+
+    if summary.get("total_checks", 0) == 0:
+        print("\n  无数据。请先运行查询。")
+        print("\n" + "=" * 50 + "\n")
+        return
+
+    print(f"\n  平均偏差: {summary['avg_deviation_pct']:.1%}")
+    print(f"  最大偏差: {summary['max_deviation_pct']:.1%}")
+    print(f"  高估次数: {summary['over_count']} ({summary['over_pct']:.0f}%)")
+    print(f"  低估次数: {summary['under_count']} ({summary['under_pct']:.0f}%)")
+    print(f"  告警次数 (>50%): {summary['warning_count']}")
+    print(f"  校准系数: {summary['calibration_factor']:.3f}")
+    print(f"  已收敛: {'是' if summary['is_converged'] else '否'}")
+
+    # Show recent deviation trend
+    history = audit.get_deviation_history()
+    if len(history) >= 3:
+        recent = history[-5:]
+        trend = " -> ".join(f"{d.deviation_pct:.0%}" for d in recent)
+        print(f"\n  近期趋势: {trend}")
+
+    print("\n" + "=" * 50 + "\n")
+
+
 def _show_iteration_breakdown(agent) -> None:
     """显示各轮 Token 消耗趋势"""
     if not hasattr(agent, "tracker"):
@@ -2701,6 +2749,7 @@ def _show_help() -> None:
     print("  /stats off        禁用统计自动显示")
     print("  /stats context    显示当前上下文组成")
     print("  /stats breakdown  显示各轮消耗趋势")
+    print("  /stats estimation 显示估算偏差审计")
 
     print("\n## 规划模式")
     print("  /plan <任务>      进入规划模式，制定分阶段计划")

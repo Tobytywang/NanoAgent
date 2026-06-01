@@ -23,6 +23,7 @@ graph TB
         STALL[StallDetector<br/>停滞检测]
         CACHE[ToolResultCache<br/>多轮缓存]
         OFFLOAD[ToolOffloadManager<br/>结果卸载]
+        AUDIT[EstimationAudit<br/>估算审计]
     end
 
     subgraph Core["核心组件"]
@@ -53,6 +54,7 @@ graph TB
     REACT --> STALL
     REACT --> CACHE
     REACT --> OFFLOAD
+    REACT --> AUDIT
 
     REACT --> LLM
     REACT --> MEM

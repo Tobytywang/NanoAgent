@@ -401,6 +401,15 @@ class SmartOptimizationConfig:
     stall_similarity_threshold: float = 0.7  # Signature similarity threshold
     stall_hint_injection: bool = True  # Inject redirect hint when stalled
 
+    # === Calibration Configuration (v0.7.18) ===
+    calibration_enabled: bool = True  # Enable dynamic calibration
+    calibration_window: int = 5  # Number of calls for calibration
+    min_calibration_samples: int = 3  # Minimum samples before calibration
+
+    # === Estimation Audit (v0.7.18) ===
+    estimation_audit_enabled: bool = True  # Enable estimation audit
+    estimation_deviation_warning_threshold: float = 0.50  # Warn when deviation > 50%
+
 
 @dataclass
 class PromptConfig:

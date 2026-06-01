@@ -71,7 +71,9 @@ def estimate_text_tokens(text: str, calibration_factor: float = 1.0) -> int:
     return int(tokens * calibration_factor)
 
 
-def calculate_max_chars(text: str, max_tokens: int) -> int:
+def calculate_max_chars(
+    text: str, max_tokens: int, calibration_factor: float = 1.0
+) -> int:
     """
     Given a token budget, calculate the maximum number of characters to keep.
 
@@ -81,20 +83,21 @@ def calculate_max_chars(text: str, max_tokens: int) -> int:
     Args:
         text: Text to potentially truncate
         max_tokens: Token budget limit
+        calibration_factor: Calibration factor for estimation (v0.7.18)
 
     Returns:
         Maximum number of characters that fit within the token budget
     """
     if not text or max_tokens <= 0:
         return 0
-    if estimate_text_tokens(text) <= max_tokens:
+    if estimate_text_tokens(text, calibration_factor) <= max_tokens:
         return len(text)
 
     # Binary search for the right truncation point
     left, right = 0, len(text)
     while left < right:
         mid = (left + right + 1) // 2
-        if estimate_text_tokens(text[:mid]) <= max_tokens:
+        if estimate_text_tokens(text[:mid], calibration_factor) <= max_tokens:
             left = mid
         else:
             right = mid - 1

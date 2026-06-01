@@ -450,7 +450,7 @@ class PromptBuilder:
         total = 0
         for name in self.config.modules:
             if name in self._modules:
-                total += self._modules[name].token_estimate
+                total += self._modules[name].effective_token_estimate
 
         if self.config.include_environment:
             total += 50
@@ -467,7 +467,7 @@ class PromptBuilder:
                 "description": m.description,
                 "priority": m.priority,
                 "enabled": m.enabled,
-                "tokens": m.token_estimate,
+                "tokens": m.effective_token_estimate,
                 "is_stable": m.is_stable,
                 "category": m.category,
             }

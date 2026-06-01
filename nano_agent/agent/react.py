@@ -878,7 +878,21 @@ class ReActAgent(BaseAgent):
         if usage.cache_read_tokens > 0 and self.verbose:
             print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
 
-        # Record LLM call with raw data (decoupled API)
+        # v0.7.12: Store real prompt_tokens for next iteration's decision
+        # v0.7.13: Record calibration data (actual vs estimated)
+        # v0.7.18: Compute estimated before RawLLMCallData
+        estimated_prompt_tokens = 0
+        if usage.prompt_tokens > 0:
+            self._last_prompt_tokens = usage.prompt_tokens
+
+            from .token_utils import estimate_tokens
+
+            estimated_prompt_tokens = estimate_tokens(messages)
+            self.token_budget.record_calibration_data(
+                estimated=estimated_prompt_tokens, actual=usage.prompt_tokens
+            )
+
+        # Record LLM call with raw data (decoupled API, v0.7.18: include estimation fields)
         self.tracker.record_raw_llm_call(
             RawLLMCallData(
                 llm=self.llm,
@@ -888,31 +902,28 @@ class ReActAgent(BaseAgent):
                 tool_calls=tool_calls,  # Pass raw ToolCall objects
                 usage=usage,
                 latency_ms=llm_latency,
+                estimated_tokens=estimated_prompt_tokens,
+                calibration_factor=self.token_budget.get_calibration_factor(),
             )
         )
 
         # Update token count
         self._total_tokens += usage.total_tokens
 
-        # v0.7.12: Store real prompt_tokens for next iteration's decision
-        # v0.7.13: Record calibration data (actual vs estimated)
-        if usage.prompt_tokens > 0:
-            self._last_prompt_tokens = usage.prompt_tokens
-
-            from .token_utils import estimate_tokens
-
-            estimated = estimate_tokens(messages)
-            self.token_budget.record_calibration_data(
-                estimated=estimated, actual=usage.prompt_tokens
+        # v0.7.18: Structured deviation logging (replaces temporary verbose print)
+        if usage.prompt_tokens > 0 and estimated_prompt_tokens > 0:
+            deviation_pct = abs(usage.prompt_tokens - estimated_prompt_tokens) / max(
+                estimated_prompt_tokens, 1
             )
-
-            # Log deviation for observability
-            deviation_pct = (
-                abs(usage.prompt_tokens - estimated) / max(estimated, 1) * 100
-            )
-            if self.verbose and deviation_pct > 10:
+            if deviation_pct > 0.50 and self.verbose:
                 print(
-                    f"[Token] Estimated: {estimated}, Real: {usage.prompt_tokens}, Deviation: {deviation_pct:.1f}%"
+                    f"[Estimation] WARNING: Deviation {deviation_pct:.0%} "
+                    f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
+                )
+            elif deviation_pct > 0.10 and self.verbose:
+                print(
+                    f"[Estimation] Deviation: {deviation_pct:.0%} "
+                    f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
                 )
 
         # Verbose output
@@ -1134,7 +1145,11 @@ class ReActAgent(BaseAgent):
                 file_search_count_only=self.output_style_config.file_search_count_only,
             )
             summarizer = ToolResultSummarizer(summarizer_config)
-            result_content = summarizer.summarize(result_content, tool_call.name)
+            result_content = summarizer.summarize(
+                result_content,
+                tool_call.name,
+                calibration_factor=self.token_budget.get_calibration_factor(),
+            )
 
         # v0.7.17: Tool Offloading - check before truncation
         is_offloaded = False

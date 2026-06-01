@@ -29,6 +29,9 @@ class RawLLMCallData:
     tool_calls: list[Any]
     usage: Any
     latency_ms: float
+    # v0.7.18: Estimation audit fields
+    estimated_tokens: int = 0
+    calibration_factor: float = 1.0
 
 
 @dataclass
