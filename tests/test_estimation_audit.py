@@ -301,6 +301,342 @@ class TestBaseRatioFirstRoundCorrection:
         assert tracker._base_ratio_initialized is False
         assert tracker._base_ratio_iteration == 0
 
+    def test_single_iteration_no_base_ratio_set(self):
+        """Single-iteration run should not set base_ratio; uses per-iteration ratio."""
+        from nano_agent.monitoring.tracker import MetricsTracker
+
+        tracker = MetricsTracker()
+        tracker.start_run("test input")
+        tracker.start_iteration(1)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=500,
+            completion_tokens=50,
+            latency_ms=100.0,
+            tool_calls_count=0,
+            input_messages=[
+                {"role": "system", "content": "You are helpful"},
+                {"role": "user", "content": "Hi"},
+            ],
+            output_text="Hello!",
+            tools_schema=[{"name": "tool1", "description": "A tool"}],
+        )
+        tracker.end_iteration()
+        tracker.end_run("Hello!")
+
+        # base_ratio should NOT be set (single iteration)
+        assert tracker._base_ratio == 0.0
+        assert tracker._base_ratio_initialized is False
+
+        # get_detailed_usage should still produce a valid breakdown
+        usage = tracker.get_detailed_usage()
+        assert len(usage) == 1
+        row = usage[0]
+        total_input = (
+            row["tool_tokens"]
+            + row["system_tokens"]
+            + row["skill_tokens"]
+            + row["summary_tokens"]
+            + row["message_tokens"]
+        )
+        assert total_input == 500
+
+    def test_two_iterations_base_ratio_from_second(self):
+        """Two-iteration run should set base_ratio from second iteration."""
+        from nano_agent.monitoring.tracker import MetricsTracker
+
+        tracker = MetricsTracker()
+        tracker.start_run("test input")
+
+        # Iteration 1: minimal message_chars
+        tracker.start_iteration(1)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=1000,
+            completion_tokens=100,
+            latency_ms=100.0,
+            tool_calls_count=1,
+            input_messages=[
+                {"role": "system", "content": "You are a helpful assistant"},
+                {"role": "user", "content": "Hello"},
+            ],
+            output_text="Let me check",
+            tool_calls=[{"name": "tool1", "arguments": {"x": 1}}],
+            tools_schema=[
+                {
+                    "name": "tool1",
+                    "description": "A tool with a longer description to increase char count",
+                }
+            ],
+        )
+        tracker.end_iteration()
+
+        # Iteration 2: more message_chars
+        tracker.start_iteration(2)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=1500,
+            completion_tokens=50,
+            latency_ms=100.0,
+            tool_calls_count=0,
+            input_messages=[
+                {"role": "system", "content": "You are a helpful assistant"},
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Let me check"},
+                {
+                    "role": "tool",
+                    "content": "Result of tool1: something happened here that is quite verbose",
+                },
+                {"role": "assistant", "content": "Based on the result, I can say that"},
+            ],
+            output_text="Here is my answer",
+            tools_schema=[
+                {
+                    "name": "tool1",
+                    "description": "A tool with a longer description to increase char count",
+                }
+            ],
+        )
+        tracker.end_iteration()
+        tracker.end_run("Here is my answer")
+
+        # base_ratio is computed lazily by get_detailed_usage()
+        usage = tracker.get_detailed_usage()
+
+        # base_ratio should now be set (from iteration 2)
+        assert tracker._base_ratio > 0.0
+        assert tracker._base_ratio_initialized is True
+
+        # get_detailed_usage should produce valid breakdowns
+        assert len(usage) == 2
+        for row in usage:
+            total_input = (
+                row["tool_tokens"]
+                + row["system_tokens"]
+                + row["skill_tokens"]
+                + row["summary_tokens"]
+                + row["message_tokens"]
+            )
+            assert total_input == row["input_tokens"]
+
+    def test_three_iterations_base_ratio_stable(self):
+        """Three-iteration run: base_ratio set from iteration 2, stable for iteration 3."""
+        from nano_agent.monitoring.tracker import MetricsTracker
+
+        tracker = MetricsTracker()
+        tracker.start_run("test input")
+
+        # Iteration 1
+        tracker.start_iteration(1)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=800,
+            completion_tokens=100,
+            latency_ms=100.0,
+            tool_calls_count=1,
+            input_messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant with detailed instructions",
+                },
+                {"role": "user", "content": "Hello"},
+            ],
+            output_text="Let me check",
+            tool_calls=[{"name": "tool1", "arguments": {"x": 1}}],
+            tools_schema=[{"name": "tool1", "description": "A tool with description"}],
+        )
+        tracker.end_iteration()
+
+        # Iteration 2
+        tracker.start_iteration(2)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=1200,
+            completion_tokens=100,
+            latency_ms=100.0,
+            tool_calls_count=1,
+            input_messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant with detailed instructions",
+                },
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Let me check that for you"},
+                {"role": "tool", "content": "Result: something useful"},
+            ],
+            output_text="Almost done",
+            tool_calls=[{"name": "tool2", "arguments": {"y": 2}}],
+            tools_schema=[{"name": "tool1", "description": "A tool with description"}],
+        )
+        tracker.end_iteration()
+
+        # Iteration 3
+        tracker.start_iteration(3)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=1600,
+            completion_tokens=50,
+            latency_ms=100.0,
+            tool_calls_count=0,
+            input_messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant with detailed instructions",
+                },
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Let me check that for you"},
+                {"role": "tool", "content": "Result: something useful"},
+                {"role": "assistant", "content": "Almost done, let me finalize"},
+                {"role": "tool", "content": "Result: final data here"},
+            ],
+            output_text="Final answer here",
+            tools_schema=[{"name": "tool1", "description": "A tool with description"}],
+        )
+        tracker.end_iteration()
+        tracker.end_run("Final answer here")
+
+        usage = tracker.get_detailed_usage()
+        assert tracker._base_ratio_initialized is True
+        assert len(usage) == 3
+        for row in usage:
+            total_input = (
+                row["tool_tokens"]
+                + row["system_tokens"]
+                + row["skill_tokens"]
+                + row["summary_tokens"]
+                + row["message_tokens"]
+            )
+            assert total_input == row["input_tokens"]
+
+        # Iterations 2 and 3 should have same tool_tokens (same base_tool_chars * base_ratio)
+        assert usage[1]["tool_tokens"] == usage[2]["tool_tokens"]
+
+    def test_base_ratio_resets_between_runs(self):
+        """base_ratio should be reset when start_run() is called."""
+        from nano_agent.monitoring.tracker import MetricsTracker
+
+        tracker = MetricsTracker()
+
+        # Run 1 with 2 iterations to set base_ratio
+        tracker.start_run("run 1")
+        tracker.start_iteration(1)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=500,
+            completion_tokens=50,
+            latency_ms=100.0,
+            tool_calls_count=0,
+            input_messages=[
+                {"role": "system", "content": "System prompt"},
+                {"role": "user", "content": "Hi"},
+            ],
+            output_text="Hello!",
+        )
+        tracker.end_iteration()
+        tracker.start_iteration(2)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=700,
+            completion_tokens=50,
+            latency_ms=100.0,
+            tool_calls_count=0,
+            input_messages=[
+                {"role": "system", "content": "System prompt"},
+                {"role": "user", "content": "Hi"},
+                {"role": "assistant", "content": "Hello!"},
+            ],
+            output_text="How can I help?",
+        )
+        tracker.end_iteration()
+        tracker.end_run("How can I help?")
+
+        # Trigger base_ratio computation
+        tracker.get_detailed_usage()
+
+        # After Run 1: base_ratio should be set
+        assert tracker._base_ratio > 0.0
+        assert tracker._base_ratio_initialized is True
+
+        # Run 2: start_run should reset base_ratio fields
+        tracker.start_run("run 2")
+        assert tracker._base_ratio == 0.0
+        assert tracker._base_ratio_initialized is False
+        assert tracker._base_ratio_iteration == 0
+        assert tracker._base_tool_chars == 0
+
+    def test_first_iteration_breakdown_accurate(self):
+        """First iteration should use per-iteration ratio, producing accurate breakdown."""
+        from nano_agent.monitoring.tracker import MetricsTracker
+
+        tracker = MetricsTracker()
+        tracker.start_run("test")
+        tracker.start_iteration(1)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=600,
+            completion_tokens=50,
+            latency_ms=100.0,
+            tool_calls_count=0,
+            input_messages=[
+                {"role": "system", "content": "System prompt content here"},
+                {"role": "user", "content": "Hello world"},
+            ],
+            output_text="Hi there!",
+            tools_schema=[{"name": "tool1", "description": "A tool description"}],
+        )
+        tracker.end_iteration()
+        tracker.end_run("Hi there!")
+
+        usage = tracker.get_detailed_usage()
+        assert len(usage) == 1
+        row = usage[0]
+        total_input = (
+            row["tool_tokens"]
+            + row["system_tokens"]
+            + row["skill_tokens"]
+            + row["summary_tokens"]
+            + row["message_tokens"]
+        )
+        assert total_input == 600
+        assert row["message_tokens"] >= 0
+        assert row["tool_tokens"] > 0
+        assert row["system_tokens"] > 0
+
+    def test_message_tokens_never_negative(self):
+        """message_tokens should never be negative due to max(0, ...) guard."""
+        from nano_agent.monitoring.tracker import MetricsTracker
+
+        tracker = MetricsTracker()
+        tracker.start_run("test")
+
+        # Iteration 1: very small prompt_tokens relative to fixed content
+        tracker.start_iteration(1)
+        tracker.record_llm_call(
+            model="test",
+            prompt_tokens=100,
+            completion_tokens=10,
+            latency_ms=100.0,
+            tool_calls_count=0,
+            input_messages=[
+                {
+                    "role": "system",
+                    "content": "A" * 500,
+                },  # Long system prompt
+                {"role": "user", "content": "Hi"},
+            ],
+            output_text="Ok",
+            tools_schema=[
+                {"name": "tool1", "description": "B" * 200}
+            ],  # Long tool schema
+        )
+        tracker.end_iteration()
+        tracker.end_run("Ok")
+
+        usage = tracker.get_detailed_usage()
+        assert len(usage) == 1
+        row = usage[0]
+        assert row["message_tokens"] >= 0
+
 
 class TestSmartOptimizationConfigCalibration:
     """Test SmartOptimizationConfig calibration fields."""

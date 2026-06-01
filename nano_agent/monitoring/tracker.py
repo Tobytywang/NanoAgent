@@ -83,6 +83,14 @@ class MetricsTracker:
         )
         self._run_start_time = time.perf_counter()
 
+        # Reset base_ratio for new run (each run starts fresh)
+        self._base_ratio = 0.0
+        self._base_tool_chars = 0
+        self._base_system_chars = 0
+        self._base_skill_chars = 0
+        self._base_ratio_initialized = False
+        self._base_ratio_iteration = 0
+
     def end_run(self, response: str) -> None:
         """
         End tracking the current run.
@@ -494,11 +502,15 @@ class MetricsTracker:
         row_id = 0
         for run in self._run_history:
             run_num = run.run_number
+            iter_count_in_run = 0
             for iteration in run.iterations:
                 iter_num = iteration.iteration_number
                 if iteration.llm_call:
                     row_id += 1
+                    iter_count_in_run += 1
                     llm = iteration.llm_call
+
+                    is_first_iteration = iter_count_in_run == 1
 
                     # 分析输入消息，分类 token 消耗
                     token_breakdown = self._categorize_tokens_v2(
@@ -508,6 +520,7 @@ class MetricsTracker:
                         llm.tools_schema,
                         llm.tool_calls,
                         llm.output_text,
+                        is_first_iteration=is_first_iteration,
                     )
 
                     # 获取工具名称
@@ -551,14 +564,18 @@ class MetricsTracker:
         tools_schema: list[dict],
         tool_calls: list[dict],
         output_text: str,
+        is_first_iteration: bool = False,
     ) -> dict[str, int]:
         """
         Categorize token consumption by type for a single iteration.
 
-        分类逻辑（改进版：固定部分使用基准比例，确保数值稳定）：
-        1. 第一次迭代时计算基准比例 = prompt_tokens / 总字符长度
-        2. 后续迭代使用基准比例计算固定部分（工具、系统、技能）
-        3. 消息部分 = prompt_tokens - 固定部分，确保总和准确
+        分类逻辑（v2 改进：跳过首轮设置 base_ratio）：
+        1. 首次迭代：保存固定部分字符长度，但不设置 base_ratio
+           （首轮 message_chars 极少，导致比例偏高）
+           首轮使用 per-iteration ratio 进行分类
+        2. 第二次迭代：设置 base_ratio（更具代表性）
+        3. 后续迭代：使用已保存的 base_ratio 计算固定部分
+        4. 消息部分 = prompt_tokens - 固定部分，确保总和准确
 
         Args:
             input_messages: Input messages sent to LLM
@@ -567,6 +584,8 @@ class MetricsTracker:
             tools_schema: Tool definitions schema sent to LLM
             tool_calls: Tool calls from LLM response
             output_text: Output text from LLM
+            is_first_iteration: Whether this is the first iteration of a run.
+                If True, saves char counts but does NOT set base_ratio.
 
         Returns:
             Dict with tool_tokens, system_tokens, skill_tokens, summary_tokens, message_tokens,
@@ -615,30 +634,37 @@ class MetricsTracker:
         )
 
         if total_chars > 0:
-            # 步骤3：第一次迭代时计算并保存基准比例和字符长度
-            if self._base_ratio == 0:
-                self._base_ratio = prompt_tokens / total_chars
-                self._base_tool_chars = tool_chars
-                self._base_system_chars = system_chars
-                self._base_skill_chars = skill_chars
+            current_ratio = prompt_tokens / total_chars
 
-            # 步骤4：使用保存的基准值计算固定部分（确保数值稳定）
-            tool_tokens = int(self._base_tool_chars * self._base_ratio)
-            system_tokens = int(self._base_system_chars * self._base_ratio)
-            skill_tokens = int(self._base_skill_chars * self._base_ratio)
+            if not self._base_ratio_initialized:
+                if is_first_iteration:
+                    # 首轮: 保存固定部分字符长度，但不设置 base_ratio
+                    # 首轮 message_chars 极少，ratio 偏高，不具代表性
+                    self._base_tool_chars = tool_chars
+                    self._base_system_chars = system_chars
+                    self._base_skill_chars = skill_chars
+                    self._base_ratio_iteration = 1
+                    ratio = current_ratio
+                else:
+                    # 第二轮: 设置 base_ratio（message_chars 已增长，更准确）
+                    self._base_ratio = current_ratio
+                    self._base_ratio_initialized = True
+                    self._base_ratio_iteration = 2
+                    ratio = self._base_ratio
+            else:
+                ratio = self._base_ratio
 
-            # 摘要部分：按当前字符长度计算（摘要会变化，不使用基准值）
-            summary_tokens = (
-                int(summary_chars * self._base_ratio) if summary_chars > 0 else 0
-            )
-
-            # 步骤5：消息部分用减法，确保总和等于 prompt_tokens
-            message_tokens = (
+            tool_tokens = int(self._base_tool_chars * ratio)
+            system_tokens = int(self._base_system_chars * ratio)
+            skill_tokens = int(self._base_skill_chars * ratio)
+            summary_tokens = int(summary_chars * ratio) if summary_chars > 0 else 0
+            message_tokens = max(
+                0,
                 prompt_tokens
                 - tool_tokens
                 - system_tokens
                 - skill_tokens
-                - summary_tokens
+                - summary_tokens,
             )
         else:
             tool_tokens = 0
