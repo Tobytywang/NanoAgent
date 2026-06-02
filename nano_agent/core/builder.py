@@ -244,6 +244,11 @@ class AgentBuilder:
             offload_config=(
                 self.config.offload if hasattr(self.config, "offload") else None
             ),
+            semantic_compressor_config=(
+                self.config.semantic_compressor
+                if hasattr(self.config, "semantic_compressor")
+                else None
+            ),
         )
 
         # Create orchestrator

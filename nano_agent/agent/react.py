@@ -28,6 +28,7 @@ from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from .tool_merger import ToolCallMerger, ToolMergeConfig
 from .cache import ToolResultCache, CacheConfig
 from .compressor import MessageCompressor, CompressorConfig
+from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
 from .token_budget import TokenBudget, TokenBudgetConfig
 from .router import QueryRouter, QueryComplexity
 from .confidence import ConfidenceParser
@@ -148,6 +149,7 @@ class ReActAgent(BaseAgent):
         aggressive_output_config: AggressiveOutputConfig | None = None,
         standardized_output_config: StandardizedOutputConfig | None = None,
         offload_config: ToolOffloadConfig | None = None,
+        semantic_compressor_config: SemanticCompressorConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -216,6 +218,12 @@ class ReActAgent(BaseAgent):
         # v0.7.17: Tool Offloading
         self.offload_config = offload_config or ToolOffloadConfig()
         self._offload_manager = ToolOffloadManager(self.offload_config)
+
+        # v0.7.19: Semantic compression
+        self.semantic_compressor = SemanticCompressor(
+            semantic_compressor_config or SemanticCompressorConfig(),
+            llm_config=llm_config,
+        )
 
         # v0.7.17: Cache warmup on session restore
         if cache_config and cache_config.warmup_on_restore and cache_config.persist:
@@ -852,6 +860,16 @@ class ReActAgent(BaseAgent):
             if self.verbose and len(messages) < original_count:
                 print(
                     f"[Compressor] Reduced {original_count} messages to {len(messages)}"
+                )
+
+        # v0.7.19: Semantic compression (second pass, after rule-based compression)
+        if self.semantic_compressor.should_compress(messages):
+            original_count = len(messages)
+            messages = self.semantic_compressor.compress(messages)
+            if self.verbose and len(messages) < original_count:
+                print(
+                    f"[SemanticCompressor] Merged similar messages: "
+                    f"{original_count} -> {len(messages)}"
                 )
 
         tools_schema = self.tool_registry.get_all_schemas()

@@ -29,6 +29,7 @@ from .confidence import ConfidenceParser, ConfidenceResult
 from .prejudgment import QueryPrejudgment, PrejudgmentResult
 from .output_simplifier import OutputSimplifier
 from .tool_offload import ToolOffloadManager, OffloadedResult
+from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
 
 __all__ = [
     # Base
@@ -79,4 +80,7 @@ __all__ = [
     # Tool offloading (v0.7.17)
     "ToolOffloadManager",
     "OffloadedResult",
+    # Semantic compression (v0.7.19)
+    "SemanticCompressor",
+    "SemanticCompressorConfig",
 ]

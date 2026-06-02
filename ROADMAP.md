@@ -2109,7 +2109,7 @@ nano_agent/monitoring/token_analyzer.py # 估算偏差统计
 
 ---
 
-### v0.7.19 - 语义压缩
+### v0.7.19 - 语义压缩 ✅
 
 **目标**: 合并相似历史消息，长对话场景节省 ~20% token。
 
@@ -2122,23 +2122,32 @@ nano_agent/monitoring/token_analyzer.py # 估算偏差统计
 
 **任务列表**:
 
-- [ ] 实现 `SemanticCompressor` 类 - 合并相似历史消息
-- [ ] 集成 embedding 模型 - 计算消息相似度
-- [ ] 实现相似消息合并策略 - 保留关键信息
-- [ ] 配置支持 - `semantic_compression.enabled`、`semantic_compression.similarity_threshold`
+- [x] 实现 `SemanticCompressor` 类 - 合并相似历史消息
+- [x] 集成 embedding 模型 - 计算消息相似度（Ollama / sentence-transformers / OpenAI）
+- [x] 实现相似消息合并策略 - 保留最早消息 + merge_tag 标注
+- [x] 配置支持 - `semantic_compressor.enabled`、`semantic_compressor.similarity_threshold`
 
 **新增文件**:
 ```
+nano_agent/llm/
+├── embedding.py                   # BaseEmbeddingClient + Ollama/sentence-transformers/OpenAI 实现
 nano_agent/agent/
-├── semantic_compressor.py       # SemanticCompressor 类
+├── semantic_compressor.py         # SemanticCompressor 类
 tests/
-├── test_semantic_compressor.py  # 语义压缩测试
+├── test_embedding.py              # 8 个测试
+├── test_semantic_compressor.py    # 16 个测试
 ```
 
 **修改文件**:
 ```
-nano_agent/agent/compressor.py       # 集成语义压缩
-nano_agent/config/schema.py          # SemanticCompressionConfig
+nano_agent/config/schema.py          # SemanticCompressorConfig
+nano_agent/config/loader.py          # 解析/保存逻辑
+nano_agent/core/builder.py           # 传递 semantic_compressor_config
+nano_agent/agent/react.py            # _think() 第二遍压缩
+nano_agent/llm/__init__.py           # embedding exports
+nano_agent/agent/__init__.py         # SemanticCompressor exports
+nano_agent/cli/main.py              # /config 显示
+pyproject.toml                       # v0.7.19 + optional embedding dep
 ```
 
 **预期效果**:

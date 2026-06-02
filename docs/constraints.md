@@ -410,7 +410,37 @@ offload:
   auto_cleanup: true
 ```
 
-### 18. 会话清理阈值
+### 18. 语义压缩
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `semantic_compressor.*` |
+| 源码位置 | `nano_agent/config/schema.py` → `SemanticCompressorConfig`；`nano_agent/agent/semantic_compressor.py` → `SemanticCompressor` |
+
+通过 embedding 向量计算余弦相似度，合并长对话中语义重复的历史消息。仅同 role 消息可合并，system 消息不参与。作为第二遍压缩，在 `MessageCompressor` 之后运行。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `semantic_compressor.enabled` | `False` | 默认关闭，需 embedding 服务 |
+| `semantic_compressor.similarity_threshold` | `0.85` | 余弦相似度阈值 |
+| `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 |
+| `semantic_compressor.provider` | `"ollama"` | Embedding 提供者 |
+| `semantic_compressor.embedding_model` | `"nomic-embed-text"` | Embedding 模型 |
+| `semantic_compressor.cache_embeddings` | `True` | 缓存 embedding 向量 |
+| `semantic_compressor.merge_tag` | `"[merged {n} similar]"` | 合并标签模板 |
+
+Embedding 服务不可用时优雅降级，静默跳过不报错。
+
+```yaml
+semantic_compressor:
+  enabled: true
+  similarity_threshold: 0.85
+  min_messages_to_compress: 8
+  provider: ollama
+  embedding_model: nomic-embed-text
+```
+
+### 19. 会话清理阈值
 
 | 项目 | 值 |
 |------|------|
@@ -527,6 +557,9 @@ offload:
 | `smart_optimization.stall_patience` | `3` | 连续相似迭代阈值 | 硬限制 |
 | `smart_optimization.stall_similarity_threshold` | `0.7` | 签名相似度阈值 | 硬限制 |
 | `smart_optimization.stall_hint_injection` | `True` | 停滞时注入转向提示 | 硬限制 |
+| `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
+| `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
+| `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |
 | `tool_merge.enabled` | `True` | 工具合并开关 | 软限制 |
 | `tool_merge.max_batch_size` | `3` | 合批最大数量 | 软限制 |
 

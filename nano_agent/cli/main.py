@@ -2068,6 +2068,36 @@ def _show_config(config, agent) -> None:
                 format_line("Excluded Tools:", ", ".join(config.offload.excluded_tools))
             )
 
+    # Semantic compressor (v0.7.19)
+    if hasattr(config, "semantic_compressor"):
+        print("\n## 语义压缩")
+        print(format_line("Enabled:", str(config.semantic_compressor.enabled)))
+        if config.semantic_compressor.enabled:
+            print(
+                format_line(
+                    "Similarity Threshold:",
+                    f"{config.semantic_compressor.similarity_threshold}",
+                )
+            )
+            print(
+                format_line(
+                    "Min Messages:",
+                    str(config.semantic_compressor.min_messages_to_compress),
+                )
+            )
+            print(format_line("Provider:", config.semantic_compressor.provider))
+            print(
+                format_line(
+                    "Embedding Model:", config.semantic_compressor.embedding_model
+                )
+            )
+            print(
+                format_line(
+                    "Cache Embeddings:",
+                    str(config.semantic_compressor.cache_embeddings),
+                )
+            )
+
     print("\n" + "=" * 50 + "\n")
 
 

@@ -1,6 +1,6 @@
 [project]
 name = "nano-agent"
-version = "0.7.18"
+version = "0.7.19"
 description = "A lightweight AI Agent framework implementing ReAct pattern"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,6 +32,9 @@ dev = [
     "black>=23.0.0",
     "pytest-cov>=4.0.0",
     "pre-commit>=3.0.0",
+]
+embedding = [
+    "sentence-transformers>=2.0.0",
 ]
 
 [project.scripts]

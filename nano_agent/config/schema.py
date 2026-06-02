@@ -319,6 +319,21 @@ class CompressorConfig:
 
 
 @dataclass
+class SemanticCompressorConfig:
+    """Semantic compression configuration (v0.7.19)."""
+
+    enabled: bool = False
+    similarity_threshold: float = 0.85
+    min_messages_to_compress: int = 8
+    provider: str = "ollama"
+    embedding_model: str = "nomic-embed-text"
+    base_url: str = "http://localhost:11434"
+    api_key: str | None = None
+    cache_embeddings: bool = True
+    merge_tag: str = "[merged {n} similar]"
+
+
+@dataclass
 class ProjectFileConfig:
     """Project file handling configuration."""
 
@@ -486,3 +501,6 @@ class Config:
         default_factory=StandardizedOutputConfig
     )
     offload: ToolOffloadConfig = field(default_factory=ToolOffloadConfig)
+    semantic_compressor: SemanticCompressorConfig = field(
+        default_factory=SemanticCompressorConfig
+    )

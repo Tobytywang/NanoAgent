@@ -18,6 +18,7 @@ from .schema import (
     ToolMergeConfig,
     CacheConfig,
     CompressorConfig,
+    SemanticCompressorConfig,
     ProjectFileConfig,
     SmartOptimizationConfig,
     AggressiveOutputConfig,
@@ -67,6 +68,9 @@ class ConfigLoader:
             tool_merge=cls._parse_tool_merge_config(data.get("tool_merge", {})),
             cache=cls._parse_cache_config(data.get("cache", {})),
             compressor=cls._parse_compressor_config(data.get("compressor", {})),
+            semantic_compressor=cls._parse_semantic_compressor_config(
+                data.get("semantic_compressor", {})
+            ),
             project_file=cls._parse_project_file_config(data.get("project_file", {})),
             smart_optimization=cls._parse_smart_optimization_config(
                 data.get("smart_optimization", {})
@@ -195,6 +199,21 @@ class ConfigLoader:
             threshold_tokens=data.get("threshold_tokens", 2000),
             keep_recent=data.get("keep_recent", 3),
             summary_max_tokens=data.get("summary_max_tokens", 500),
+        )
+
+    @classmethod
+    def _parse_semantic_compressor_config(cls, data: dict) -> SemanticCompressorConfig:
+        """解析语义压缩配置"""
+        return SemanticCompressorConfig(
+            enabled=data.get("enabled", False),
+            similarity_threshold=data.get("similarity_threshold", 0.85),
+            min_messages_to_compress=data.get("min_messages_to_compress", 8),
+            provider=data.get("provider", "ollama"),
+            embedding_model=data.get("embedding_model", "nomic-embed-text"),
+            base_url=data.get("base_url", "http://localhost:11434"),
+            api_key=data.get("api_key"),
+            cache_embeddings=data.get("cache_embeddings", True),
+            merge_tag=data.get("merge_tag", "[merged {n} similar]"),
         )
 
     @classmethod
@@ -377,6 +396,16 @@ class ConfigLoader:
                 "threshold_tokens": config.compressor.threshold_tokens,
                 "keep_recent": config.compressor.keep_recent,
                 "summary_max_tokens": config.compressor.summary_max_tokens,
+            },
+            "semantic_compressor": {
+                "enabled": config.semantic_compressor.enabled,
+                "similarity_threshold": config.semantic_compressor.similarity_threshold,
+                "min_messages_to_compress": config.semantic_compressor.min_messages_to_compress,
+                "provider": config.semantic_compressor.provider,
+                "embedding_model": config.semantic_compressor.embedding_model,
+                "base_url": config.semantic_compressor.base_url,
+                "cache_embeddings": config.semantic_compressor.cache_embeddings,
+                "merge_tag": config.semantic_compressor.merge_tag,
             },
             "project_file": {"mode": config.project_file.mode},
             "smart_optimization": {

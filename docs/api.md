@@ -135,6 +135,58 @@ cm.check_and_compress(last_prompt_tokens=3500)
 - `last_prompt_tokens`: 上次 LLM 调用返回的真实 `usage.prompt_tokens`。提供时直接用于压力计算，避免 `estimate_tokens()` 偏差
 - `calibration_factor`: 估算校准系数（v0.7.13）。当 `last_prompt_tokens` 未提供时，`estimate_tokens()` 的结果会乘以此系数，默认 1.0
 
+### SemanticCompressor
+
+v0.7.19 语义压缩。通过 embedding 向量计算余弦相似度，合并长对话中语义重复的历史消息。
+
+```python
+from nano_agent.agent import SemanticCompressor, SemanticCompressorConfig
+
+config = SemanticCompressorConfig(
+    enabled=False,              # 默认关闭，需 embedding 服务
+    similarity_threshold=0.85,  # 相似度阈值
+    min_messages_to_compress=8, # 最少消息数触发
+    provider="ollama",          # ollama / sentence-transformers / openai
+    embedding_model="nomic-embed-text",
+    cache_embeddings=True,      # 缓存 embedding 向量
+    merge_tag="[merged {n} similar]",
+)
+
+compressor = SemanticCompressor(config, llm_config=llm_config)
+
+# 检查是否需要压缩
+if compressor.should_compress(messages):
+    result = compressor.compress(messages)
+    # 相似消息被合并，保留最早 + merge_tag
+
+# 统计信息
+stats = compressor.get_stats()
+# {"compression_count": 1, "messages_merged": 3, "cache_hits": 5, "errors": 0}
+```
+
+**压缩流程**:
+1. 分离 system 消息（不参与合并）
+2. 计算非 system 消息的 embedding（缓存优先）
+3. 同 role 内 pairwise 计算余弦相似度
+4. 相似度 > threshold 的消息归组
+5. 每组保留最早消息，追加 merge_tag，丢弃其余
+
+**Embedding 提供者**:
+- `ollama`: 本地 Ollama 服务，使用 `/api/embed` 端点
+- `sentence-transformers`: 纯 Python 库，无需外部服务（可选依赖）
+- `openai`: OpenAI Embedding API
+
+**配置** (SemanticCompressorConfig):
+- `enabled: bool = False` — 默认关闭
+- `similarity_threshold: float = 0.85` — 相似度阈值
+- `min_messages_to_compress: int = 8` — 最少消息数触发
+- `provider: str = "ollama"` — Embedding 提供者
+- `embedding_model: str = "nomic-embed-text"` — Embedding 模型
+- `base_url: str = "http://localhost:11434"` — Ollama/OpenAI 兼容 API 地址
+- `api_key: str | None = None` — API 密钥（OpenAI）
+- `cache_embeddings: bool = True` — 缓存 embedding 向量
+- `merge_tag: str = "[merged {n} similar]"` — 合并标签模板
+
 ### MessageCompressor
 
 消息压缩器，将旧消息摘要为一条系统消息。
@@ -926,6 +978,15 @@ offload:
   auto_cleanup: true
   summary_max_tokens: 200
   excluded_tools: [memorize, recall]
+
+semantic_compressor:
+  enabled: false               # 默认关闭，需 embedding 服务
+  similarity_threshold: 0.85   # 相似度阈值
+  min_messages_to_compress: 8  # 最少消息数触发
+  provider: ollama             # ollama / sentence-transformers / openai
+  embedding_model: nomic-embed-text
+  cache_embeddings: true
+  merge_tag: "[merged {n} similar]"
 ```
 
 ### ConfigLoader
@@ -1155,6 +1216,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.7.19 | 语义压缩（`SemanticCompressor`、`SemanticCompressorConfig`、`BaseEmbeddingClient`、Ollama/sentence-transformers/OpenAI embedding） |
 | v0.7.18 | 估算审计与准确性增强（`EstimationAudit`、`effective_token_estimate`、`/stats estimation`、偏差告警） |
 | v0.7.16 | 复杂度预算 Profile 与 Stall Detection（`RoutingResult.suggested_budget_ratio`、`TokenBudget.set_budget_ratio`、`StallDetector`、`StallConfig`、`AgentEvent.STALL_DETECTED`） |
 | v0.7.15 | 激进输出精简与工具输出标准化（`AggressiveOutputConfig`、`OutputSimplifier`、`StandardToolOutput`、`OutputFormat`） |

@@ -14,6 +14,14 @@ from .messages import (
     SystemMessage,
     UserMessage,
 )
+from .embedding import (
+    BaseEmbeddingClient,
+    OllamaEmbeddingClient,
+    SentenceTransformersEmbeddingClient,
+    OpenAIEmbeddingClient,
+    EmbeddingConfig,
+    create_embedding_client,
+)
 
 # Provider type alias
 ProviderType = Literal[
@@ -166,4 +174,11 @@ __all__ = [
     "create_llm_from_config",
     "ProviderType",
     "PROVIDER_DEFAULTS",
+    # Embedding clients (v0.7.19)
+    "BaseEmbeddingClient",
+    "OllamaEmbeddingClient",
+    "SentenceTransformersEmbeddingClient",
+    "OpenAIEmbeddingClient",
+    "EmbeddingConfig",
+    "create_embedding_client",
 ]
