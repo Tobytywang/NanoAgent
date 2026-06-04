@@ -27,6 +27,7 @@ from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
 from ..monitoring.tracker import MetricsTracker
 from .console import Console
+from .constants import Commands, CommandPrefix
 from .scanner import ProjectScanner
 
 
@@ -678,7 +679,7 @@ def run_interactive(
                     agent_display = restored["agent_name"]
                 continue
 
-            if user_input.lower() == "/history":
+            if user_input.lower() == Commands.HISTORY:
                 if git_manager and git_manager.is_enabled():
                     history = git_manager.get_history(limit=10)
                     if history:
@@ -698,13 +699,13 @@ def run_interactive(
                 continue
 
             # Plan commands
-            if user_input.lower() == "/plans":
+            if user_input.lower() == Commands.PLANS:
                 from .plan_mode import list_plans
 
                 print(list_plans())
                 continue
 
-            if user_input.lower().startswith("/plan "):
+            if user_input.lower().startswith(CommandPrefix.PLAN):
                 from .plan_mode import run_plan_mode_interactive
 
                 task = user_input[6:].strip()
@@ -719,11 +720,11 @@ def run_interactive(
                 _handle_stats_command(agent, config, user_input[6:].strip())
                 continue
 
-            if user_input.lower() == "/usage":
+            if user_input.lower() == Commands.USAGE:
                 _show_context_composition(agent, config)
                 continue
 
-            if user_input.lower() == "/context":
+            if user_input.lower() == Commands.CONTEXT:
                 _show_context_budget(agent, config)
                 continue
 

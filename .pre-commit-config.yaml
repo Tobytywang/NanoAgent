@@ -21,6 +21,16 @@ repos:
         entry: scripts/check_config_chain.sh
         language: script
 
+      - id: check-show-commands
+        name: Show commands constant check
+        entry: scripts/check_show_commands.sh
+        language: script
+
+      - id: check-interface-implementation
+        name: Interface implementation check
+        entry: scripts/check_interface_implementation.sh
+        language: script
+
       - id: black
         name: Black formatter
         entry: black

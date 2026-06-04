@@ -97,9 +97,25 @@ output_style:
 
 1. **Tests**: `pytest tests/ -v` - all tests must pass
 2. **Coverage**: Check coverage when fixing bugs or adding features
-3. **Documentation**: Update help text, `docs/api.md`, `docs/tutorial.md`
+3. **Documentation**: Update help text, `docs/api.md`, `docs/tutorial.md`; if `schema.py` changed, also update `docs/constraints.md`, `docs/architecture.md`
 4. **Roadmap**: Update ROADMAP.md if adding/changing features
-5. **Version**: Update version in `pyproject.toml` if releasing new version
+5. **Version**: Update version in both `pyproject.toml` AND `nano_agent/__init__.py` — must stay in sync
+
+### 版本发布检查清单
+
+发版时确保：
+1. 版本号在 `pyproject.toml` 和 `nano_agent/__init__.py` 中一致
+2. ROADMAP.md 中该版本标题添加 ✅ 标记（如 `### v0.7.19 - 语义压缩 ✅`）
+
+Pre-commit 自动检查：`check_version_consistency.sh`
+
+### 交互式命令开发规范
+
+新增交互式命令时：
+1. 在 `constants.py` 的 `Commands` 或 `CommandPrefix` 中定义常量
+2. 在 `main.py` 中使用常量而非硬编码字符串
+
+Pre-commit 自动检查：`check_show_commands.sh`
 
 ### Testing
 
@@ -116,16 +132,20 @@ output_style:
 实现新功能时，确保以下环节全部连通：
 
 1. **配置定义** → `config/schema.py` 添加配置项
-2. **配置显示** → `_show_config()` 中显示
-3. **配置保存** → `_init_config_file()` 中保存
-4. **CLI 集成** → `create_agent()` 中使用新配置
-5. **测试验证** → 单元测试 + 端到端验证
+2. **配置解析/保存** → `config/loader.py` 的 `_parse_*_config()` 和 `save()` 中处理新字段
+3. **配置显示** → `_show_config()` (cli/main.py) 中添加 print 语句
+4. **配置初始化** → `_init_config_file()` 中保存默认值
+5. **CLI 集成** → `create_agent()` (cli/main.py) 中使用新配置
+6. **测试验证** → 单元测试 + 端到端验证
 
 **常见遗漏**:
+- 配置添加了但忘记在 `loader.py` 的 parse/save 中处理
 - 配置添加了但忘记在 `_show_config()` 显示
 - 核心模块实现了但忘记在 `create_agent()` 调用
 - 只有单元测试，缺少端到端验证
 - **给基类/接口添加方法时，遗漏了某个子类** - 参见 [BUGLIST.md BUG-001](BUGLIST.md#bug-001-persistentmemory-缺失-stable_system_prompt-方法)
+
+**Pre-commit 自动检查**: `check_config_chain.sh` 会自动检测 schema.py 新增字段是否在 loader.py 中处理。`_show_config()` 和 `create_agent()` 需人工确认。
 
 ### 接口扩展检查清单
 
@@ -135,6 +155,8 @@ output_style:
 2. **逐个检查实现** - 确保每个子类都实现了新方法
 3. **添加接口一致性测试** - 参考 `tests/test_memory_interface.py`
 4. **测试所有组合场景** - 如 `HybridMemory` 可使用不同的 working memory 类型
+
+Pre-commit 自动检查：`check_interface_implementation.sh` 会检测子类是否实现了新增的 `@abstractmethod`。
 
 ### Documentation
 

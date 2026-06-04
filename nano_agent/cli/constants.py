@@ -21,6 +21,7 @@ class Commands:
     CLEAR = "/clear"
     UNDO = "/undo"
     SESSIONS = "/sessions"
+    HISTORY = "/history"
 
     # 工具和技能
     TOOLS = "/tools"
@@ -30,12 +31,17 @@ class Commands:
     # 统计和报告
     STATS = "/stats"
     REPORT = "/report"
+    USAGE = "/usage"
+    CONTEXT = "/context"
 
     # 配置
     CONFIG = "/config"
 
     # 记忆
     MEMORY = "/memory"
+
+    # 计划
+    PLANS = "/plans"
 
     # 项目初始化
     INIT = "/init"
@@ -52,3 +58,5 @@ class CommandPrefix:
     MEMORY = "/memory"
     SKILL = "/skill "
     SETNAME = "/setname"
+    PLAN = "/plan "
+    HISTORY = "/history"
