@@ -42,63 +42,6 @@ def _safe_str(text: str) -> str:
         return text
 
 
-# Simple question patterns that don't need tools
-SIMPLE_QUESTION_PATTERNS = [
-    # Greetings
-    "你好",
-    "hello",
-    "hi",
-    "嗨",
-    "早上好",
-    "下午好",
-    "晚上好",
-    # Thanks
-    "谢谢",
-    "thanks",
-    "thank you",
-    "感谢",
-    # Simple questions (can answer directly)
-    "你是谁",
-    "who are you",
-    "你的名字",
-    "what is your name",
-    "你能做什么",
-    "what can you do",
-    "你有什么功能",
-    # Confirmations
-    "好的",
-    "ok",
-    "okay",
-    "明白",
-    "了解",
-    "清楚了",
-]
-
-
-def _is_simple_question(user_input: str) -> bool:
-    """
-    Check if the question is simple enough to answer directly without tools.
-
-    Args:
-        user_input: User's input text
-
-    Returns:
-        True if the question is simple and can be answered directly
-    """
-    input_lower = user_input.lower().strip()
-
-    # Check against simple patterns
-    for pattern in SIMPLE_QUESTION_PATTERNS:
-        if pattern in input_lower:
-            return True
-
-    # Very short questions (less than 6 chars) are often simple
-    if len(input_lower) < 6:
-        return True
-
-    return False
-
-
 class ReActAgent(BaseAgent):
     """
     ReAct (Reasoning + Acting) Agent implementation.

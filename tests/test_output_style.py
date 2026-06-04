@@ -11,7 +11,7 @@ from nano_agent.agent.prompts import (
 )
 from nano_agent.agent.token_utils import estimate_text_tokens
 from nano_agent.agent.result_summarizer import ToolResultSummarizer, SummarizerConfig
-from nano_agent.agent.react import _is_simple_question
+from nano_agent.agent.router import QueryRouter
 
 
 class TestOutputStyleConfig:
@@ -173,30 +173,30 @@ class TestSimpleQuestionDetection:
 
     def test_greeting_is_simple(self):
         """Greetings should be detected as simple."""
-        assert _is_simple_question("你好")
-        assert _is_simple_question("hello")
-        assert _is_simple_question("Hi there")
+        assert QueryRouter.is_simple_greeting("你好")
+        assert QueryRouter.is_simple_greeting("hello")
+        assert QueryRouter.is_simple_greeting("Hi there")
 
     def test_thanks_is_simple(self):
         """Thanks should be detected as simple."""
-        assert _is_simple_question("谢谢")
-        assert _is_simple_question("thanks")
-        assert _is_simple_question("Thank you!")
+        assert QueryRouter.is_simple_greeting("谢谢")
+        assert QueryRouter.is_simple_greeting("thanks")
+        assert QueryRouter.is_simple_greeting("Thank you!")
 
     def test_identity_question_is_simple(self):
         """Identity questions should be detected as simple."""
-        assert _is_simple_question("你是谁")
-        assert _is_simple_question("Who are you?")
+        assert QueryRouter.is_simple_greeting("你是谁")
+        assert QueryRouter.is_simple_greeting("Who are you?")
 
     def test_complex_question_not_simple(self):
         """Complex questions should not be detected as simple."""
-        assert not _is_simple_question("请帮我查看当前目录的文件")
-        assert not _is_simple_question("分析这个项目的结构")
+        assert not QueryRouter.is_simple_greeting("请帮我查看当前目录的文件")
+        assert not QueryRouter.is_simple_greeting("分析这个项目的结构")
 
     def test_short_question_is_simple(self):
         """Very short questions should be detected as simple."""
-        assert _is_simple_question("好的")
-        assert _is_simple_question("ok")
+        assert QueryRouter.is_simple_greeting("好的")
+        assert QueryRouter.is_simple_greeting("ok")
 
 
 class TestIntelligentSummarization:
