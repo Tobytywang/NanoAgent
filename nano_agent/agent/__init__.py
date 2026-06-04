@@ -30,6 +30,7 @@ from .prejudgment import QueryPrejudgment, PrejudgmentResult
 from .output_simplifier import OutputSimplifier
 from .tool_offload import ToolOffloadManager, OffloadedResult
 from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
+from .subsystems import AgentSubsystems
 
 __all__ = [
     # Base
@@ -83,4 +84,6 @@ __all__ = [
     # Semantic compression (v0.7.19)
     "SemanticCompressor",
     "SemanticCompressorConfig",
+    # Subsystems facade (v0.7.20)
+    "AgentSubsystems",
 ]

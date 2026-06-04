@@ -9,6 +9,7 @@ import time
 
 from nano_agent.agent.types import RiskLevel, AgentEvent
 from nano_agent.agent.confirmation import ConfirmationManager, ConfirmationConfig
+from nano_agent.agent.subsystems import AgentSubsystems
 from nano_agent.agent.events import EventEmitter
 from nano_agent.tools.base import BaseTool, ToolResult
 
@@ -254,11 +255,13 @@ class TestConfirmationEvent:
 
         # Create agent with confirmation enabled
         config = ConfirmationConfig(confirm_dangerous=True)
+        subsystems = AgentSubsystems.from_defaults()
+        subsystems.confirmation = ConfirmationManager(config)
         agent = ReActAgent(
             llm=llm,
             memory=memory,
             tool_registry=tool_registry,
-            confirmation_config=config,
+            subsystems=subsystems,
             events=events,
             verbose=False,
         )

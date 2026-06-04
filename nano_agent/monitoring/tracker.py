@@ -22,14 +22,16 @@ from ..agent.estimation_audit import EstimationAudit, EstimationAuditConfig
 class MetricsTracker:
     """运行时指标追踪器"""
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self, enabled: bool = True, max_run_history: int = 50):
         """
         Initialize the tracker.
 
         Args:
             enabled: Whether tracking is enabled
+            max_run_history: Maximum number of run records to keep (prevents memory leak)
         """
         self.enabled = enabled
+        self._max_run_history = max_run_history
         self.run_metrics: RunMetrics | None = None
         self._current_iteration: IterationMetrics | None = None
         self._iteration_start_time: float = 0.0
@@ -52,14 +54,7 @@ class MetricsTracker:
         self.token_analyzer = TokenAnalyzer()
 
         # Base ratio for stable token estimation (固定部分使用基准比例)
-        self._base_ratio: float = 0.0
-        # 保存第一次迭代时的字符长度，确保后续迭代使用相同值
-        self._base_tool_chars: int = 0
-        self._base_system_chars: int = 0
-        self._base_skill_chars: int = 0
-        # v0.7.18: base_ratio 首轮修正
-        self._base_ratio_initialized: bool = False
-        self._base_ratio_iteration: int = 0
+        # (owned by token_analyzer, but tracker needs to reset it on new runs)
 
         # v0.7.18: Estimation audit
         self._estimation_audit = EstimationAudit()
@@ -84,12 +79,7 @@ class MetricsTracker:
         self._run_start_time = time.perf_counter()
 
         # Reset base_ratio for new run (each run starts fresh)
-        self._base_ratio = 0.0
-        self._base_tool_chars = 0
-        self._base_system_chars = 0
-        self._base_skill_chars = 0
-        self._base_ratio_initialized = False
-        self._base_ratio_iteration = 0
+        self.token_analyzer.reset_base_ratio()
 
     def end_run(self, response: str) -> None:
         """
@@ -114,6 +104,9 @@ class MetricsTracker:
 
         # Store run in history for cross-run analysis
         self._run_history.append(self.run_metrics)
+        # Bound history to prevent memory leak in long sessions
+        if len(self._run_history) > self._max_run_history:
+            self._run_history = self._run_history[-self._max_run_history :]
 
         # Accumulate session statistics
         self._session_total_tokens += self.run_metrics.total_tokens
@@ -165,17 +158,16 @@ class MetricsTracker:
         """
         Record an LLM call.
 
-        Args:
-            model: The model name
-            prompt_tokens: Number of prompt tokens
-            completion_tokens: Number of completion tokens
-            latency_ms: Latency in milliseconds
-            tool_calls_count: Number of tool calls in response
-            input_messages: The input messages sent to LLM
-            output_text: The output text from LLM
-            tool_calls: The tool calls from LLM response
-            tools_schema: The tool definitions schema sent to LLM
+        .. deprecated::
+            Use ``record_raw_llm_call(RawLLMCallData(...))`` instead.
         """
+        import warnings
+
+        warnings.warn(
+            "record_llm_call() is deprecated, use record_raw_llm_call() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self.enabled or not self._current_iteration:
             return
 
@@ -214,16 +206,18 @@ class MetricsTracker:
         error: str | None = None,
     ) -> None:
         """
-        Record a tool execution (legacy method, accepts individual parameters).
+        Record a tool execution.
 
-        Args:
-            tool_name: The tool name
-            arguments: The tool arguments
-            success: Whether execution succeeded
-            latency_ms: Latency in milliseconds
-            output_length: Length of output
-            error: Error message if failed
+        .. deprecated::
+            Use ``record_raw_tool_execution(RawToolExecutionData(...))`` instead.
         """
+        import warnings
+
+        warnings.warn(
+            "record_tool_execution() is deprecated, use record_raw_tool_execution() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self.enabled or not self._current_iteration:
             return
 
@@ -512,14 +506,14 @@ class MetricsTracker:
 
                     is_first_iteration = iter_count_in_run == 1
 
-                    # 分析输入消息，分类 token 消耗
-                    token_breakdown = self._categorize_tokens_v2(
-                        llm.input_messages,
-                        llm.prompt_tokens,
-                        llm.completion_tokens,
-                        llm.tools_schema,
-                        llm.tool_calls,
-                        llm.output_text,
+                    # 委托给 token_analyzer 进行细粒度分类
+                    token_breakdown = self.token_analyzer.categorize_detailed(
+                        input_messages=llm.input_messages,
+                        prompt_tokens=llm.prompt_tokens,
+                        completion_tokens=llm.completion_tokens,
+                        tools_schema=llm.tools_schema,
+                        tool_calls=llm.tool_calls,
+                        output_text=llm.output_text,
                         is_first_iteration=is_first_iteration,
                     )
 
@@ -555,160 +549,6 @@ class MetricsTracker:
                     )
 
         return result
-
-    def _categorize_tokens_v2(
-        self,
-        input_messages: list[dict],
-        prompt_tokens: int,
-        completion_tokens: int,
-        tools_schema: list[dict],
-        tool_calls: list[dict],
-        output_text: str,
-        is_first_iteration: bool = False,
-    ) -> dict[str, int]:
-        """
-        Categorize token consumption by type for a single iteration.
-
-        分类逻辑（v2 改进：跳过首轮设置 base_ratio）：
-        1. 首次迭代：保存固定部分字符长度，但不设置 base_ratio
-           （首轮 message_chars 极少，导致比例偏高）
-           首轮使用 per-iteration ratio 进行分类
-        2. 第二次迭代：设置 base_ratio（更具代表性）
-        3. 后续迭代：使用已保存的 base_ratio 计算固定部分
-        4. 消息部分 = prompt_tokens - 固定部分，确保总和准确
-
-        Args:
-            input_messages: Input messages sent to LLM
-            prompt_tokens: Total prompt tokens
-            completion_tokens: Total completion tokens
-            tools_schema: Tool definitions schema sent to LLM
-            tool_calls: Tool calls from LLM response
-            output_text: Output text from LLM
-            is_first_iteration: Whether this is the first iteration of a run.
-                If True, saves char counts but does NOT set base_ratio.
-
-        Returns:
-            Dict with tool_tokens, system_tokens, skill_tokens, summary_tokens, message_tokens,
-                 output_tool_tokens, output_text_tokens
-        """
-        import json
-
-        # === 输入部分分类 ===
-        # 步骤1：准确计算各部分的字符长度
-        tool_chars = 0
-        system_chars = 0
-        skill_chars = 0
-        summary_chars = 0  # 新增：历史摘要
-        message_chars = 0
-
-        # 1. 工具定义字符长度（从 tools_schema）
-        if tools_schema:
-            tools_json = json.dumps(tools_schema, ensure_ascii=False)
-            tool_chars = len(tools_json)
-
-        # 2. 分析 messages 中各角色的字符长度
-        for msg in input_messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "") or ""
-            chars = len(content)
-
-            if role == "system":
-                # 检查是否是历史摘要（compressor 生成的）
-                if content.startswith("[历史摘要]"):
-                    summary_chars += chars
-                # 检查是否包含 skill 相关内容
-                elif "## Skills" in content or "skill" in content.lower():
-                    skill_chars += chars
-                else:
-                    system_chars += chars
-            elif role == "tool":
-                # 工具结果属于消息列
-                message_chars += chars
-            else:
-                # user, assistant 等属于消息列
-                message_chars += chars
-
-        # 步骤2：计算总字符长度
-        total_chars = (
-            tool_chars + system_chars + skill_chars + summary_chars + message_chars
-        )
-
-        if total_chars > 0:
-            current_ratio = prompt_tokens / total_chars
-
-            if not self._base_ratio_initialized:
-                if is_first_iteration:
-                    # 首轮: 保存固定部分字符长度，但不设置 base_ratio
-                    # 首轮 message_chars 极少，ratio 偏高，不具代表性
-                    self._base_tool_chars = tool_chars
-                    self._base_system_chars = system_chars
-                    self._base_skill_chars = skill_chars
-                    self._base_ratio_iteration = 1
-                    ratio = current_ratio
-                else:
-                    # 第二轮: 设置 base_ratio（message_chars 已增长，更准确）
-                    self._base_ratio = current_ratio
-                    self._base_ratio_initialized = True
-                    self._base_ratio_iteration = 2
-                    ratio = self._base_ratio
-            else:
-                ratio = self._base_ratio
-
-            tool_tokens = int(self._base_tool_chars * ratio)
-            system_tokens = int(self._base_system_chars * ratio)
-            skill_tokens = int(self._base_skill_chars * ratio)
-            summary_tokens = int(summary_chars * ratio) if summary_chars > 0 else 0
-            message_tokens = max(
-                0,
-                prompt_tokens
-                - tool_tokens
-                - system_tokens
-                - skill_tokens
-                - summary_tokens,
-            )
-        else:
-            tool_tokens = 0
-            system_tokens = 0
-            skill_tokens = 0
-            summary_tokens = 0
-            message_tokens = prompt_tokens
-
-        # === 输出部分分类 ===
-        output_tool_tokens = 0
-        output_text_tokens = 0
-
-        if tool_calls:
-            # 有 tool_calls
-            # 计算 tool_calls 的字符长度
-            tool_calls_json = json.dumps(tool_calls, ensure_ascii=False)
-            tool_calls_chars = len(tool_calls_json)
-            output_text_chars = len(output_text) if output_text else 0
-
-            # 简化估算：如果 content 极短（<50字符），全部归为 tool_calls
-            if output_text_chars < 50:
-                output_tool_tokens = completion_tokens
-                output_text_tokens = 0
-            else:
-                # 按比例分配
-                total_output_chars = tool_calls_chars + output_text_chars
-                if total_output_chars > 0:
-                    tool_ratio = tool_calls_chars / total_output_chars
-                    output_tool_tokens = int(completion_tokens * tool_ratio)
-                    output_text_tokens = completion_tokens - output_tool_tokens
-        else:
-            # 无 tool_calls，全部是文本回复
-            output_tool_tokens = 0
-            output_text_tokens = completion_tokens
-
-        return {
-            "tool_tokens": tool_tokens,
-            "system_tokens": system_tokens,
-            "skill_tokens": skill_tokens,
-            "summary_tokens": summary_tokens,
-            "message_tokens": message_tokens,
-            "output_tool_tokens": output_tool_tokens,
-            "output_text_tokens": output_text_tokens,
-        }
 
     @staticmethod
     def _get_user_message_preview(input_messages: list[dict], max_len: int = 20) -> str:

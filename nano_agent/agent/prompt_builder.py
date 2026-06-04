@@ -630,6 +630,48 @@ class PromptBuilder:
         """
         return self._intent_detector.detect(user_input)
 
+    # ── Tool description formatting ────────────────────────────────────
+
+    @staticmethod
+    def format_tools_description(tool_registry, style: str = "standard") -> str:
+        """Format tool descriptions from the registry.
+
+        Args:
+            tool_registry: ToolRegistry instance
+            style: Output style - "concise", "standard", or "detailed"
+
+        Returns:
+            Formatted tool description string
+        """
+        from .prompts import TOOL_DESCRIPTION_TEMPLATE
+
+        tools = tool_registry.list_tools()
+
+        if style == "concise":
+            # Only tool names, comma separated (minimal tokens)
+            return ", ".join(tools)
+
+        descriptions = []
+        for name in tools:
+            tool = tool_registry.get(name)
+
+            if style == "standard":
+                first_sentence = tool.description.split(".")[0]
+                required = tool.parameters_schema.get("required", [])
+                params_str = ", ".join(required) if required else "none"
+                descriptions.append(
+                    f"- {name}: {first_sentence}\n  params: {params_str}"
+                )
+            else:
+                desc = TOOL_DESCRIPTION_TEMPLATE.format(
+                    name=name,
+                    description=tool.description,
+                    parameters=tool.parameters_schema,
+                )
+                descriptions.append(desc)
+
+        return "\n".join(descriptions)
+
 
 # 便捷函数
 def build_prompt(

@@ -53,8 +53,6 @@ def test_token_consumption(style: str = "concise"):
         max_iterations=config.agent.max_iterations,
         verbose=config.agent.verbose,
         tracker=tracker,
-        output_style_config=config.output_style,
-        tool_merge_config=config.tool_merge,
     )
 
     # Round 1: Simple file search

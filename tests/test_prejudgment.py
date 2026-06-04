@@ -308,22 +308,23 @@ class TestPrejudgmentConfig:
         assert config.prejudgment_max_answer_tokens == 500
 
     def test_config_loader_parse(self):
+        from nano_agent.config.loader import _from_dict
+        from nano_agent.config.schema import SmartOptimizationConfig
+
         data = {
-            "smart_optimization": {
-                "prejudgment_enabled": True,
-                "prejudgment_simple_prompt": "Be concise.",
-                "prejudgment_max_answer_tokens": 200,
-            }
+            "prejudgment_enabled": True,
+            "prejudgment_simple_prompt": "Be concise.",
+            "prejudgment_max_answer_tokens": 200,
         }
-        config = ConfigLoader._parse_smart_optimization_config(
-            data["smart_optimization"]
-        )
+        config = _from_dict(SmartOptimizationConfig, data)
         assert config.prejudgment_enabled is True
         assert config.prejudgment_simple_prompt == "Be concise."
         assert config.prejudgment_max_answer_tokens == 200
 
     def test_config_loader_defaults(self):
-        config = ConfigLoader._parse_smart_optimization_config({})
+        from nano_agent.config.schema import SmartOptimizationConfig
+
+        config = SmartOptimizationConfig()
         assert config.prejudgment_enabled is False
         assert config.prejudgment_simple_prompt == ""
         assert config.prejudgment_max_answer_tokens == 300

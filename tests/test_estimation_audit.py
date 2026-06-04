@@ -296,10 +296,10 @@ class TestBaseRatioFirstRoundCorrection:
         from nano_agent.monitoring.tracker import MetricsTracker
 
         tracker = MetricsTracker()
-        assert hasattr(tracker, "_base_ratio_initialized")
-        assert hasattr(tracker, "_base_ratio_iteration")
-        assert tracker._base_ratio_initialized is False
-        assert tracker._base_ratio_iteration == 0
+        assert hasattr(tracker.token_analyzer, "_base_ratio_initialized")
+        assert hasattr(tracker.token_analyzer, "_base_ratio_iteration")
+        assert tracker.token_analyzer._base_ratio_initialized is False
+        assert tracker.token_analyzer._base_ratio_iteration == 0
 
     def test_single_iteration_no_base_ratio_set(self):
         """Single-iteration run should not set base_ratio; uses per-iteration ratio."""
@@ -325,8 +325,8 @@ class TestBaseRatioFirstRoundCorrection:
         tracker.end_run("Hello!")
 
         # base_ratio should NOT be set (single iteration)
-        assert tracker._base_ratio == 0.0
-        assert tracker._base_ratio_initialized is False
+        assert tracker.token_analyzer._base_ratio == 0.0
+        assert tracker.token_analyzer._base_ratio_initialized is False
 
         # get_detailed_usage should still produce a valid breakdown
         usage = tracker.get_detailed_usage()
@@ -404,8 +404,8 @@ class TestBaseRatioFirstRoundCorrection:
         usage = tracker.get_detailed_usage()
 
         # base_ratio should now be set (from iteration 2)
-        assert tracker._base_ratio > 0.0
-        assert tracker._base_ratio_initialized is True
+        assert tracker.token_analyzer._base_ratio > 0.0
+        assert tracker.token_analyzer._base_ratio_initialized is True
 
         # get_detailed_usage should produce valid breakdowns
         assert len(usage) == 2
@@ -496,7 +496,7 @@ class TestBaseRatioFirstRoundCorrection:
         tracker.end_run("Final answer here")
 
         usage = tracker.get_detailed_usage()
-        assert tracker._base_ratio_initialized is True
+        assert tracker.token_analyzer._base_ratio_initialized is True
         assert len(usage) == 3
         for row in usage:
             total_input = (
@@ -554,15 +554,15 @@ class TestBaseRatioFirstRoundCorrection:
         tracker.get_detailed_usage()
 
         # After Run 1: base_ratio should be set
-        assert tracker._base_ratio > 0.0
-        assert tracker._base_ratio_initialized is True
+        assert tracker.token_analyzer._base_ratio > 0.0
+        assert tracker.token_analyzer._base_ratio_initialized is True
 
         # Run 2: start_run should reset base_ratio fields
         tracker.start_run("run 2")
-        assert tracker._base_ratio == 0.0
-        assert tracker._base_ratio_initialized is False
-        assert tracker._base_ratio_iteration == 0
-        assert tracker._base_tool_chars == 0
+        assert tracker.token_analyzer._base_ratio == 0.0
+        assert tracker.token_analyzer._base_ratio_initialized is False
+        assert tracker.token_analyzer._base_ratio_iteration == 0
+        assert tracker.token_analyzer._base_tool_chars == 0
 
     def test_first_iteration_breakdown_accurate(self):
         """First iteration should use per-iteration ratio, producing accurate breakdown."""

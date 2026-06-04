@@ -137,16 +137,27 @@ class TestConfigLoaderWrapup:
                 "budget_wrapup_max_tokens": 4000,
             }
         }
-        config = ConfigLoader._parse_config(data)
+        from nano_agent.config.loader import _from_dict
+        from nano_agent.config.schema import Config
+
+        data = {
+            "smart_optimization": {
+                "budget_wrapup_enabled": True,
+                "budget_wrapup_threshold": 0.2,
+                "budget_wrapup_free_round": False,
+                "budget_wrapup_max_tokens": 4000,
+            }
+        }
+        config = _from_dict(Config, data)
         assert config.smart_optimization.budget_wrapup_enabled
         assert config.smart_optimization.budget_wrapup_threshold == 0.2
         assert not config.smart_optimization.budget_wrapup_free_round
         assert config.smart_optimization.budget_wrapup_max_tokens == 4000
 
     def test_loader_defaults_when_absent(self):
-        from nano_agent.config.loader import ConfigLoader
+        from nano_agent.config.schema import Config
 
-        config = ConfigLoader._parse_config({})
+        config = Config()
         assert not config.smart_optimization.budget_wrapup_enabled
         assert config.smart_optimization.budget_wrapup_threshold == 0.1
         assert config.smart_optimization.budget_wrapup_free_round is True

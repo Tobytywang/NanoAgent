@@ -22,33 +22,14 @@ from .types import ExecutionResult, ThinkResult, AgentEvent, TerminationReason
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .undo import UndoStack
-from .context import ContextManager
-from .confirmation import ConfirmationManager, ConfirmationConfig
+from .subsystems import AgentSubsystems
+from .router import QueryComplexity, QueryRouter
+from .tool_merger import ToolCallMerger
 from .result_summarizer import ToolResultSummarizer, SummarizerConfig
-from .tool_merger import ToolCallMerger, ToolMergeConfig
-from .cache import ToolResultCache, CacheConfig
-from .compressor import MessageCompressor, CompressorConfig
-from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
-from .token_budget import TokenBudget, TokenBudgetConfig
-from .router import QueryRouter, QueryComplexity
-from .confidence import ConfidenceParser
-from .prejudgment import QueryPrejudgment
 from .prompt_builder import PromptBuilder
-from .duplicate import DuplicateDetector
-from .stall_detector import StallDetector, StallConfig
-from .output_simplifier import OutputSimplifier
-from .tool_offload import ToolOffloadManager
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
-from ..config.schema import (
-    OutputStyleConfig,
-    SmartOptimizationConfig,
-    PromptConfig,
-    AggressiveOutputConfig,
-    StandardizedOutputConfig,
-    ToolOffloadConfig,
-)
 
 
 def _safe_str(text: str) -> str:
@@ -131,25 +112,15 @@ class ReActAgent(BaseAgent):
         llm,
         memory,
         tool_registry,
+        subsystems: AgentSubsystems | None = None,
         max_iterations: int = 10,
         verbose: bool = True,
         skill_prompt: str = "",
         tracker: MetricsTracker | None = None,
         events: EventEmitter | None = None,
         budget: Budget | None = None,
-        context_config=None,
-        confirmation_config: ConfirmationConfig | None = None,
-        output_style_config: OutputStyleConfig | None = None,
-        tool_merge_config: ToolMergeConfig | None = None,
-        cache_config: CacheConfig | None = None,
-        compressor_config: CompressorConfig | None = None,
-        smart_optimization_config: SmartOptimizationConfig | None = None,
-        prompt_config: PromptConfig | None = None,
+        prompt_config=None,
         llm_config=None,
-        aggressive_output_config: AggressiveOutputConfig | None = None,
-        standardized_output_config: StandardizedOutputConfig | None = None,
-        offload_config: ToolOffloadConfig | None = None,
-        semantic_compressor_config: SemanticCompressorConfig | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -158,20 +129,15 @@ class ReActAgent(BaseAgent):
             llm: LLM client instance
             memory: Memory system instance
             tool_registry: Tool registry instance
+            subsystems: Agent optimization subsystems facade (default: created from defaults)
             max_iterations: Maximum reasoning iterations
             verbose: Whether to print debug information
             skill_prompt: Additional prompt from skills
             tracker: Metrics tracker for monitoring
             events: Event emitter for external listeners
             budget: Budget constraints for execution
-            context_config: Context management configuration
-            confirmation_config: Confirmation mechanism configuration
-            output_style_config: Output style configuration for token efficiency
-            tool_merge_config: Tool merging configuration for token efficiency
-            cache_config: Tool result caching configuration
-            compressor_config: Message compression configuration
-            smart_optimization_config: Smart optimization configuration for v0.7.5
             prompt_config: Prompt configuration for v0.7.6
+            llm_config: LLM configuration
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
         self.verbose = verbose
@@ -182,118 +148,30 @@ class ReActAgent(BaseAgent):
             budget or Budget(max_iterations=max_iterations)
         )
 
-        # Output style configuration
-        self.output_style_config = output_style_config or OutputStyleConfig()
+        # Subsystems facade (replaces 15+ individual config params)
+        if subsystems is None:
+            subsystems = AgentSubsystems.from_defaults()
+        self._subsystems = subsystems
 
-        # Tool merge configuration
-        self.tool_merge_config = tool_merge_config or ToolMergeConfig()
+        # Convenience accessors for frequently-used subsystems and configs
+        self.token_budget = subsystems.token_budget
+        self.query_router = subsystems.query_router
+        self.confidence_parser = subsystems.confidence_parser
+        self.query_prejudgment = subsystems.query_prejudgment
+        self.cache = subsystems.cache
+        self.compressor = subsystems.compressor
+        self.semantic_compressor = subsystems.semantic_compressor
+        self.confirmation = subsystems.confirmation
+        self.context_manager = subsystems.context_manager
 
-        # Tool result cache
-        self.cache = ToolResultCache(cache_config)
-
-        # Message compressor
-        self.compressor = MessageCompressor(compressor_config)
-
-        # Smart optimization configuration (v0.7.5)
-        self.smart_optimization_config = (
-            smart_optimization_config or SmartOptimizationConfig()
-        )
-
-        # Prompt configuration (v0.7.6)
-        self.prompt_config = prompt_config or PromptConfig()
-
-        # Aggressive output simplification (v0.7.15)
-        self.aggressive_output_config = (
-            aggressive_output_config or AggressiveOutputConfig()
-        )
-        self.standardized_output_config = (
-            standardized_output_config or StandardizedOutputConfig()
-        )
-        self._output_simplifier = (
-            OutputSimplifier(self.aggressive_output_config)
-            if self.aggressive_output_config.enabled
-            else None
-        )
-
-        # v0.7.17: Tool Offloading
-        self.offload_config = offload_config or ToolOffloadConfig()
-        self._offload_manager = ToolOffloadManager(self.offload_config)
-
-        # v0.7.19: Semantic compression
-        self.semantic_compressor = SemanticCompressor(
-            semantic_compressor_config or SemanticCompressorConfig(),
-            llm_config=llm_config,
-        )
-
-        # v0.7.17: Cache warmup on session restore
-        if cache_config and cache_config.warmup_on_restore and cache_config.persist:
-            self.cache.warmup_from_disk()
-
-        # Token budget management
-        if self.smart_optimization_config.budget_enabled:
-            token_budget_config = TokenBudgetConfig(
-                initial_budget=self.smart_optimization_config.initial_budget,
-                warning_thresholds=self.smart_optimization_config.budget_warning_thresholds,
-                warning_mode=self.smart_optimization_config.budget_warning_mode,
-                warning_interval=self.smart_optimization_config.budget_warning_interval,
-                force_summarize=self.smart_optimization_config.budget_force_summarize,
-                llm_summary_enabled=self.smart_optimization_config.budget_llm_summary_enabled,
-                llm_summary_max_tokens=self.smart_optimization_config.budget_llm_summary_max_tokens,
-                wrapup_enabled=self.smart_optimization_config.budget_wrapup_enabled,
-                wrapup_threshold=self.smart_optimization_config.budget_wrapup_threshold,
-                wrapup_free_round=self.smart_optimization_config.budget_wrapup_free_round,
-                wrapup_max_tokens=self.smart_optimization_config.budget_wrapup_max_tokens,
-            )
-            self.token_budget = TokenBudget(token_budget_config)
-        else:
-            self.token_budget = None
-
-        # Query router
-        if self.smart_optimization_config.routing_enabled:
-            self.query_router = QueryRouter(
-                enabled=True,
-                simple_direct=self.smart_optimization_config.routing_simple_direct,
-                moderate_single_tool=self.smart_optimization_config.routing_moderate_single_tool,
-                simple_budget_ratio=self.smart_optimization_config.complexity_budget_simple_ratio,
-                moderate_budget_ratio=self.smart_optimization_config.complexity_budget_moderate_ratio,
-                complex_budget_ratio=self.smart_optimization_config.complexity_budget_complex_ratio,
-            )
-        else:
-            self.query_router = None
-
-        # Confidence parser
-        if self.smart_optimization_config.confidence_enabled:
-            self.confidence_parser = ConfidenceParser(
-                threshold=self.smart_optimization_config.confidence_threshold
-            )
-        else:
-            self.confidence_parser = None
-
-        # Query prejudgment (v0.7.14)
-        if self.smart_optimization_config.prejudgment_enabled:
-            self.query_prejudgment = QueryPrejudgment(
-                llm=llm,
-                simple_prompt=self.smart_optimization_config.prejudgment_simple_prompt,
-                max_answer_tokens=self.smart_optimization_config.prejudgment_max_answer_tokens,
-            )
-        else:
-            self.query_prejudgment = None
-
-        # Context manager
-        self.context_manager = (
-            ContextManager(
-                memory=memory,
-                llm=llm,
-                config=context_config,
-                verbose=verbose,
-                llm_config=llm_config,
-            )
-            if context_config
-            else None
-        )
-
-        # Confirmation manager
-        self.confirmation = ConfirmationManager(confirmation_config)
+        # Config accessors (read by methods outside __init__)
+        self.smart_optimization_config = subsystems._smart_optimization_config
+        self.output_style_config = subsystems._output_style_config
+        self.tool_merge_config = subsystems._tool_merge_config
+        self.aggressive_output_config = subsystems._aggressive_output_config
+        self.standardized_output_config = subsystems._standardized_output_config
+        self.offload_config = subsystems._offload_config
+        self.prompt_config = prompt_config or subsystems._prompt_config
 
         # Execution state
         self._undo_stack = UndoStack()
@@ -305,21 +183,6 @@ class ReActAgent(BaseAgent):
             -1
         )  # Max tools for current query (-1 = unlimited)
 
-        # Duplicate tool call detection (v0.7.9)
-        self._duplicate_detector = DuplicateDetector(
-            threshold=self.smart_optimization_config.duplicate_threshold,
-            deep_equal=self.smart_optimization_config.duplicate_deep_equal,
-        )
-
-        # Stall detection (v0.7.16)
-        self._stall_detector = StallDetector(
-            StallConfig(
-                enabled=self.smart_optimization_config.stall_detection_enabled,
-                patience=self.smart_optimization_config.stall_patience,
-                similarity_threshold=self.smart_optimization_config.stall_similarity_threshold,
-                hint_injection=self.smart_optimization_config.stall_hint_injection,
-            )
-        )
         self._wrapup_issued = False
 
         # Real token tracking for v0.7.12 decision points
@@ -372,7 +235,7 @@ class ReActAgent(BaseAgent):
                     self._prompt_builder.config.modules.append("aggressive_output")
 
         # Build stable portion (only once)
-        tools_desc = self._format_tools_description(style)
+        tools_desc = PromptBuilder.format_tools_description(self.tool_registry, style)
         self._stable_system_prompt = self._prompt_builder.build_stable(
             tools_description=tools_desc,
             stable_modules=self.prompt_config.stable_modules,
@@ -424,7 +287,7 @@ class ReActAgent(BaseAgent):
 
         # Fallback to legacy prompt system
         style = self.output_style_config.style
-        tools_desc = self._format_tools_description(style)
+        tools_desc = PromptBuilder.format_tools_description(self.tool_registry, style)
 
         # Determine if confidence markers should be added
         use_confidence = (
@@ -458,40 +321,6 @@ class ReActAgent(BaseAgent):
             system_prompt = f"{system_prompt}\n\n## Skills\n\n{self.skill_prompt}"
 
         self.memory.set_system_prompt(system_prompt)
-
-    def _format_tools_description(self, style: str = "detailed") -> str:
-        """Format tool descriptions for the system prompt.
-
-        Args:
-            style: Output style - "concise", "standard", or "detailed"
-        """
-        descriptions = []
-        for tool_name in self.tool_registry.list_tools():
-            tool = self.tool_registry.get(tool_name)
-
-            if style == "concise":
-                # Only tool names, comma separated (minimal tokens)
-                descriptions.append(tool.name)
-            elif style == "standard":
-                # Name + first sentence + required params
-                first_sentence = tool.description.split(".")[0]
-                required = tool.parameters_schema.get("required", [])
-                params_str = ", ".join(required) if required else "none"
-                desc = f"- {tool.name}: {first_sentence}\n  params: {params_str}"
-                descriptions.append(desc)
-            else:
-                # Full description (original format)
-                desc = TOOL_DESCRIPTION_TEMPLATE.format(
-                    name=tool.name,
-                    description=tool.description,
-                    parameters=tool.parameters_schema,
-                )
-                descriptions.append(desc)
-
-        if style == "concise":
-            # Return comma-separated list for minimal tokens
-            return ", ".join(descriptions)
-        return "\n".join(descriptions)
 
     def run(
         self, user_input: str, dry_run: bool = False, session_id: str = ""
@@ -541,7 +370,7 @@ class ReActAgent(BaseAgent):
 
             # Rule-based SIMPLE -> LLM-generated answer
             if routing_result.complexity == QueryComplexity.SIMPLE:
-                response = self._answer_simple_via_llm(user_input)
+                response = QueryRouter.answer_simple(self.llm, user_input)
                 self.tracker.end_run(response)
                 return self._build_result(
                     response,
@@ -565,8 +394,8 @@ class ReActAgent(BaseAgent):
                     )
 
                 if prejudgment_result.complexity == QueryComplexity.SIMPLE:
-                    response = prejudgment_result.answer or self._answer_simple_via_llm(
-                        user_input
+                    response = prejudgment_result.answer or QueryRouter.answer_simple(
+                        self.llm, user_input
                     )
                     self.tracker.end_run(response)
                     return self._build_result(
@@ -578,12 +407,13 @@ class ReActAgent(BaseAgent):
                 elif prejudgment_result.complexity == QueryComplexity.MODERATE:
                     self._routing_max_tools = 1
 
-        # Legacy: concise mode simple question check
-        if self.output_style_config.style == "concise" and _is_simple_question(
-            user_input
+        # Concise mode simple question check
+        if (
+            self.output_style_config.style == "concise"
+            and QueryRouter.is_simple_greeting(user_input)
         ):
             # Direct answer for simple questions (skip tool calls)
-            response = self._answer_simple_question(user_input)
+            response = QueryRouter.answer_simple(self.llm, user_input)
             self.tracker.end_run(response)
             return self._build_result(
                 response,
@@ -746,7 +576,7 @@ class ReActAgent(BaseAgent):
             self.tracker.end_iteration()
 
             # Stall detection (v0.7.16)
-            if self._stall_detector.config.enabled:
+            if self._subsystems.stall_detector.config.enabled:
                 iter_tool_names = [tc.name for tc in merged_tool_calls]
                 iter_tool_results = []
                 for tc in merged_tool_calls:
@@ -757,10 +587,10 @@ class ReActAgent(BaseAgent):
                     else:
                         iter_tool_results.append("")
 
-                self._stall_detector.record_iteration(
+                self._subsystems.stall_detector.record_iteration(
                     iter_tool_names, iter_tool_results
                 )
-                stall_result = self._stall_detector.check_stall()
+                stall_result = self._subsystems.stall_detector.check_stall()
                 if stall_result.is_stalled and stall_result.hint:
                     self.events.emit(
                         AgentEvent.STALL_DETECTED,
@@ -801,11 +631,11 @@ class ReActAgent(BaseAgent):
         self._pending_name_updates = []
 
         # Reset duplicate detection state (v0.7.9)
-        self._duplicate_detector.reset()
+        self._subsystems.duplicate_detector.reset()
         self._wrapup_issued = False
 
         # Reset stall detection state (v0.7.16)
-        self._stall_detector.reset()
+        self._subsystems.stall_detector.reset()
 
         # Reset real token tracking for v0.7.12
         self._last_prompt_tokens = None
@@ -1174,10 +1004,10 @@ class ReActAgent(BaseAgent):
         tool = self.tool_registry.get(tool_call.name)
         tool_can_offload = getattr(tool, "can_offload", False) if tool else False
 
-        if self._offload_manager.should_offload(
+        if self._subsystems.offload_manager.should_offload(
             result_content, tool_call.name, tool_can_offload
         ):
-            summary_content, offloaded = self._offload_manager.offload(
+            summary_content, offloaded = self._subsystems.offload_manager.offload(
                 result_content, tool_call.name, tool_call.id
             )
             result_content = summary_content
@@ -1419,15 +1249,15 @@ class ReActAgent(BaseAgent):
         # Add final assistant message if not already added
         if success:
             # v0.7.15: Apply aggressive output simplification
-            if self._output_simplifier is not None:
-                response = self._output_simplifier.simplify(response)
+            if self._subsystems.output_simplifier is not None:
+                response = self._subsystems.output_simplifier.simplify(response)
             self.memory.add_assistant_message(response)
 
         # v0.7.17: Persist cache and cleanup offloaded files
         if self.cache and self.cache.config and self.cache.config.persist:
             self.cache.persist_to_disk()
         if self.offload_config and self.offload_config.auto_cleanup:
-            self._offload_manager.cleanup()
+            self._subsystems.offload_manager.cleanup()
 
         return ExecutionResult(
             response=response,
@@ -1485,14 +1315,14 @@ class ReActAgent(BaseAgent):
         Returns:
             True if the call is a duplicate and should be skipped
         """
-        result = self._duplicate_detector.check(tool_call)
+        result = self._subsystems.duplicate_detector.check(tool_call)
 
         if result.should_skip:
-            if not self._duplicate_detector.warning_issued:
+            if not self._subsystems.duplicate_detector.warning_issued:
                 if self.verbose:
                     print(f"[Duplicate] 检测到重复工具调用: {tool_call.name}")
                     print(f"   已调用 {result.count} 次，跳过后续重复调用")
-                self._duplicate_detector.warning_issued = True
+                self._subsystems.duplicate_detector.warning_issued = True
             return True
 
         if result.is_duplicate and self.verbose:
@@ -1559,7 +1389,9 @@ class ReActAgent(BaseAgent):
         # Rebuild stable portion with new tool
         if self._prompt_builder is not None:
             style = self.prompt_config.style or self.output_style_config.style
-            tools_desc = self._format_tools_description(style)
+            tools_desc = PromptBuilder.format_tools_description(
+                self.tool_registry, style
+            )
             self._stable_system_prompt = self._prompt_builder.build_stable(
                 tools_description=tools_desc,
                 stable_modules=self.prompt_config.stable_modules,

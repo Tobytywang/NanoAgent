@@ -1,7 +1,13 @@
 """
 Token analyzer for categorizing token consumption.
+
+Merges the former TokenAnalyzer (coarse) and MetricsTracker._categorize_tokens_v2 (detailed)
+into a single class with two methods:
+- analyze_llm_call(): coarse grain (system/tools/history/response) for quick reports
+- categorize_detailed(): fine grain for budget management and usage tables
 """
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -10,11 +16,11 @@ from typing import Any
 class TokenCategory(Enum):
     """Token 消耗分类"""
 
-    SYSTEM = "system"  # 系统提示词（固定成本）
-    TOOLS = "tools"  # 工具输出（可优化成本）
-    HISTORY = "history"  # 历史消息（累积成本）
-    RESPONSE = "response"  # LLM 响应（输出成本）
-    COMPRESSED = "compressed"  # 压缩节省（优化效果）
+    SYSTEM = "system"
+    TOOLS = "tools"
+    HISTORY = "history"
+    RESPONSE = "response"
+    COMPRESSED = "compressed"
 
 
 @dataclass
@@ -24,7 +30,7 @@ class TokenBreakdown:
     category: TokenCategory
     tokens: int
     percentage: float
-    details: dict[str, int] = field(default_factory=dict)  # 子分类详情
+    details: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -32,15 +38,16 @@ class ToolTokenUsage:
     """工具 Token 使用记录"""
 
     tool_name: str
-    input_tokens: int  # 工具调用参数 Token
-    output_tokens: int  # 工具输出 Token
-    call_count: int  # 调用次数
+    input_tokens: int
+    output_tokens: int
+    call_count: int
 
 
 class TokenAnalyzer:
-    """Token 分析器 - 分析 Token 消耗来源"""
+    """Token 分析器 - 粗粒度 + 细粒度 token 分类"""
 
     def __init__(self):
+        # Coarse grain accumulators
         self._category_totals: dict[TokenCategory, int] = {
             TokenCategory.SYSTEM: 0,
             TokenCategory.TOOLS: 0,
@@ -49,7 +56,26 @@ class TokenAnalyzer:
             TokenCategory.COMPRESSED: 0,
         }
         self._tool_token_usage: dict[str, ToolTokenUsage] = {}
-        self._iteration_breakdowns: list[dict[str, int]] = []  # 各轮消耗
+        self._iteration_breakdowns: list[dict[str, int]] = []
+
+        # Fine grain: base_ratio state (migrated from MetricsTracker._categorize_tokens_v2)
+        self._base_ratio: float = 0.0
+        self._base_tool_chars: int = 0
+        self._base_system_chars: int = 0
+        self._base_skill_chars: int = 0
+        self._base_ratio_initialized: bool = False
+        self._base_ratio_iteration: int = 0
+
+    def reset_base_ratio(self) -> None:
+        """Reset base_ratio state for a new run."""
+        self._base_ratio = 0.0
+        self._base_tool_chars = 0
+        self._base_system_chars = 0
+        self._base_skill_chars = 0
+        self._base_ratio_initialized = False
+        self._base_ratio_iteration = 0
+
+    # ── Coarse grain API ──────────────────────────────────────────────
 
     def analyze_llm_call(
         self,
@@ -59,7 +85,7 @@ class TokenAnalyzer:
         tool_calls: list[dict] | None = None,
     ) -> None:
         """
-        分析单次 LLM 调用的 Token 消耗。
+        粗粒度 token 分类 - 累积统计。
 
         Args:
             prompt_tokens: 输入 Token 数（实际值）
@@ -67,7 +93,6 @@ class TokenAnalyzer:
             input_messages: 输入消息列表
             tool_calls: 工具调用列表
         """
-        # 分类统计输入消息（使用估算值计算比例）
         system_chars = 0
         tool_chars = 0
         history_chars = 0
@@ -75,42 +100,32 @@ class TokenAnalyzer:
         for msg in input_messages:
             role = msg.get("role", "")
             content = msg.get("content", "")
-
-            # 估算字符数
             msg_chars = self._estimate_message_chars(msg)
 
             if role == "system":
                 system_chars += msg_chars
             elif role == "tool":
-                # 工具输出消息
                 tool_chars += msg_chars
-                # 记录工具消耗（按比例分配实际 token）
                 tool_name = msg.get("name", "unknown")
                 self._record_tool_output(tool_name, msg_chars)
-            elif content and not role == "tool":
-                # 用户或助手消息（历史对话）
+            elif content and role != "tool":
                 history_chars += msg_chars
 
-        # 计算总字符数用于比例分配
         total_chars = system_chars + tool_chars + history_chars
-
-        # 按比例分配实际的 prompt_tokens
         if total_chars > 0:
             system_tokens = int(prompt_tokens * system_chars / total_chars)
             tool_tokens = int(prompt_tokens * tool_chars / total_chars)
-            history_tokens = prompt_tokens - system_tokens - tool_tokens  # 避免舍入误差
+            history_tokens = prompt_tokens - system_tokens - tool_tokens
         else:
             system_tokens = 0
             tool_tokens = 0
             history_tokens = prompt_tokens
 
-        # 更新分类统计
         self._category_totals[TokenCategory.SYSTEM] += system_tokens
         self._category_totals[TokenCategory.TOOLS] += tool_tokens
         self._category_totals[TokenCategory.HISTORY] += history_tokens
         self._category_totals[TokenCategory.RESPONSE] += completion_tokens
 
-        # 记录本轮消耗
         self._iteration_breakdowns.append(
             {
                 "system": system_tokens,
@@ -121,35 +136,19 @@ class TokenAnalyzer:
             }
         )
 
-        # 记录工具调用参数（如果有）
         if tool_calls:
             for tc in tool_calls:
                 tool_name = tc.get("name", "unknown")
-                # 估算工具调用参数字符数
                 args_chars = self._estimate_dict_chars(tc.get("arguments", {}))
                 self._record_tool_input(tool_name, args_chars)
 
     def record_compression_savings(self, saved_tokens: int) -> None:
-        """
-        记录压缩节省的 Token。
-
-        Args:
-            saved_tokens: 节省的 Token 数
-        """
         self._category_totals[TokenCategory.COMPRESSED] += saved_tokens
 
     def get_breakdown(self) -> list[TokenBreakdown]:
-        """
-        获取 Token 消耗明细。
-
-        Returns:
-            TokenBreakdown 列表
-        """
-        # 计算总消耗（不含压缩节省）
         total = sum(
             v for k, v in self._category_totals.items() if k != TokenCategory.COMPRESSED
         )
-
         if total == 0:
             return []
 
@@ -165,37 +164,18 @@ class TokenAnalyzer:
                         details=self._get_category_details(category),
                     )
                 )
-
-        # 按消耗量排序
         breakdowns.sort(key=lambda x: x.tokens, reverse=True)
         return breakdowns
 
     def get_tool_ranking(self, limit: int = 10) -> list[ToolTokenUsage]:
-        """
-        获取工具 Token 消耗排名。
-
-        注意：工具的 input_tokens 和 output_tokens 实际存储的是字符数，
-        这里按比例转换为实际的 token 数。
-
-        Args:
-            limit: 返回数量限制
-
-        Returns:
-            ToolTokenUsage 列表（按总消耗排序）
-        """
-        # 计算工具总字符数
         total_tool_chars = sum(
             t.input_tokens + t.output_tokens for t in self._tool_token_usage.values()
         )
-
-        # 获取工具实际消耗的 token 数（TOOLS 分类）
         total_tool_tokens = self._category_totals.get(TokenCategory.TOOLS, 0)
 
-        # 按比例分配 token
         result = []
         for tool in self._tool_token_usage.values():
             if total_tool_chars > 0:
-                # 按字符比例分配 token
                 tool_chars = tool.input_tokens + tool.output_tokens
                 tool_tokens = int(total_tool_tokens * tool_chars / total_tool_chars)
                 input_ratio = tool.input_tokens / tool_chars if tool_chars > 0 else 0.5
@@ -213,30 +193,15 @@ class TokenAnalyzer:
                     call_count=tool.call_count,
                 )
             )
-
-        # 按总消耗排序
         result.sort(key=lambda x: x.input_tokens + x.output_tokens, reverse=True)
         return result[:limit]
 
     def get_iteration_breakdowns(self) -> list[dict[str, int]]:
-        """
-        获取各轮 Token 消耗详情。
-
-        Returns:
-            各轮消耗列表
-        """
         return self._iteration_breakdowns
 
     def get_summary(self) -> dict[str, Any]:
-        """
-        获取 Token 分析摘要。
-
-        Returns:
-            摘要字典
-        """
         breakdowns = self.get_breakdown()
         tool_ranking = self.get_tool_ranking(5)
-
         return {
             "categories": [
                 {
@@ -265,28 +230,154 @@ class TokenAnalyzer:
             "compression_savings": self._category_totals[TokenCategory.COMPRESSED],
         }
 
+    # ── Fine grain API (migrated from MetricsTracker._categorize_tokens_v2) ──
+
+    def categorize_detailed(
+        self,
+        input_messages: list[dict],
+        prompt_tokens: int,
+        completion_tokens: int,
+        tools_schema: list[dict],
+        tool_calls: list[dict],
+        output_text: str,
+        is_first_iteration: bool = False,
+    ) -> dict[str, int]:
+        """
+        细粒度 token 分类 - 用于预算管理和 usage 表。
+
+        分类逻辑（v2：跳过首轮设置 base_ratio）：
+        1. 首次迭代：保存固定部分字符长度，但不设置 base_ratio
+        2. 第二次迭代：设置 base_ratio（更具代表性）
+        3. 后续迭代：使用已保存的 base_ratio
+        4. 消息部分 = prompt_tokens - 固定部分，确保总和准确
+        """
+        # === 输入部分分类 ===
+        tool_chars = 0
+        system_chars = 0
+        skill_chars = 0
+        summary_chars = 0
+        message_chars = 0
+
+        # 1. 工具定义字符长度（从 tools_schema）
+        if tools_schema:
+            tools_json = json.dumps(tools_schema, ensure_ascii=False)
+            tool_chars = len(tools_json)
+
+        # 2. 分析 messages 中各角色的字符长度
+        for msg in input_messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "") or ""
+            chars = len(content)
+
+            if role == "system":
+                if content.startswith("[历史摘要]"):
+                    summary_chars += chars
+                elif "## Skills" in content or "skill" in content.lower():
+                    skill_chars += chars
+                else:
+                    system_chars += chars
+            elif role == "tool":
+                message_chars += chars
+            else:
+                message_chars += chars
+
+        total_chars = (
+            tool_chars + system_chars + skill_chars + summary_chars + message_chars
+        )
+
+        if total_chars > 0:
+            current_ratio = prompt_tokens / total_chars
+
+            if not self._base_ratio_initialized:
+                if is_first_iteration:
+                    self._base_tool_chars = tool_chars
+                    self._base_system_chars = system_chars
+                    self._base_skill_chars = skill_chars
+                    self._base_ratio_iteration = 1
+                    ratio = current_ratio
+                else:
+                    self._base_ratio = current_ratio
+                    self._base_ratio_initialized = True
+                    self._base_ratio_iteration = 2
+                    ratio = self._base_ratio
+            else:
+                ratio = self._base_ratio
+
+            tool_tokens = int(self._base_tool_chars * ratio)
+            system_tokens = int(self._base_system_chars * ratio)
+            skill_tokens = int(self._base_skill_chars * ratio)
+            summary_tokens = int(summary_chars * ratio) if summary_chars > 0 else 0
+            message_tokens = max(
+                0,
+                prompt_tokens
+                - tool_tokens
+                - system_tokens
+                - skill_tokens
+                - summary_tokens,
+            )
+        else:
+            tool_tokens = 0
+            system_tokens = 0
+            skill_tokens = 0
+            summary_tokens = 0
+            message_tokens = prompt_tokens
+
+        # === 输出部分分类 ===
+        output_tool_tokens = 0
+        output_text_tokens = 0
+
+        if tool_calls:
+            tool_calls_json = json.dumps(tool_calls, ensure_ascii=False)
+            tool_calls_chars = len(tool_calls_json)
+            output_text_chars = len(output_text) if output_text else 0
+
+            if output_text_chars < 50:
+                output_tool_tokens = completion_tokens
+            else:
+                total_output_chars = tool_calls_chars + output_text_chars
+                if total_output_chars > 0:
+                    tool_ratio = tool_calls_chars / total_output_chars
+                    output_tool_tokens = int(completion_tokens * tool_ratio)
+                    output_text_tokens = completion_tokens - output_tool_tokens
+        else:
+            output_text_tokens = completion_tokens
+
+        return {
+            "tool_tokens": tool_tokens,
+            "system_tokens": system_tokens,
+            "skill_tokens": skill_tokens,
+            "summary_tokens": summary_tokens,
+            "message_tokens": message_tokens,
+            "output_tool_tokens": output_tool_tokens,
+            "output_text_tokens": output_text_tokens,
+        }
+
+    def get_base_ratio(self) -> float:
+        return self._base_ratio if self._base_ratio > 0 else 0.25
+
+    def get_base_chars(self) -> dict[str, int]:
+        return {
+            "tool_chars": self._base_tool_chars,
+            "system_chars": self._base_system_chars,
+            "skill_chars": self._base_skill_chars,
+        }
+
+    # ── Reset ─────────────────────────────────────────────────────────
+
     def reset(self) -> None:
-        """重置分析器"""
         for category in self._category_totals:
             self._category_totals[category] = 0
         self._tool_token_usage.clear()
         self._iteration_breakdowns.clear()
+        self.reset_base_ratio()
+
+    # ── Internal helpers ───────────────────────────────────────────────
 
     def _estimate_message_chars(self, msg: dict) -> int:
-        """
-        估算单条消息的字符数。
-
-        Args:
-            msg: 消息字典
-
-        Returns:
-            字符数
-        """
         content = msg.get("content", "")
         if isinstance(content, str):
             return len(content)
         elif isinstance(content, list):
-            # 复杂内容（如多模态）
             total = 0
             for item in content:
                 if isinstance(item, str):
@@ -297,72 +388,28 @@ class TokenAnalyzer:
         return 0
 
     def _estimate_dict_chars(self, d: dict) -> int:
-        """
-        估算字典内容的字符数。
-
-        Args:
-            d: 字典
-
-        Returns:
-            字符数
-        """
-        import json
-
         try:
-            text = json.dumps(d)
-            return len(text)
+            return len(json.dumps(d))
         except Exception:
             return 0
 
     def _record_tool_output(self, tool_name: str, chars: int) -> None:
-        """
-        记录工具输出字符数（用于后续按比例分配 token）。
-
-        Args:
-            tool_name: 工具名称
-            chars: 字符数
-        """
         if tool_name not in self._tool_token_usage:
             self._tool_token_usage[tool_name] = ToolTokenUsage(
-                tool_name=tool_name,
-                input_tokens=0,
-                output_tokens=0,
-                call_count=0,
+                tool_name=tool_name, input_tokens=0, output_tokens=0, call_count=0
             )
-        # 暂存字符数，后续会在 get_tool_ranking 中转换
         self._tool_token_usage[tool_name].output_tokens += chars
 
     def _record_tool_input(self, tool_name: str, chars: int) -> None:
-        """
-        记录工具调用参数字符数。
-
-        Args:
-            tool_name: 工具名称
-            chars: 字符数
-        """
         if tool_name not in self._tool_token_usage:
             self._tool_token_usage[tool_name] = ToolTokenUsage(
-                tool_name=tool_name,
-                input_tokens=0,
-                output_tokens=0,
-                call_count=0,
+                tool_name=tool_name, input_tokens=0, output_tokens=0, call_count=0
             )
-        # 暂存字符数
         self._tool_token_usage[tool_name].input_tokens += chars
         self._tool_token_usage[tool_name].call_count += 1
 
     def _get_category_details(self, category: TokenCategory) -> dict[str, int]:
-        """
-        获取分类的详细子项。
-
-        Args:
-            category: Token 分类
-
-        Returns:
-            子分类详情
-        """
         if category == TokenCategory.TOOLS:
-            # 返回各工具消耗
             return {
                 t.tool_name: t.output_tokens for t in self._tool_token_usage.values()
             }

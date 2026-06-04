@@ -7,6 +7,7 @@ Provides a clean, testable way to assemble agent components.
 from typing import Callable, Any
 
 from ..agent import ReActAgent, AgentOrchestrator
+from ..agent.subsystems import AgentSubsystems
 from ..llm import BaseLLM
 from ..memory import BaseMemory
 from ..tools import ToolRegistry
@@ -193,62 +194,58 @@ class AgentBuilder:
         if hasattr(self.config, "llm"):
             self.config.llm.set_llm_client(self._llm)
 
+        # Create agent subsystems from config
+        from ..config.schema import (
+            SmartOptimizationConfig,
+            OutputStyleConfig,
+            CacheConfig,
+            CompressorConfig,
+            SemanticCompressorConfig,
+            ToolMergeConfig,
+            ConfirmationConfig,
+            ToolOffloadConfig,
+            AggressiveOutputConfig,
+            StandardizedOutputConfig,
+            PromptConfig,
+        )
+
+        def _cfg(attr, default_cls):
+            val = getattr(self.config, attr, None)
+            return val if val is not None else default_cls()
+
+        subsystems = AgentSubsystems.from_configs(
+            smart_optimization=_cfg("smart_optimization", SmartOptimizationConfig),
+            output_style=_cfg("output_style", OutputStyleConfig),
+            cache_config=_cfg("cache", CacheConfig),
+            compressor_config=_cfg("compressor", CompressorConfig),
+            semantic_compressor_config=_cfg(
+                "semantic_compressor", SemanticCompressorConfig
+            ),
+            tool_merge_config=_cfg("tool_merge", ToolMergeConfig),
+            confirmation_config=_cfg("confirmation", ConfirmationConfig),
+            offload_config=_cfg("offload", ToolOffloadConfig),
+            aggressive_output=_cfg("aggressive_output", AggressiveOutputConfig),
+            standardized_output=_cfg("standardized_output", StandardizedOutputConfig),
+            prompt_config=_cfg("prompt", PromptConfig),
+            context_config=getattr(self.config, "context", None),
+            llm=self._llm,
+            memory=self._memory,
+            llm_config=self.config.llm,
+            verbose=self.config.agent.verbose,
+        )
+
         # Create agent
         agent = ReActAgent(
             llm=self._llm,
             memory=self._memory,
             tool_registry=self._tool_registry,
+            subsystems=subsystems,
             max_iterations=self.config.agent.max_iterations,
             verbose=self.config.agent.verbose,
             skill_prompt=self._skill_registry.get_combined_system_prompt(),
             tracker=self._tracker,
-            context_config=(
-                self.config.context if hasattr(self.config, "context") else None
-            ),
-            confirmation_config=(
-                self.config.confirmation
-                if hasattr(self.config, "confirmation")
-                else None
-            ),
-            output_style_config=(
-                self.config.output_style
-                if hasattr(self.config, "output_style")
-                else None
-            ),
-            tool_merge_config=(
-                self.config.tool_merge if hasattr(self.config, "tool_merge") else None
-            ),
-            cache_config=self.config.cache if hasattr(self.config, "cache") else None,
-            compressor_config=(
-                self.config.compressor if hasattr(self.config, "compressor") else None
-            ),
-            smart_optimization_config=(
-                self.config.smart_optimization
-                if hasattr(self.config, "smart_optimization")
-                else None
-            ),
-            prompt_config=(
-                self.config.prompt if hasattr(self.config, "prompt") else None
-            ),
+            prompt_config=self.config.prompt,
             llm_config=self.config.llm,
-            aggressive_output_config=(
-                self.config.aggressive_output
-                if hasattr(self.config, "aggressive_output")
-                else None
-            ),
-            standardized_output_config=(
-                self.config.standardized_output
-                if hasattr(self.config, "standardized_output")
-                else None
-            ),
-            offload_config=(
-                self.config.offload if hasattr(self.config, "offload") else None
-            ),
-            semantic_compressor_config=(
-                self.config.semantic_compressor
-                if hasattr(self.config, "semantic_compressor")
-                else None
-            ),
         )
 
         # Create orchestrator
