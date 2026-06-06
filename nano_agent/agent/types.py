@@ -74,6 +74,13 @@ class ExecutionEvent:
     data: dict
 
 
+class ExecutionMode(Enum):
+    """Agent execution mode — controlled by circuit breaker."""
+
+    AUTO = "auto"  # Fully automatic execution
+    SUPERVISED = "supervised"  # Every tool call requires user confirmation
+
+
 class AgentEvent(Enum):
     """Event type enumeration for the event system."""
 
@@ -87,6 +94,7 @@ class AgentEvent(Enum):
     DUPLICATE_BLOCKED = "duplicate_blocked"
     STALL_DETECTED = "stall_detected"
     LLM_RETRY = "llm_retry"
+    CIRCUIT_BREAKER = "circuit_breaker"
 
 
 class RiskLevel(Enum):

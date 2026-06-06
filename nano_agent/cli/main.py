@@ -748,6 +748,14 @@ def run_interactive(
                 _export_report(agent, report_format, report_output)
                 continue
 
+            if user_input.lower() == Commands.AUTO:
+                if hasattr(agent, "circuit_breaker") and agent.circuit_breaker:
+                    agent.circuit_breaker.reset()
+                    Console.print("[熔断器] 已恢复 AUTO 模式", style="info")
+                else:
+                    Console.print("[熔断器] 未启用", style="warning")
+                continue
+
             if user_input.lower() == "/sessions":
                 if hasattr(agent.memory, "list_sessions"):
                     sessions = agent.memory.list_sessions()

@@ -18,7 +18,13 @@ from .prompts import (
     TOOL_DESCRIPTION_TEMPLATE,
     CONFIDENCE_SUFFIX,
 )
-from .types import ExecutionResult, ThinkResult, AgentEvent, TerminationReason
+from .types import (
+    ExecutionResult,
+    ThinkResult,
+    AgentEvent,
+    TerminationReason,
+    ExecutionMode,
+)
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .undo import UndoStack
@@ -106,6 +112,7 @@ class ReActAgent(BaseAgent):
         self.semantic_compressor = subsystems.semantic_compressor
         self.confirmation = subsystems.confirmation
         self.context_manager = subsystems.context_manager
+        self.circuit_breaker = subsystems.circuit_breaker
 
         # Config accessors (read by methods outside __init__)
         self.smart_optimization_config = subsystems._smart_optimization_config
@@ -449,6 +456,19 @@ class ReActAgent(BaseAgent):
             # Think phase
             think = self._think()
 
+            # Circuit breaker: check LLM response size (v0.8.0)
+            if (
+                self.circuit_breaker
+                and self.circuit_breaker.check_llm_response(
+                    think.usage.completion_tokens
+                )
+                and self.verbose
+            ):
+                print(
+                    f"[Circuit Breaker] {self.circuit_breaker.trigger_reason} "
+                    f"— 切换到 SUPERVISED 模式"
+                )
+
             # Confidence-based early stop (v0.7.5)
             if self.confidence_parser is not None and think.is_final:
                 should_stop, conf_result = self.confidence_parser.should_stop_early(
@@ -547,6 +567,16 @@ class ReActAgent(BaseAgent):
                             f"[Stall] Detected ({stall_result.stalled_iterations}x), hint injected"
                         )
 
+                # Circuit breaker: check stall (v0.8.0)
+                if self.circuit_breaker and self.circuit_breaker.check_stall(
+                    stall_result
+                ):
+                    if self.verbose:
+                        print(
+                            f"[Circuit Breaker] {self.circuit_breaker.trigger_reason} "
+                            f"— 切换到 SUPERVISED 模式"
+                        )
+
         # Reached max iterations or budget exhausted
         response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
         self.tracker.end_run(response)
@@ -579,6 +609,10 @@ class ReActAgent(BaseAgent):
 
         # Reset stall detection state (v0.7.16)
         self._subsystems.stall_detector.reset()
+
+        # Reset circuit breaker state (v0.8.0)
+        if self.circuit_breaker:
+            self.circuit_breaker.reset()
 
         # Reset real token tracking for v0.7.12
         self._last_prompt_tokens = None
@@ -783,6 +817,14 @@ class ReActAgent(BaseAgent):
         """
         # Check for duplicate tool calls (v0.7.8)
         if not dry_run and self._check_duplicate_tool_call(tool_call):
+            # Circuit breaker: check duplicate (v0.8.0)
+            if self.circuit_breaker:
+                dup_result = self._subsystems.duplicate_detector.check(tool_call)
+                if self.circuit_breaker.check_duplicate(dup_result) and self.verbose:
+                    print(
+                        f"[Circuit Breaker] {self.circuit_breaker.trigger_reason} "
+                        f"— 切换到 SUPERVISED 模式"
+                    )
             # Record as skipped
             self.tracker.record_skipped_tool_call(
                 tool_call.name, tool_call.arguments, "duplicate"
@@ -828,7 +870,45 @@ class ReActAgent(BaseAgent):
                 if self.verbose:
                     print(f"[Cache] Hit for {tool_call.name}")
             else:
-                # Check if confirmation is needed
+                # Circuit breaker: SUPERVISED mode forces confirmation (v0.8.0)
+                needs_cb_confirm = (
+                    self.circuit_breaker
+                    and self.circuit_breaker.mode == ExecutionMode.SUPERVISED
+                )
+                if needs_cb_confirm:
+                    self.confirmation.request_confirmation()
+                    self.events.emit(
+                        AgentEvent.CONFIRMATION_REQUIRED,
+                        {
+                            "tool": tool_call.name,
+                            "arguments": tool_call.arguments,
+                            "risk_level": "circuit_breaker",
+                            "message": f"[熔断介入] {self.circuit_breaker.trigger_reason}\n是否执行 {tool_call.name}?",
+                        },
+                    )
+                    confirmed = self.confirmation.wait_for_result()
+                    if not confirmed:
+                        result = ToolResult(
+                            success=False, output="", error="用户取消操作"
+                        )
+                        self._tool_call_records.append(
+                            {
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments,
+                                "success": False,
+                                "output_preview": None,
+                            }
+                        )
+                        self.events.emit(
+                            AgentEvent.TOOL_RESULT,
+                            {"tool": tool_call.name, "result": result},
+                        )
+                        return result
+                    # User confirmed — optionally reset to AUTO
+                    if self.circuit_breaker.config.auto_reset_on_user_confirm:
+                        self.circuit_breaker.reset()
+
+                # Check if confirmation is needed (risk-based)
                 tool = self.tool_registry.get(tool_call.name)
                 if tool and self.confirmation.needs_confirmation(tool):
                     # Request confirmation

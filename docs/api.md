@@ -436,6 +436,37 @@ v0.8.0 LLM 调用重试配置。429/500/网络错误自动指数退避重试。
 
 **重试逻辑**: 放在 `BaseLLM.chat()` 层，子类实现 `_chat_impl()`，`chat()` 自动包裹重试。Anthropic SDK 设 `max_retries=0` 避免双重重试。`chat_stream()` 本期不重试。
 
+### CircuitBreakerConfig & CircuitBreaker
+
+v0.8.0 熔断器配置。检测异常 LLM 行为（响应过大、重复调用、停滞），从 AUTO 降级到 SUPERVISED 模式。
+
+- `enabled: bool = True` — 启用熔断器
+- `max_response_tokens: int = 8000` — LLM 单次响应 token 上限
+- `duplicate_trigger_count: int = 3` — 重复调用触发次数阈值
+- `stall_trigger_count: int = 3` — 停滞触发次数阈值
+- `auto_reset_on_user_confirm: bool = True` — 用户确认后自动恢复 AUTO
+
+**熔断逻辑**: 三种触发条件检测后，降级为 SUPERVISED 模式，所有工具调用强制走 `ConfirmationManager` 确认流程。`/auto` 命令手动恢复 AUTO。
+
+```python
+from nano_agent.agent.circuit_breaker import CircuitBreaker
+from nano_agent.config.schema import CircuitBreakerConfig
+
+cb = CircuitBreaker(CircuitBreakerConfig())
+cb.check_llm_response(completion_tokens)  # 检查 LLM 响应大小
+cb.check_duplicate(duplicate_result)      # 检查重复调用
+cb.check_stall(stall_result)              # 检查停滞
+cb.mode  # ExecutionMode.AUTO / SUPERVISED
+cb.reset()  # 重置为 AUTO
+```
+
+### ExecutionMode
+
+v0.8.0 执行模式枚举，由熔断器控制。
+
+- `AUTO = "auto"` — 全自动执行
+- `SUPERVISED = "supervised"` — 每个工具调用需用户确认
+
 ### ToolOffloadManager & OffloadedResult
 
 v0.7.17 工具结果卸载。大结果写入临时文件，仅注入摘要到上下文。
@@ -602,6 +633,14 @@ Retry (v0.8.0):
 - `retry.max_delay: float = 60.0` — 最大延迟（秒）
 - `retry.jitter: bool = True` — 随机抖动
 - `retry.retryable_status_codes: list[int] = [429, 500, 502, 503, 504]` — 可重试状态码
+
+**CircuitBreaker (smart_optimization.circuit_breaker)**
+
+- `smart_optimization.circuit_breaker.enabled: bool = True` — 启用熔断器
+- `smart_optimization.circuit_breaker.max_response_tokens: int = 8000` — LLM 单次响应上限
+- `smart_optimization.circuit_breaker.duplicate_trigger_count: int = 3` — 重复调用触发次数
+- `smart_optimization.circuit_breaker.stall_trigger_count: int = 3` — 停滞触发次数
+- `smart_optimization.circuit_breaker.auto_reset_on_user_confirm: bool = True` — 确认后恢复 AUTO
 
 
 ---
@@ -1092,6 +1131,7 @@ nano-agent [选项]
 | `/tools` | 查看工具列表 |
 | `/skills` | 查看技能列表 |
 | `/sessions` | 查看会话列表 |
+| `/auto` | 熔断器恢复 AUTO 模式 |
 
 **项目管理**
 

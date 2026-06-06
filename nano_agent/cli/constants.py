@@ -49,6 +49,9 @@ class Commands:
     # 名字设置
     SETNAME = "/setname"
 
+    # 熔断器
+    AUTO = "/auto"
+
 
 class CommandPrefix:
     """命令前缀（用于带参数的命令）"""

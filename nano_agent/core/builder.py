@@ -211,6 +211,7 @@ class AgentBuilder:
             AggressiveOutputConfig,
             StandardizedOutputConfig,
             PromptConfig,
+            CircuitBreakerConfig,
         )
 
         def _cfg(attr, default_cls):
@@ -236,6 +237,9 @@ class AgentBuilder:
             memory=self._memory,
             llm_config=self.config.llm,
             verbose=self.config.agent.verbose,
+            circuit_breaker_config=getattr(
+                self.config.smart_optimization, "circuit_breaker", None
+            ),
         )
 
         # Create agent

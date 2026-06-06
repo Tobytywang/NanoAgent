@@ -248,6 +248,48 @@ retry:
   retryable_status_codes: [429, 500, 502, 503, 504]
 ```
 
+### 11. 熔断器降级
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `smart_optimization.circuit_breaker.*` |
+| 默认值 | `enabled: True` |
+| 源码位置 | `nano_agent/agent/circuit_breaker.py` → `CircuitBreaker` |
+
+检测异常 LLM 行为后，从 AUTO 模式降级到 SUPERVISED 模式，要求用户确认每个工具调用。不是限制总 token，而是检测异常行为后干预。
+
+**三种触发条件**：
+
+| 触发条件 | 检测位置 | 默认阈值 | 说明 |
+|---------|---------|---------|------|
+| LLM 响应过大 | `_think()` 后 | `max_response_tokens: 8000` | 单次 completion_tokens 超限 |
+| 重复工具调用 | `_act()` 中 | `duplicate_trigger_count: 3` | 复用 DuplicateDetector 结果 |
+| 停滞检测 | 迭代结束后 | `stall_trigger_count: 3` | 复用 StallDetector 结果 |
+
+**降级行为**：
+
+- AUTO → SUPERVISED：每个工具调用强制走 `ConfirmationManager` 确认流程
+- 用户确认后可选自动恢复 AUTO（`auto_reset_on_user_confirm: True`）
+- `/auto` CLI 命令手动恢复 AUTO 模式
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `smart_optimization.circuit_breaker.enabled` | `True` | 是否启用熔断器 |
+| `smart_optimization.circuit_breaker.max_response_tokens` | `8000` | LLM 单次响应上限 |
+| `smart_optimization.circuit_breaker.duplicate_trigger_count` | `3` | 重复调用触发次数 |
+| `smart_optimization.circuit_breaker.stall_trigger_count` | `3` | 停滞触发次数 |
+| `smart_optimization.circuit_breaker.auto_reset_on_user_confirm` | `True` | 用户确认后自动恢复 AUTO |
+
+```yaml
+smart_optimization:
+  circuit_breaker:
+    enabled: true
+    max_response_tokens: 8000
+    duplicate_trigger_count: 3
+    stall_trigger_count: 3
+    auto_reset_on_user_confirm: true
+```
+
 ---
 
 ## 软限制（间接影响对话质量）
@@ -512,7 +554,11 @@ semantic_compressor:
   │   │   ├─ 消息数 > max_messages → 裁剪旧消息
   │   │
   │   ├─ ⑩ Stall Detection → 连续相似迭代 → 注入转向提示
+│   │   ├─ 熔断器检测 → 达到 stall_trigger_count → 降级到 SUPERVISED
 │   │
+│   ├─ ⑪ 熔断器 → SUPERVISED 模式 → 每个工具调用需用户确认
+│   │   ├─ 触发条件：LLM 响应过大 / 重复调用 / 停滞
+│   │   ├─ `/auto` 命令恢复 AUTO 模式
 │   └─ 回到循环顶部 ↺
   │
   └─ 循环结束 → 返回 ExecutionResult
@@ -584,6 +630,11 @@ semantic_compressor:
 | `retry.max_delay` | `60.0` | 最大退避延迟(秒) | 硬限制 |
 | `retry.jitter` | `True` | 随机抖动 | 硬限制 |
 | `retry.retryable_status_codes` | `[429,500,502,503,504]` | 可重试 HTTP 状态码 | 硬限制 |
+| `smart_optimization.circuit_breaker.enabled` | `True` | 熔断器开关 | 硬限制 |
+| `smart_optimization.circuit_breaker.max_response_tokens` | `8000` | LLM 单次响应上限 | 硬限制 |
+| `smart_optimization.circuit_breaker.duplicate_trigger_count` | `3` | 重复调用触发次数 | 硬限制 |
+| `smart_optimization.circuit_breaker.stall_trigger_count` | `3` | 停滞触发次数 | 硬限制 |
+| `smart_optimization.circuit_breaker.auto_reset_on_user_confirm` | `True` | 确认后恢复 AUTO | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |

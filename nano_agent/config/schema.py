@@ -344,6 +344,17 @@ class ProjectFileConfig:
 
 
 @dataclass
+class CircuitBreakerConfig:
+    """Circuit breaker configuration for execution mode degradation."""
+
+    enabled: bool = True
+    max_response_tokens: int = 8000  # LLM single response token limit
+    duplicate_trigger_count: int = 3  # Duplicate calls to trigger circuit break
+    stall_trigger_count: int = 3  # Stall occurrences to trigger circuit break
+    auto_reset_on_user_confirm: bool = True  # Reset to AUTO after user confirms
+
+
+@dataclass
 class SmartOptimizationConfig:
     """Smart optimization configuration for dynamic token efficiency.
 
@@ -424,6 +435,9 @@ class SmartOptimizationConfig:
     # === Estimation Audit (v0.7.18) ===
     estimation_audit_enabled: bool = True  # Enable estimation audit
     estimation_deviation_warning_threshold: float = 0.50  # Warn when deviation > 50%
+
+    # === Circuit Breaker (v0.8.0) ===
+    circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
 
 
 @dataclass

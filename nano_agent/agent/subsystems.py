@@ -20,6 +20,7 @@ from .tool_merger import ToolCallMerger, ToolMergeConfig
 from .prejudgment import QueryPrejudgment
 from .context import ContextManager
 from .confirmation import ConfirmationManager, ConfirmationConfig
+from .circuit_breaker import CircuitBreaker
 from ..config.schema import (
     SmartOptimizationConfig,
     OutputStyleConfig,
@@ -48,6 +49,7 @@ class AgentSubsystems:
         output_simplifier: OutputSimplifier | None,
         confirmation: ConfirmationManager,
         context_manager: ContextManager | None,
+        circuit_breaker: CircuitBreaker | None = None,
         # Config references (for ReActAgent convenience accessors)
         smart_optimization_config=None,
         output_style_config=None,
@@ -70,6 +72,7 @@ class AgentSubsystems:
         self.output_simplifier = output_simplifier
         self.confirmation = confirmation
         self.context_manager = context_manager
+        self.circuit_breaker = circuit_breaker
         # Store config references for ReActAgent
         self._smart_optimization_config = smart_optimization_config
         self._output_style_config = output_style_config
@@ -94,6 +97,7 @@ class AgentSubsystems:
             aggressive_output=AggressiveOutputConfig(),
             standardized_output=StandardizedOutputConfig(),
             prompt_config=PromptConfig(),
+            circuit_breaker_config=None,
         )
 
     @classmethod
@@ -115,6 +119,7 @@ class AgentSubsystems:
         memory=None,
         llm_config=None,
         verbose: bool = False,
+        circuit_breaker_config=None,
     ) -> "AgentSubsystems":
         """从配置对象创建所有子系统"""
         # Token budget
@@ -220,6 +225,12 @@ class AgentSubsystems:
             else None
         )
 
+        # Circuit breaker
+        cb_config = circuit_breaker_config or getattr(
+            smart_optimization, "circuit_breaker", None
+        )
+        circuit_breaker = CircuitBreaker(cb_config) if cb_config else None
+
         return cls(
             token_budget=token_budget,
             query_router=query_router,
@@ -234,6 +245,7 @@ class AgentSubsystems:
             output_simplifier=output_simplifier,
             confirmation=confirmation,
             context_manager=context_manager,
+            circuit_breaker=circuit_breaker,
             # Config references
             smart_optimization_config=smart_optimization,
             output_style_config=output_style,

@@ -660,6 +660,35 @@ print(f"Token 消耗: {session_summary['total_tokens']}")
 print(f"LLM 调用: {session_summary['total_llm_calls']}")
 ```
 
+### 8.6 熔断器与执行模式
+
+当 Agent 检测到异常行为（LLM 响应过大、重复工具调用、执行停滞），会自动从 AUTO 模式降级到 SUPERVISED 模式，要求用户确认每个工具调用：
+
+```
+[Circuit Breaker] LLM 响应过大 (9000 > 8000) — 切换到 SUPERVISED 模式
+[Confirmation Required] [熔断介入] LLM 响应过大 (9000 > 8000)
+是否执行 file_read? (y/n)
+```
+
+输入 `/auto` 可手动恢复 AUTO 模式：
+
+```
+> /auto
+[熔断器] 已恢复 AUTO 模式
+```
+
+**配置**：
+
+```yaml
+smart_optimization:
+  circuit_breaker:
+    enabled: true
+    max_response_tokens: 8000     # LLM 单次响应上限
+    duplicate_trigger_count: 3    # 重复调用触发次数
+    stall_trigger_count: 3        # 停滞触发次数
+    auto_reset_on_user_confirm: true  # 确认后自动恢复 AUTO
+```
+
 ---
 
 ## 9. 高级用法
