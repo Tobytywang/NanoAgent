@@ -7,6 +7,7 @@ user confirmation.
 """
 
 from .types import ExecutionMode, AgentEvent
+from ..config.schema import CircuitBreakerConfig
 
 
 class CircuitBreaker:
@@ -23,8 +24,6 @@ class CircuitBreaker:
     """
 
     def __init__(self, config, event_emitter=None):
-        from ..config.schema import CircuitBreakerConfig
-
         if config is None:
             config = CircuitBreakerConfig()
         self._config = config

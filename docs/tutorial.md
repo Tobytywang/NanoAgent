@@ -662,13 +662,7 @@ print(f"LLM 调用: {session_summary['total_llm_calls']}")
 
 ### 8.6 熔断器与执行模式
 
-当 Agent 检测到异常行为（LLM 响应过大、重复工具调用、执行停滞），会自动从 AUTO 模式降级到 SUPERVISED 模式，要求用户确认每个工具调用：
-
-```
-[Circuit Breaker] LLM 响应过大 (9000 > 8000) — 切换到 SUPERVISED 模式
-[Confirmation Required] [熔断介入] LLM 响应过大 (9000 > 8000)
-是否执行 file_read? (y/n)
-```
+当 Agent 检测到异常行为（LLM 响应过大、重复工具调用、执行停滞），会自动从 AUTO 模式降级到 SUPERVISED 模式，要求用户确认每个工具调用。
 
 输入 `/auto` 可手动恢复 AUTO 模式：
 

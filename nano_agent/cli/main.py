@@ -749,7 +749,7 @@ def run_interactive(
                 continue
 
             if user_input.lower() == Commands.AUTO:
-                if hasattr(agent, "circuit_breaker") and agent.circuit_breaker:
+                if agent.circuit_breaker:
                     agent.circuit_breaker.reset()
                     Console.print("[熔断器] 已恢复 AUTO 模式", style="info")
                 else:

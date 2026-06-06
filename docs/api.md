@@ -454,7 +454,7 @@ from nano_agent.config.schema import CircuitBreakerConfig
 
 cb = CircuitBreaker(CircuitBreakerConfig())
 cb.check_llm_response(completion_tokens)  # 检查 LLM 响应大小
-cb.check_duplicate(duplicate_result)      # 检查重复调用
+cb.check_duplicate(duplicate_result)      # 检查重复调用（传入 DuplicateCheckResult）
 cb.check_stall(stall_result)              # 检查停滞
 cb.mode  # ExecutionMode.AUTO / SUPERVISED
 cb.reset()  # 重置为 AUTO

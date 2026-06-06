@@ -30,6 +30,7 @@ from .budget import Budget, BudgetChecker
 from .undo import UndoStack
 from .subsystems import AgentSubsystems
 from .router import QueryComplexity, QueryRouter
+from .duplicate import DuplicateCheckResult
 from .tool_merger import ToolCallMerger
 from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from .prompt_builder import PromptBuilder
@@ -457,17 +458,10 @@ class ReActAgent(BaseAgent):
             think = self._think()
 
             # Circuit breaker: check LLM response size (v0.8.0)
-            if (
-                self.circuit_breaker
-                and self.circuit_breaker.check_llm_response(
-                    think.usage.completion_tokens
-                )
-                and self.verbose
+            if self.circuit_breaker and self.circuit_breaker.check_llm_response(
+                think.usage.completion_tokens
             ):
-                print(
-                    f"[Circuit Breaker] {self.circuit_breaker.trigger_reason} "
-                    f"— 切换到 SUPERVISED 模式"
-                )
+                self._log_circuit_breaker_trigger()
 
             # Confidence-based early stop (v0.7.5)
             if self.confidence_parser is not None and think.is_final:
@@ -571,11 +565,7 @@ class ReActAgent(BaseAgent):
                 if self.circuit_breaker and self.circuit_breaker.check_stall(
                     stall_result
                 ):
-                    if self.verbose:
-                        print(
-                            f"[Circuit Breaker] {self.circuit_breaker.trigger_reason} "
-                            f"— 切换到 SUPERVISED 模式"
-                        )
+                    self._log_circuit_breaker_trigger()
 
         # Reached max iterations or budget exhausted
         response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
@@ -816,39 +806,40 @@ class ReActAgent(BaseAgent):
             ToolResult from the execution
         """
         # Check for duplicate tool calls (v0.7.8)
-        if not dry_run and self._check_duplicate_tool_call(tool_call):
-            # Circuit breaker: check duplicate (v0.8.0)
-            if self.circuit_breaker:
-                dup_result = self._subsystems.duplicate_detector.check(tool_call)
-                if self.circuit_breaker.check_duplicate(dup_result) and self.verbose:
-                    print(
-                        f"[Circuit Breaker] {self.circuit_breaker.trigger_reason} "
-                        f"— 切换到 SUPERVISED 模式"
-                    )
-            # Record as skipped
-            self.tracker.record_skipped_tool_call(
-                tool_call.name, tool_call.arguments, "duplicate"
-            )
-            # Return cached result or empty result
-            cached_result = self.cache.get_cached_result(
-                tool_call.name, tool_call.arguments
-            )
-            if cached_result is not None:
-                result = cached_result
-            else:
-                result = ToolResult(
-                    success=True, output="[跳过] 检测到重复调用，已跳过"
+        if not dry_run:
+            dup_result = self._check_duplicate_tool_call(tool_call)
+            if dup_result.should_skip:
+                # Circuit breaker: check duplicate (v0.8.0)
+                if self.circuit_breaker and self.circuit_breaker.check_duplicate(
+                    dup_result
+                ):
+                    self._log_circuit_breaker_trigger()
+                # Record as skipped
+                self.tracker.record_skipped_tool_call(
+                    tool_call.name, tool_call.arguments, "duplicate"
                 )
-            # Record tool call
-            self._tool_call_records.append(
-                {
-                    "name": tool_call.name,
-                    "arguments": tool_call.arguments,
-                    "success": result.success,
-                    "output_preview": result.output[:100] if result.output else None,
-                }
-            )
-            return result
+                # Return cached result or empty result
+                cached_result = self.cache.get_cached_result(
+                    tool_call.name, tool_call.arguments
+                )
+                if cached_result is not None:
+                    result = cached_result
+                else:
+                    result = ToolResult(
+                        success=True, output="[跳过] 检测到重复调用，已跳过"
+                    )
+                # Record tool call
+                self._tool_call_records.append(
+                    {
+                        "name": tool_call.name,
+                        "arguments": tool_call.arguments,
+                        "success": result.success,
+                        "output_preview": (
+                            result.output[:100] if result.output else None
+                        ),
+                    }
+                )
+                return result
 
         # Emit tool call event
         self.events.emit(
@@ -888,22 +879,7 @@ class ReActAgent(BaseAgent):
                     )
                     confirmed = self.confirmation.wait_for_result()
                     if not confirmed:
-                        result = ToolResult(
-                            success=False, output="", error="用户取消操作"
-                        )
-                        self._tool_call_records.append(
-                            {
-                                "name": tool_call.name,
-                                "arguments": tool_call.arguments,
-                                "success": False,
-                                "output_preview": None,
-                            }
-                        )
-                        self.events.emit(
-                            AgentEvent.TOOL_RESULT,
-                            {"tool": tool_call.name, "result": result},
-                        )
-                        return result
+                        return self._handle_confirmation_denied(tool_call)
                     # User confirmed — optionally reset to AUTO
                     if self.circuit_breaker.config.auto_reset_on_user_confirm:
                         self.circuit_breaker.reset()
@@ -926,24 +902,7 @@ class ReActAgent(BaseAgent):
                     confirmed = self.confirmation.wait_for_result()
 
                     if not confirmed:
-                        # User denied
-                        result = ToolResult(
-                            success=False, output="", error="用户取消操作"
-                        )
-                        # Record and return early
-                        self._tool_call_records.append(
-                            {
-                                "name": tool_call.name,
-                                "arguments": tool_call.arguments,
-                                "success": False,
-                                "output_preview": None,
-                            }
-                        )
-                        self.events.emit(
-                            AgentEvent.TOOL_RESULT,
-                            {"tool": tool_call.name, "result": result},
-                        )
-                        return result
+                        return self._handle_confirmation_denied(tool_call)
 
                 # Execute the tool
                 tool_start = time.perf_counter()
@@ -1114,6 +1073,31 @@ class ReActAgent(BaseAgent):
 
         # Default: let LLM handle it
         return "请继续说明你的需求。"
+
+    def _handle_confirmation_denied(self, tool_call: ToolCall) -> ToolResult:
+        """Handle user denying tool confirmation."""
+        result = ToolResult(success=False, output="", error="用户取消操作")
+        self._tool_call_records.append(
+            {
+                "name": tool_call.name,
+                "arguments": tool_call.arguments,
+                "success": False,
+                "output_preview": None,
+            }
+        )
+        self.events.emit(
+            AgentEvent.TOOL_RESULT,
+            {"tool": tool_call.name, "result": result},
+        )
+        return result
+
+    def _log_circuit_breaker_trigger(self) -> None:
+        """Print circuit breaker trigger message if verbose."""
+        if self.verbose and self.circuit_breaker:
+            print(
+                f"[Circuit Breaker] {self.circuit_breaker.trigger_reason} "
+                f"— 切换到 SUPERVISED 模式"
+            )
 
     def _handle_budget_warning(self, warning: dict) -> None:
         """
@@ -1328,7 +1312,7 @@ class ReActAgent(BaseAgent):
 
         return result
 
-    def _check_duplicate_tool_call(self, tool_call: ToolCall) -> bool:
+    def _check_duplicate_tool_call(self, tool_call: ToolCall):
         """
         Check if this tool call is a duplicate and should be blocked.
 
@@ -1336,7 +1320,7 @@ class ReActAgent(BaseAgent):
             tool_call: The tool call to check
 
         Returns:
-            True if the call is a duplicate and should be skipped
+            DuplicateCheckResult (always, even if not a duplicate)
         """
         result = self._subsystems.duplicate_detector.check(tool_call)
 
@@ -1346,12 +1330,11 @@ class ReActAgent(BaseAgent):
                     print(f"[Duplicate] 检测到重复工具调用: {tool_call.name}")
                     print(f"   已调用 {result.count} 次，跳过后续重复调用")
                 self._subsystems.duplicate_detector.warning_issued = True
-            return True
 
         if result.is_duplicate and self.verbose:
             print(f"[Duplicate] {tool_call.name} 已调用 {result.count} 次")
 
-        return False
+        return result
 
     def undo_current_round(self, context: dict) -> list[str]:
         """
