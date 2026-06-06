@@ -228,6 +228,26 @@ smart_optimization:
   stall_hint_injection: true
 ```
 
+### 10. LLM 调用重试
+
+**触发条件**: LLM API 返回 429（限流）、500/502/503/504（服务端错误）或网络故障（ConnectionError、Timeout）。
+
+**行为**: 指数退避重试，延迟 = `min(base * 2^attempt + jitter, max_delay)`。默认最多重试 3 次。
+
+**不可重试**: 400/401/403/404（客户端错误）、ValueError/TypeError（逻辑错误）立即抛出，不重试。
+
+**事件**: 每次重试触发 `AgentEvent.LLM_RETRY` 事件，verbose 模式打印 `[Retry 1/3] ConnectionError, waiting 1.0s...`。
+
+```yaml
+retry:
+  enabled: true
+  max_retries: 3
+  base_delay: 1.0
+  max_delay: 60.0
+  jitter: true
+  retryable_status_codes: [429, 500, 502, 503, 504]
+```
+
 ---
 
 ## 软限制（间接影响对话质量）
@@ -477,6 +497,7 @@ semantic_compressor:
   │   │
   │   ├─ ⑥ _think() → LLM 调用
   │   │   ├─ 系统提示词受 token_budget 限制
+  │   │   ├─ 指数退避重试（429/500/网络错误 → 自动重试）
   │   │   ├─ 工具输出受 tool_output_max_tokens 截断
   │   │
   │   ├─ ⑦ 置信度早停（confidence ≥ 0.9 且 can_answer → 终止）
@@ -557,6 +578,12 @@ semantic_compressor:
 | `smart_optimization.stall_patience` | `3` | 连续相似迭代阈值 | 硬限制 |
 | `smart_optimization.stall_similarity_threshold` | `0.7` | 签名相似度阈值 | 硬限制 |
 | `smart_optimization.stall_hint_injection` | `True` | 停滞时注入转向提示 | 硬限制 |
+| `retry.enabled` | `True` | LLM 调用重试开关 | 硬限制 |
+| `retry.max_retries` | `3` | 最大重试次数 | 硬限制 |
+| `retry.base_delay` | `1.0` | 基础退避延迟(秒) | 硬限制 |
+| `retry.max_delay` | `60.0` | 最大退避延迟(秒) | 硬限制 |
+| `retry.jitter` | `True` | 随机抖动 | 硬限制 |
+| `retry.retryable_status_codes` | `[429,500,502,503,504]` | 可重试 HTTP 状态码 | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |

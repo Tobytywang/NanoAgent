@@ -39,7 +39,7 @@ class FakeLLM(BaseLLM):
         self._context_length = context_length
         self.chat_calls = []
 
-    def chat(self, messages, tools=None, system_stable=None, **kwargs):
+    def _chat_impl(self, messages, tools=None, system_stable=None, **kwargs):
         self.chat_calls.append(messages)
         return self._response, [], LLMUsage()
 

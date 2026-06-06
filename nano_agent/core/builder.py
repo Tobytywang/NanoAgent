@@ -194,6 +194,10 @@ class AgentBuilder:
         if hasattr(self.config, "llm"):
             self.config.llm.set_llm_client(self._llm)
 
+        # Inject retry config into LLM client
+        if hasattr(self.config, "retry"):
+            self._llm._retry_config = self.config.retry
+
         # Create agent subsystems from config
         from ..config.schema import (
             SmartOptimizationConfig,
@@ -247,6 +251,26 @@ class AgentBuilder:
             prompt_config=self.config.prompt,
             llm_config=self.config.llm,
         )
+
+        # Wire retry callback to agent events
+        if hasattr(self.config, "retry") and self.config.retry.enabled:
+            from ..agent.types import AgentEvent
+
+            verbose = self.config.agent.verbose
+
+            def _on_llm_retry(event_data: dict):
+                agent.events.emit(AgentEvent.LLM_RETRY, event_data)
+                if verbose:
+                    attempt = event_data["attempt"]
+                    max_retries = event_data["max_retries"]
+                    delay = event_data["delay"]
+                    error = event_data["error"]
+                    print(
+                        f"[Retry {attempt}/{max_retries}] "
+                        f"{error.__class__.__name__}, waiting {delay:.1f}s..."
+                    )
+
+            self._llm._on_retry_callback = _on_llm_retry
 
         # Create orchestrator
         orchestrator = AgentOrchestrator(agent, self.config)

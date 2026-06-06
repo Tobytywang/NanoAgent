@@ -120,7 +120,7 @@ class OllamaLLM(BaseLLM):
             pass
         return None
 
-    def chat(
+    def _chat_impl(
         self,
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,

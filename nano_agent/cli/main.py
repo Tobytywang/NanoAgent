@@ -2099,6 +2099,22 @@ def _show_config(config, agent) -> None:
                 )
             )
 
+    # Retry 配置 (v0.8.0)
+    if hasattr(config, "retry"):
+        print("\n## 重试策略")
+        print(format_line("Enabled:", str(config.retry.enabled)))
+        if config.retry.enabled:
+            print(format_line("Max Retries:", str(config.retry.max_retries)))
+            print(format_line("Base Delay:", f"{config.retry.base_delay}s"))
+            print(format_line("Max Delay:", f"{config.retry.max_delay}s"))
+            print(format_line("Jitter:", str(config.retry.jitter)))
+            print(
+                format_line(
+                    "Retryable Status Codes:",
+                    ", ".join(str(c) for c in config.retry.retryable_status_codes),
+                )
+            )
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -2913,6 +2929,14 @@ def _init_config_file(config, force: bool = False) -> None:
         "standardized_output": {
             "enabled": config.standardized_output.enabled,
             "detailed": config.standardized_output.detailed,
+        },
+        "retry": {
+            "enabled": config.retry.enabled,
+            "max_retries": config.retry.max_retries,
+            "base_delay": config.retry.base_delay,
+            "max_delay": config.retry.max_delay,
+            "jitter": config.retry.jitter,
+            "retryable_status_codes": config.retry.retryable_status_codes,
         },
     }
 

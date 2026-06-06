@@ -22,6 +22,7 @@ from .embedding import (
     EmbeddingConfig,
     create_embedding_client,
 )
+from .retry import with_retry, is_retryable_error, calculate_delay
 
 # Provider type alias
 ProviderType = Literal[
@@ -181,4 +182,8 @@ __all__ = [
     "OpenAIEmbeddingClient",
     "EmbeddingConfig",
     "create_embedding_client",
+    # Retry (v0.8.0)
+    "with_retry",
+    "is_retryable_error",
+    "calculate_delay",
 ]

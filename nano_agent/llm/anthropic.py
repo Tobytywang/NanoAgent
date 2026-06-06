@@ -60,7 +60,9 @@ class AnthropicLLM(BaseLLM):
         try:
             from anthropic import Anthropic
 
-            self._client = Anthropic(api_key=self.api_key, timeout=timeout)
+            self._client = Anthropic(
+                api_key=self.api_key, timeout=timeout, max_retries=0
+            )
         except ImportError:
             raise ImportError(
                 "anthropic package is required for AnthropicLLM. "
@@ -138,7 +140,7 @@ class AnthropicLLM(BaseLLM):
                 )
         return tool_calls
 
-    def chat(
+    def _chat_impl(
         self,
         messages: list[Message] | list[dict],
         tools: list[dict] | None = None,

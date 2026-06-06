@@ -86,6 +86,7 @@ class AgentEvent(Enum):
     BUDGET_WRAPUP = "budget_wrapup"
     DUPLICATE_BLOCKED = "duplicate_blocked"
     STALL_DETECTED = "stall_detected"
+    LLM_RETRY = "llm_retry"
 
 
 class RiskLevel(Enum):

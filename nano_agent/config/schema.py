@@ -472,6 +472,20 @@ class PromptConfig:
 
 
 @dataclass
+class RetryConfig:
+    """LLM call retry configuration."""
+
+    enabled: bool = True
+    max_retries: int = 3
+    base_delay: float = 1.0
+    max_delay: float = 60.0
+    jitter: bool = True
+    retryable_status_codes: list[int] = field(
+        default_factory=lambda: [429, 500, 502, 503, 504]
+    )
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -504,3 +518,4 @@ class Config:
     semantic_compressor: SemanticCompressorConfig = field(
         default_factory=SemanticCompressorConfig
     )
+    retry: RetryConfig = field(default_factory=RetryConfig)

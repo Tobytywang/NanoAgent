@@ -423,6 +423,19 @@ detector.reset()
 
 **与 DuplicateDetector 的区别**: DuplicateDetector 检测完全相同的重复工具调用；StallDetector 检测"不同工具但原地打转"的模式。
 
+### RetryConfig
+
+v0.8.0 LLM 调用重试配置。429/500/网络错误自动指数退避重试。
+
+- `enabled: bool = True` — 启用重试
+- `max_retries: int = 3` — 最大重试次数
+- `base_delay: float = 1.0` — 基础延迟（秒）
+- `max_delay: float = 60.0` — 最大延迟上限（秒）
+- `jitter: bool = True` — 添加随机抖动防止雷群效应
+- `retryable_status_codes: list[int] = [429, 500, 502, 503, 504]` — 可重试的 HTTP 状态码
+
+**重试逻辑**: 放在 `BaseLLM.chat()` 层，子类实现 `_chat_impl()`，`chat()` 自动包裹重试。Anthropic SDK 设 `max_retries=0` 避免双重重试。`chat_stream()` 本期不重试。
+
 ### ToolOffloadManager & OffloadedResult
 
 v0.7.17 工具结果卸载。大结果写入临时文件，仅注入摘要到上下文。
@@ -582,6 +595,14 @@ Calibration & Estimation Audit (v0.7.18):
 - `estimation_audit_enabled: bool = True` — 启用估算审计
 - `estimation_deviation_warning_threshold: float = 0.50` — 偏差告警阈值
 
+Retry (v0.8.0):
+- `retry.enabled: bool = True` — 启用 LLM 调用重试
+- `retry.max_retries: int = 3` — 最大重试次数
+- `retry.base_delay: float = 1.0` — 基础延迟（秒）
+- `retry.max_delay: float = 60.0` — 最大延迟（秒）
+- `retry.jitter: bool = True` — 随机抖动
+- `retry.retryable_status_codes: list[int] = [429, 500, 502, 503, 504]` — 可重试状态码
+
 
 ---
 
@@ -639,6 +660,20 @@ content, tool_calls, usage = llm.chat(
 - `content`: 文本响应
 - `tool_calls`: ToolCall 对象列表
 - `usage`: LLMUsage 实例
+
+### 重试机制
+
+`BaseLLM.chat()` 内置指数退避重试，429/500/网络错误自动恢复：
+
+```python
+from nano_agent.llm.retry import with_retry, is_retryable_error, calculate_delay
+```
+
+- `with_retry(func, config, on_retry)` — 通用重试包装器
+- `is_retryable_error(exc, config)` — 判断异常是否可重试（429/500/网络→可重试，400/401/ValueError→不可重试）
+- `calculate_delay(attempt, config)` — 指数退避延迟：`min(base * 2^attempt + jitter, max_delay)`
+
+重试事件通过 `AgentEvent.LLM_RETRY` 发出，verbose 模式打印 `[Retry 1/3] ConnectionError, waiting 1.0s...`。
 
 ---
 
@@ -1216,6 +1251,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.0 | 指数退避重试（`RetryConfig`、`with_retry`、`is_retryable_error`、`BaseLLM.chat→_chat_impl` 模式） |
 | v0.7.19 | 语义压缩（`SemanticCompressor`、`SemanticCompressorConfig`、`BaseEmbeddingClient`、Ollama/sentence-transformers/OpenAI embedding） |
 | v0.7.18 | 估算审计与准确性增强（`EstimationAudit`、`effective_token_estimate`、`/stats estimation`、偏差告警） |
 | v0.7.16 | 复杂度预算 Profile 与 Stall Detection（`RoutingResult.suggested_budget_ratio`、`TokenBudget.set_budget_ratio`、`StallDetector`、`StallConfig`、`AgentEvent.STALL_DETECTED`） |

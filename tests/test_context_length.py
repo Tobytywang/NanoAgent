@@ -229,7 +229,7 @@ class TestQueryContextLength:
             def __init__(self, model="", base_url=""):
                 pass
 
-            def chat(self, messages, tools=None, system_stable=None, **kwargs):
+            def _chat_impl(self, messages, tools=None, system_stable=None, **kwargs):
                 return ("", [], None)
 
         llm = MinimalLLM()

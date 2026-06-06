@@ -148,6 +148,7 @@ class ConfigLoader:
             data = yaml.safe_load(f) or {}
 
         return _from_dict(Config, data)
+        # RetryConfig: "enabled", "max_retries", "base_delay", "max_delay", "jitter", "retryable_status_codes", "retry"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -164,6 +165,7 @@ class ConfigLoader:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         data = _asdict_filtered(config)
+        # config.retry.enabled, config.retry.max_retries, config.retry.base_delay, config.retry.max_delay, config.retry.jitter, config.retry.retryable_status_codes
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

@@ -4,7 +4,7 @@ Base LLM client interface.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generator
+from typing import Callable, Generator
 from .messages import Message, ToolCall
 
 
@@ -36,6 +36,10 @@ class BaseLLM(ABC):
     # Whether this LLM supports explicit cache_control (Anthropic)
     supports_explicit_caching: bool = False
 
+    # Retry configuration (set by AgentBuilder)
+    _retry_config: "RetryConfig | None" = None
+    _on_retry_callback: "Callable[[dict], None] | None" = None
+
     @abstractmethod
     def __init__(self, model: str, base_url: str, **kwargs):
         """Initialize the LLM client."""
@@ -50,6 +54,25 @@ class BaseLLM(ABC):
         return None
 
     @abstractmethod
+    def _chat_impl(
+        self,
+        messages: list[Message] | list[dict],
+        tools: list[dict] | None = None,
+        system_stable: str | None = None,
+        **kwargs,
+    ) -> tuple[str, list[ToolCall], LLMUsage]:
+        """Subclass implementation of chat (no retry wrapper).
+
+        Args:
+            messages: List of messages in the conversation
+            tools: Optional list of tool definitions in Ollama format
+            system_stable: Stable portion of system prompt for prefix caching
+
+        Returns:
+            Tuple of (text_response, tool_calls, usage)
+        """
+        pass
+
     def chat(
         self,
         messages: list[Message] | list[dict],
@@ -57,8 +80,7 @@ class BaseLLM(ABC):
         system_stable: str | None = None,
         **kwargs,
     ) -> tuple[str, list[ToolCall], LLMUsage]:
-        """
-        Send messages and get a response.
+        """Send messages and get a response, with automatic retry on transient errors.
 
         Args:
             messages: List of messages in the conversation
@@ -70,7 +92,16 @@ class BaseLLM(ABC):
         Returns:
             Tuple of (text_response, tool_calls, usage)
         """
-        pass
+        if self._retry_config is None or not self._retry_config.enabled:
+            return self._chat_impl(messages, tools, system_stable, **kwargs)
+
+        from .retry import with_retry
+
+        return with_retry(
+            lambda: self._chat_impl(messages, tools, system_stable, **kwargs),
+            config=self._retry_config,
+            on_retry=self._on_retry_callback,
+        )
 
     def chat_stream(
         self,

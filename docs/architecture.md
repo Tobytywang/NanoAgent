@@ -25,6 +25,7 @@ graph TB
         OFFLOAD[ToolOffloadManager<br/>结果卸载]
         AUDIT[EstimationAudit<br/>估算审计]
         SEMANTIC[SemanticCompressor<br/>语义压缩]
+        RETRY[RetryHandler<br/>重试处理]
     end
 
     subgraph Core["核心组件"]
@@ -57,6 +58,7 @@ graph TB
     REACT --> OFFLOAD
     REACT --> AUDIT
     REACT --> SEMANTIC
+    REACT --> RETRY
 
     REACT --> LLM
     REACT --> MEM
@@ -75,7 +77,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RetryHandler` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -299,6 +301,7 @@ graph LR
         ollama
         openai_compatible
         messages
+        retry
     end
 
     subgraph memory[memory]
