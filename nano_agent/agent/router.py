@@ -230,3 +230,94 @@ class QueryRouter:
         """
         result = self.classify(query)
         return result.suggested_max_tools
+
+    @staticmethod
+    def is_simple_greeting(query: str) -> bool:
+        """Quick static check if query is a simple greeting.
+
+        Args:
+            query: User's input query
+
+        Returns:
+            True if query is a simple greeting/thanks/identity question
+        """
+        query_lower = query.lower().strip()
+
+        # Keyword-based check (broader than regex patterns)
+        if any(
+            kw in query_lower
+            for kw in [
+                "你好",
+                "hello",
+                "hi",
+                "嗨",
+                "早上好",
+                "下午好",
+                "晚上好",
+                "谢谢",
+                "thanks",
+                "thank you",
+                "感谢",
+                "你是谁",
+                "who are you",
+                "你的名字",
+                "你能做什么",
+                "what can you do",
+                "好的",
+                "ok",
+                "okay",
+                "明白",
+                "了解",
+                "清楚了",
+            ]
+        ):
+            return True
+
+        # Very short English-only inputs
+        if re.match(r"^[a-zA-Z\s]{1,5}$", query_lower):
+            return True
+
+        return False
+
+    @staticmethod
+    def answer_simple(llm, user_input: str) -> str:
+        """Generate a direct answer for simple queries without tool calls.
+
+        Args:
+            llm: LLM client instance
+            user_input: User's input text
+
+        Returns:
+            Direct response string
+        """
+        input_lower = user_input.lower().strip()
+
+        # Greetings
+        if any(g in input_lower for g in ["你好", "hello", "hi", "嗨"]):
+            return "你好！我是助手，有什么可以帮助你的？"
+        # Thanks
+        if any(t in input_lower for t in ["谢谢", "thanks", "thank you", "感谢"]):
+            return "不客气！"
+        # Identity
+        if any(i in input_lower for i in ["你是谁", "who are you", "你的名字"]):
+            return "我是一个 AI 助手，可以帮助你处理各种任务。"
+        # Capabilities
+        if any(c in input_lower for c in ["你能做什么", "what can you do"]):
+            return "我可以帮你：查看文件、执行命令、搜索内容、管理记忆等。"
+        # Confirmations
+        if any(c in input_lower for c in ["好的", "ok", "okay", "明白"]):
+            return "好的，请告诉我你需要什么帮助。"
+
+        # Fallback: lightweight LLM call
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": "Answer briefly and directly in the user's language.",
+                },
+                {"role": "user", "content": user_input},
+            ]
+            response, _, _ = llm.chat(messages=messages, tools=None, system_stable=None)
+            return response
+        except Exception:
+            return "请继续说明你的需求。"
