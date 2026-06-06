@@ -186,18 +186,27 @@ class TestSemanticCompressor:
         assert len(result) == 2
 
     def test_embedding_failure_graceful_degradation(self):
+        """After max_errors failures, compressor disables itself."""
         config = SemanticCompressorConfig(enabled=True, min_messages_to_compress=4)
         client = MagicMock()
         client.embed_batch.side_effect = Exception("Service unavailable")
         compressor = SemanticCompressor(config, embedding_client=client)
 
         messages = [MockMessage(role="user", content=f"msg {i}") for i in range(5)]
-        result = compressor.compress(messages)
 
-        # Should return original messages on failure
+        # First error: not disabled yet (max_errors=3)
+        result = compressor.compress(messages)
         assert len(result) == len(messages)
+        assert compressor._available is not False
+
+        # Second error: still not disabled
+        compressor.compress(messages)
+        assert compressor._available is not False
+
+        # Third error: now disabled
+        compressor.compress(messages)
         assert compressor._available is False
-        assert compressor._stats["errors"] == 1
+        assert compressor._stats["errors"] == 3
 
     def test_stats_tracking(self):
         config = SemanticCompressorConfig(

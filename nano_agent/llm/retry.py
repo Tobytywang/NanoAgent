@@ -90,6 +90,9 @@ def with_retry(
     """
     last_exc = None
 
+    if config.max_retries < 0:
+        raise ValueError(f"max_retries must be >= 0, got {config.max_retries}")
+
     for attempt in range(config.max_retries + 1):
         try:
             return func()

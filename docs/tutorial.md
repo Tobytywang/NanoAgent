@@ -828,6 +828,11 @@ test_result = tester.run(f"请为这段代码编写测试：{code}")
 2. 调整 `stall_patience` 控制触发阈值（默认 3）
 3. 调整 `max_iterations` 参数限制最大迭代次数（默认 10）
 4. 使用 `duplicate_threshold` 控制重复调用检测（默认 3）
+5. 熔断器检测到异常（重复调用/停滞/响应过大）会自动降级为 SUPERVISED 模式，每个工具调用需确认
+
+### Q: 配置文件中 null 值如何处理？
+
+YAML 中 `key: null` 表示显式设为 null，会使用字段的默认值。如果字段无默认值，则传入 `None`。省略 key 与设为 `null` 行为一致。
 
 ---
 

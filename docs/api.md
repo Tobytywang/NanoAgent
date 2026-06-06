@@ -152,6 +152,13 @@ config = SemanticCompressorConfig(
     merge_tag="[merged {n} similar]",
 )
 
+compressor = SemanticCompressor(config)
+compressor.compress(messages)  # 返回压缩后的消息列表
+```
+
+> **注意**: 语义压缩同时支持 dict 和对象类型的消息。embedding 失败不会立即禁用，连续 3 次失败后才将 `_available` 设为 `False`。
+)
+
 compressor = SemanticCompressor(config, llm_config=llm_config)
 
 # 检查是否需要压缩
@@ -457,8 +464,10 @@ cb.check_llm_response(completion_tokens)  # 检查 LLM 响应大小
 cb.check_duplicate(duplicate_result)      # 检查重复调用（传入 DuplicateCheckResult）
 cb.check_stall(stall_result)              # 检查停滞
 cb.mode  # ExecutionMode.AUTO / SUPERVISED
-cb.reset()  # 重置为 AUTO
+cb.reset()  # 重置为 AUTO，同时发射 CIRCUIT_BREAKER 事件
 ```
+
+> **注意**: `max_retries` 必须 >= 0，负值会抛出 `ValueError`。
 
 ### ExecutionMode
 

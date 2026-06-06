@@ -23,6 +23,33 @@ class SemanticCompressorConfig:
     merge_tag: str = "[merged {n} similar]"
 
 
+def _msg_role(m) -> str | None:
+    """Get role from a message (dict or object)."""
+    if isinstance(m, dict):
+        return m.get("role")
+    return getattr(m, "role", None)
+
+
+def _msg_content(m) -> str:
+    """Get content from a message (dict or object)."""
+    if isinstance(m, dict):
+        return m.get("content", "")
+    return getattr(m, "content", str(m))
+
+
+def _set_msg_content(m, content: str):
+    """Set content on a message (dict or object), returning a new message."""
+    if isinstance(m, dict):
+        merged = dict(m)
+        merged["content"] = content
+        return merged
+    import copy
+
+    merged = copy.copy(m)
+    merged.content = content
+    return merged
+
+
 def _cosine_similarity(v1: list[float], v2: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
     if not v1 or not v2 or len(v1) != len(v2):
@@ -60,6 +87,7 @@ class SemanticCompressor:
             "cache_hits": 0,
             "errors": 0,
         }
+        self._max_errors = 3
 
         if self._client is None and config.enabled:
             self._init_client(llm_config)
@@ -89,7 +117,7 @@ class SemanticCompressor:
             return False
         if self._available is False:
             return False
-        non_system = [m for m in messages if getattr(m, "role", None) != "system"]
+        non_system = [m for m in messages if _msg_role(m) != "system"]
         return len(non_system) >= self.config.min_messages_to_compress
 
     def compress(self, messages: list) -> list:
@@ -97,8 +125,8 @@ class SemanticCompressor:
         if not self.should_compress(messages):
             return messages
 
-        system_msgs = [m for m in messages if getattr(m, "role", None) == "system"]
-        other_msgs = [m for m in messages if getattr(m, "role", None) != "system"]
+        system_msgs = [m for m in messages if _msg_role(m) == "system"]
+        other_msgs = [m for m in messages if _msg_role(m) != "system"]
 
         if not other_msgs:
             return messages
@@ -109,7 +137,8 @@ class SemanticCompressor:
             logger = get_logger()
             logger.debug(f"SemanticCompressor: embedding failed, skipping: {e}")
             self._stats["errors"] += 1
-            self._available = False
+            if self._stats["errors"] >= self._max_errors:
+                self._available = False
             return messages
 
         if len(embeddings) != len(other_msgs):
@@ -129,7 +158,6 @@ class SemanticCompressor:
         merged_count = 0
         for i, msg in enumerate(other_msgs):
             if i in consumed:
-                merged_count += 1
                 continue
             group = merged_indices.get(i)
             if group is not None:
@@ -150,7 +178,7 @@ class SemanticCompressor:
         if self._client is None:
             raise RuntimeError("Embedding client not initialized")
 
-        texts = [getattr(m, "content", str(m)) for m in messages]
+        texts = [_msg_content(m) for m in messages]
         results = []
         uncached_indices = []
         uncached_texts = []
@@ -190,9 +218,7 @@ class SemanticCompressor:
             for j in range(i + 1, len(messages)):
                 if j in consumed:
                     continue
-                if getattr(messages[i], "role", None) != getattr(
-                    messages[j], "role", None
-                ):
+                if _msg_role(messages[i]) != _msg_role(messages[j]):
                     continue
                 sim = _cosine_similarity(embeddings[i], embeddings[j])
                 if sim >= threshold:
@@ -206,16 +232,9 @@ class SemanticCompressor:
     def _merge_message(self, original, count: int):
         """Add merge tag to a message."""
         tag = self.config.merge_tag.format(n=count - 1)
-        content = getattr(original, "content", str(original))
+        content = _msg_content(original)
         new_content = f"{content}\n{tag}"
-
-        if hasattr(original, "__dict__"):
-            import copy
-
-            merged = copy.copy(original)
-            merged.content = new_content
-            return merged
-        return original
+        return _set_msg_content(original, new_content)
 
     def get_stats(self) -> dict:
         """Return compression statistics."""

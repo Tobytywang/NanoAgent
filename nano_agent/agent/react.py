@@ -526,9 +526,9 @@ class ReActAgent(BaseAgent):
                 self._observe(tool_call, result)
                 tool_calls_in_round += 1
 
-                # Update token budget (v0.7.5)
-                if self.token_budget is not None:
-                    self.token_budget.consume(think.usage.total_tokens)
+            # Update token budget once per iteration (not per tool call)
+            if self.token_budget is not None:
+                self.token_budget.consume(think.usage.total_tokens)
 
             self.tracker.end_iteration()
 
@@ -538,8 +538,8 @@ class ReActAgent(BaseAgent):
                 iter_tool_results = []
                 for tc in merged_tool_calls:
                     for rec in self._tool_call_records:
-                        if rec.get("tool") == tc.name:
-                            iter_tool_results.append(str(rec.get("result", "")))
+                        if rec.get("name") == tc.name:
+                            iter_tool_results.append(str(rec.get("output_preview", "")))
                             break
                     else:
                         iter_tool_results.append("")

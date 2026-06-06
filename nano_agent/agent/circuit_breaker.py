@@ -101,8 +101,15 @@ class CircuitBreaker:
 
     def reset(self):
         """Reset to AUTO mode."""
+        if self._mode == ExecutionMode.AUTO:
+            return
         self._mode = ExecutionMode.AUTO
         self._trigger_reason = None
+        if self._events:
+            self._events.emit(
+                AgentEvent.CIRCUIT_BREAKER,
+                {"reason": "reset", "mode": ExecutionMode.AUTO.value},
+            )
 
     def _trigger(self, reason: str):
         """Trigger circuit breaker, degrading to SUPERVISED mode."""

@@ -61,18 +61,22 @@ def _from_dict(cls, data: dict):
         if f.name.startswith("_"):
             continue
 
-        value = data.get(f.name)
+        # 区分"键缺失"与"显式 null"
+        if f.name not in data:
+            # 字典中没有该字段，使用默认值
+            continue
 
-        # 如果字典中没有该字段，使用默认值
+        value = data[f.name]
+
+        # 显式 null：使用默认值（如果有）
         if value is None:
-            # 检查是否有 default 或 default_factory
             if f.default is not dataclasses.MISSING:
-                continue  # 使用 dataclass 默认值
-            elif f.default_factory is not dataclasses.MISSING:
-                continue  # 使用 default_factory
-            else:
-                # 无默认值且字典中也没有，跳过（让 dataclass 报错或使用 None）
                 continue
+            elif f.default_factory is not dataclasses.MISSING:
+                continue
+            # 无默认值，传 None 进去
+            kwargs[f.name] = None
+            continue
 
         # 处理嵌套 dataclass
         if _is_dataclass_type(f.type):
