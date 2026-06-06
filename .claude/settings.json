@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(pre-commit run *)",
+      "Bash(bash -n *)"
+    ]
+  }
+}
