@@ -2123,6 +2123,19 @@ def _show_config(config, agent) -> None:
                 )
             )
 
+    # Rate Limiter 配置 (v0.8.1)
+    if hasattr(config, "rate_limiter"):
+        print("\n## 限流策略")
+        print(format_line("Enabled:", str(config.rate_limiter.enabled)))
+        if config.rate_limiter.enabled:
+            print(
+                format_line(
+                    "Requests Per Minute:",
+                    str(config.rate_limiter.requests_per_minute),
+                )
+            )
+            print(format_line("Burst:", str(config.rate_limiter.burst)))
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -2945,6 +2958,11 @@ def _init_config_file(config, force: bool = False) -> None:
             "max_delay": config.retry.max_delay,
             "jitter": config.retry.jitter,
             "retryable_status_codes": config.retry.retryable_status_codes,
+        },
+        "rate_limiter": {
+            "enabled": config.rate_limiter.enabled,
+            "requests_per_minute": config.rate_limiter.requests_per_minute,
+            "burst": config.rate_limiter.burst,
         },
     }
 

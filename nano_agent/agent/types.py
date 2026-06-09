@@ -94,6 +94,7 @@ class AgentEvent(Enum):
     DUPLICATE_BLOCKED = "duplicate_blocked"
     STALL_DETECTED = "stall_detected"
     LLM_RETRY = "llm_retry"
+    LLM_RATE_LIMITED = "llm_rate_limited"
     CIRCUIT_BREAKER = "circuit_breaker"
 
 

@@ -154,6 +154,7 @@ class ConfigLoader:
         return _from_dict(Config, data)
         # RetryConfig: "enabled", "max_retries", "base_delay", "max_delay", "jitter", "retryable_status_codes", "retry"
         # CircuitBreakerConfig: "enabled", "max_response_tokens", "duplicate_trigger_count", "stall_trigger_count", "auto_reset_on_user_confirm", "circuit_breaker"
+        # RateLimiterConfig: "enabled", "requests_per_minute", "burst", "rate_limiter"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -172,6 +173,7 @@ class ConfigLoader:
         data = _asdict_filtered(config)
         # config.retry.enabled, config.retry.max_retries, config.retry.base_delay, config.retry.max_delay, config.retry.jitter, config.retry.retryable_status_codes
         # config.circuit_breaker.enabled, config.circuit_breaker.max_response_tokens, config.circuit_breaker.duplicate_trigger_count, config.circuit_breaker.stall_trigger_count, config.circuit_breaker.auto_reset_on_user_confirm
+        # config.rate_limiter.enabled, config.rate_limiter.requests_per_minute, config.rate_limiter.burst
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

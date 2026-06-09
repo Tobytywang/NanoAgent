@@ -246,6 +246,7 @@ class AnthropicLLM(BaseLLM):
         Yields:
             Text chunks from the response
         """
+        self._apply_rate_limit()
         # Build system prompt with caching
         system_content = None
         if system_stable:

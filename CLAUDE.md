@@ -175,6 +175,15 @@ Always provide a clear purpose explaining what, why, and expected output:
 python -m nano_agent.cli.main --list-sessions
 ```
 
+### 后台 Shell 规范
+
+为避免残留僵尸进程，遵守以下规则：
+
+1. **pytest 必须前台运行** — 测试通常几分钟内完成，不使用 `run_in_background`
+2. **禁止 `| tail` / `| head` 管道截断** — 管道会导致上游进程卡在 sleep 状态，会话结束后不退出
+3. **长命令用 `--timeout`** — 替代后台运行，超时自动终止不残留
+4. **真正需要后台的场景** — 仅限 dev server、watch 模式等长期运行的服务
+
 ---
 
 ## Design Philosophy

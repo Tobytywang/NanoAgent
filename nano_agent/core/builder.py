@@ -195,8 +195,18 @@ class AgentBuilder:
             self.config.llm.set_llm_client(self._llm)
 
         # Inject retry config into LLM client
-        if hasattr(self.config, "retry"):
+        if hasattr(self.config, "retry") and self.config.retry is not None:
             self._llm._retry_config = self.config.retry
+
+        # Inject rate limiter config and instance into LLM client
+        if (
+            hasattr(self.config, "rate_limiter")
+            and self.config.rate_limiter is not None
+        ):
+            self._llm._rate_limiter_config = self.config.rate_limiter
+            from ..llm.rate_limiter import TokenBucketRateLimiter
+
+            self._llm._rate_limiter = TokenBucketRateLimiter(self.config.rate_limiter)
 
         # Create agent subsystems from config
         from ..config.schema import (
@@ -257,7 +267,11 @@ class AgentBuilder:
         )
 
         # Wire retry callback to agent events
-        if hasattr(self.config, "retry") and self.config.retry.enabled:
+        if (
+            hasattr(self.config, "retry")
+            and self.config.retry is not None
+            and self.config.retry.enabled
+        ):
             from ..agent.types import AgentEvent
 
             verbose = self.config.agent.verbose
@@ -275,6 +289,28 @@ class AgentBuilder:
                     )
 
             self._llm._on_retry_callback = _on_llm_retry
+
+        # Wire rate limiter callback to agent events
+        if (
+            hasattr(self.config, "rate_limiter")
+            and self.config.rate_limiter is not None
+            and self.config.rate_limiter.enabled
+        ):
+            from ..agent.types import AgentEvent
+
+            verbose = self.config.agent.verbose
+
+            def _on_llm_rate_limit(event_data: dict):
+                agent.events.emit(AgentEvent.LLM_RATE_LIMITED, event_data)
+                if verbose:
+                    wait_time = event_data["wait_time"]
+                    rpm = event_data["rpm"]
+                    print(
+                        f"[Rate Limit] Waiting {wait_time:.2f}s "
+                        f"(limit: {rpm} rpm)..."
+                    )
+
+            self._llm._on_rate_limit_callback = _on_llm_rate_limit
 
         # Create orchestrator
         orchestrator = AgentOrchestrator(agent, self.config)

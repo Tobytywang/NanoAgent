@@ -26,6 +26,7 @@ graph TB
         AUDIT[EstimationAudit<br/>估算审计]
         SEMANTIC[SemanticCompressor<br/>语义压缩]
         RETRY[RetryHandler<br/>重试处理]
+        RL[RateLimiter<br/>速率限制]
         CB[CircuitBreaker<br/>熔断降级]
     end
 
@@ -59,6 +60,7 @@ graph TB
     REACT --> OFFLOAD
     REACT --> AUDIT
     REACT --> SEMANTIC
+    REACT --> RL
     REACT --> RETRY
     REACT --> CB
 
@@ -79,7 +81,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RetryHandler`, `CircuitBreaker` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -304,6 +306,7 @@ graph LR
         openai_compatible
         messages
         retry
+        rate_limiter
     end
 
     subgraph memory[memory]
@@ -396,6 +399,32 @@ NanoAgent 采用"关键决策确认"模型，平衡用户控制与 LLM 自动化
 - **BaseAgent/BaseLLM/BaseMemory/BaseTool**: 使用 ABC 定义抽象基类
 - **Registry 模式**: `ToolRegistry` 和 `SkillRegistry` 集中管理扩展
 - **策略模式**: 存储后端可插拔 (`FileStorage` / `SQLiteStorage`)
+
+### LLM 调用三层稳定性机制
+
+`BaseLLM.chat()` 内置三层调用链，从主动预防到被动恢复逐层保护：
+
+```
+chat()                          ← 入口方法
+  │
+  ├─ ① RateLimiter.acquire()    ← 主动预防：令牌桶限流
+  │     令牌以 requests_per_minute/60 速率填充
+  │     桶容量 = burst，满时丢弃新令牌
+  │     桶空时阻塞等待，避免触发 API 429
+  │
+  ├─ ② with_retry(_chat_impl)   ← 被动恢复：指数退避重试
+  │     429/500/502/503/504/网络错误 → 自动重试
+  │     400/401/403/ValueError → 立即抛出不重试
+  │     延迟 = min(base × 2^attempt + jitter, max_delay)
+  │
+  └─ ③ _chat_impl()             ← 实际 API 调用（子类实现）
+        OllamaLLM / OpenAICompatibleLLM 各自实现
+```
+
+**设计原则**：
+- **预防优于治疗**: RateLimiter 主动控制调用频率，减少 429 错误发生概率
+- **优雅降级**: 即使限流失败触发 429，RetryHandler 仍可自动恢复
+- **透明分层**: 子类只需实现 `_chat_impl()`，无需关心限流和重试逻辑
 
 ### Token 消耗分析
 

@@ -500,6 +500,23 @@ class RetryConfig:
 
 
 @dataclass
+class RateLimiterConfig:
+    """LLM API rate limiter configuration."""
+
+    enabled: bool = True
+    requests_per_minute: int = 60
+    burst: int = 10
+
+    def __post_init__(self):
+        if self.requests_per_minute <= 0:
+            raise ValueError(
+                f"requests_per_minute must be > 0, got {self.requests_per_minute}"
+            )
+        if self.burst <= 0:
+            raise ValueError(f"burst must be > 0, got {self.burst}")
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -533,3 +550,4 @@ class Config:
         default_factory=SemanticCompressorConfig
     )
     retry: RetryConfig = field(default_factory=RetryConfig)
+    rate_limiter: RateLimiterConfig = field(default_factory=RateLimiterConfig)

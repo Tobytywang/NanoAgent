@@ -39,6 +39,9 @@ class TestAgentBuilder:
             stable_modules=["core", "tools"],
             enable_caching=True,
         )
+        # Explicitly set retry and rate_limiter to None (no retry/rate limiting in tests)
+        config.retry = None
+        config.rate_limiter = None
         return config
 
     @pytest.fixture

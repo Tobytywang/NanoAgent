@@ -23,6 +23,7 @@ from .embedding import (
     create_embedding_client,
 )
 from .retry import with_retry, is_retryable_error, calculate_delay
+from .rate_limiter import TokenBucketRateLimiter, with_rate_limit
 
 # Provider type alias
 ProviderType = Literal[
@@ -186,4 +187,7 @@ __all__ = [
     "with_retry",
     "is_retryable_error",
     "calculate_delay",
+    # Rate limiter (v0.8.1)
+    "TokenBucketRateLimiter",
+    "with_rate_limit",
 ]

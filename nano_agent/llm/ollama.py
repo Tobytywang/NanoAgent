@@ -198,6 +198,7 @@ class OllamaLLM(BaseLLM):
         Yields:
             Text chunks from the response
         """
+        self._apply_rate_limit()
         payload = self._build_payload(messages, tools)
         payload["stream"] = True
 

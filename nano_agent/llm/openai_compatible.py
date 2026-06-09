@@ -221,6 +221,7 @@ class OpenAICompatibleLLM(BaseLLM):
         Yields:
             Text chunks from the response
         """
+        self._apply_rate_limit()
         payload = self._build_payload(messages, tools, system_stable)
         payload["stream"] = True
 

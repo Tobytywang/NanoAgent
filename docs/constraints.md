@@ -248,7 +248,38 @@ retry:
   retryable_status_codes: [429, 500, 502, 503, 504]
 ```
 
-### 11. 熔断器降级
+### 12. 速率限制
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `rate_limiter.*` |
+| 默认值 | `enabled: True` / `requests_per_minute: 60` / `burst: 10` |
+| 源码位置 | `nano_agent/config/schema.py` → `RateLimiterConfig` |
+
+基于令牌桶算法，在 LLM API 调用前主动控制请求频率，防止触发 API 限流（429 错误）。与重试机制配合使用：速率限制是"预防"，重试是"治疗"。
+
+**令牌桶算法**：
+- 令牌以 `requests_per_minute / 60` 的速率填充到桶中
+- 桶容量为 `burst`，满时新令牌被丢弃
+- 每次请求消耗一个令牌
+- 桶空时请求阻塞等待直到获取令牌
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `rate_limiter.enabled` | `True` | 是否启用速率限制 |
+| `rate_limiter.requests_per_minute` | `60` | 每分钟最大请求数（必须 > 0） |
+| `rate_limiter.burst` | `10` | 令牌桶容量，允许突发请求数（必须 > 0） |
+
+**约束验证**: `requests_per_minute <= 0` 或 `burst <= 0` 时，`RateLimiterConfig.__post_init__()` 抛出 `ValueError`。
+
+```yaml
+rate_limiter:
+  enabled: true
+  requests_per_minute: 60   # 每分钟 60 次请求
+  burst: 10                 # 允许 10 次突发
+```
+
+### 13. 熔断器降级
 
 | 项目 | 值 |
 |------|------|
@@ -539,6 +570,7 @@ semantic_compressor:
   │   │
   │   ├─ ⑥ _think() → LLM 调用
   │   │   ├─ 系统提示词受 token_budget 限制
+  │   │   ├─ 速率限制（令牌桶 acquire → 桶空则等待）
   │   │   ├─ 指数退避重试（429/500/网络错误 → 自动重试）
   │   │   ├─ 工具输出受 tool_output_max_tokens 截断
   │   │
@@ -571,6 +603,7 @@ semantic_compressor:
 - 预算收尾轮是**TokenBudget 的子机制**：在 `should_summarize()` 之前检查，收尾轮执行后直接终止，不会回到主循环
 - 重复检测阈值现在可通过 `smart_optimization.duplicate_threshold` 配置
 - Stall Detection 是**第三个提前干预机制**：与置信度早停（循环内部）和查询路由（循环入口）不同，Stall Detection 在循环末尾检测无进展并注入转向提示，不直接终止循环
+- 速率限制和重试是**LLM 调用的两层防护**：速率限制是"预防"（主动控制调用频率），重试是"治疗"（被动恢复失败调用）。调用链为 `rate_limiter.acquire() → with_retry(_chat_impl)`
 
 ---
 
@@ -630,6 +663,9 @@ semantic_compressor:
 | `retry.max_delay` | `60.0` | 最大退避延迟(秒) | 硬限制 |
 | `retry.jitter` | `True` | 随机抖动 | 硬限制 |
 | `retry.retryable_status_codes` | `[429,500,502,503,504]` | 可重试 HTTP 状态码 | 硬限制 |
+| `rate_limiter.enabled` | `True` | 速率限制开关 | 硬限制 |
+| `rate_limiter.requests_per_minute` | `60` | 每分钟最大请求数 | 硬限制 |
+| `rate_limiter.burst` | `10` | 令牌桶容量（突发请求数） | 硬限制 |
 | `smart_optimization.circuit_breaker.enabled` | `True` | 熔断器开关 | 硬限制 |
 | `smart_optimization.circuit_breaker.max_response_tokens` | `8000` | LLM 单次响应上限 | 硬限制 |
 | `smart_optimization.circuit_breaker.duplicate_trigger_count` | `3` | 重复调用触发次数 | 硬限制 |

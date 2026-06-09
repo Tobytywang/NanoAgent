@@ -443,6 +443,18 @@ v0.8.0 LLM 调用重试配置。429/500/网络错误自动指数退避重试。
 
 **重试逻辑**: 放在 `BaseLLM.chat()` 层，子类实现 `_chat_impl()`，`chat()` 自动包裹重试。Anthropic SDK 设 `max_retries=0` 避免双重重试。`chat_stream()` 本期不重试。
 
+### RateLimiterConfig
+
+v0.8.1 LLM API 速率限制配置。基于令牌桶算法，在请求发出前主动控制调用频率，防止触发 API 限流。
+
+- `enabled: bool = True` — 启用速率限制
+- `requests_per_minute: int = 60` — 每分钟允许的最大请求数
+- `burst: int = 10` — 令牌桶容量，允许短时间内的突发请求数
+
+**限流逻辑**: 放在 `BaseLLM.chat()` 层，在重试机制之前执行。调用链为 `chat() → rate_limiter.acquire() → with_retry(_chat_impl)`。令牌桶以 `requests_per_minute / 60` 的速率填充令牌，桶容量为 `burst`。桶满时新令牌被丢弃；桶空时请求阻塞等待直到获取令牌。`chat_stream()` 本期不限流。
+
+> **注意**: `requests_per_minute` 必须 > 0，`burst` 必须 > 0，负值或零会抛出 `ValueError`。
+
 ### CircuitBreakerConfig & CircuitBreaker
 
 v0.8.0 熔断器配置。检测异常 LLM 行为（响应过大、重复调用、停滞），从 AUTO 降级到 SUPERVISED 模式。
@@ -642,6 +654,11 @@ Retry (v0.8.0):
 - `retry.max_delay: float = 60.0` — 最大延迟（秒）
 - `retry.jitter: bool = True` — 随机抖动
 - `retry.retryable_status_codes: list[int] = [429, 500, 502, 503, 504]` — 可重试状态码
+
+Rate Limiter (v0.8.1):
+- `rate_limiter.enabled: bool = True` — 启用速率限制
+- `rate_limiter.requests_per_minute: int = 60` — 每分钟最大请求数
+- `rate_limiter.burst: int = 10` — 令牌桶容量（允许突发请求数）
 
 **CircuitBreaker (smart_optimization.circuit_breaker)**
 
@@ -1070,6 +1087,11 @@ semantic_compressor:
   embedding_model: nomic-embed-text
   cache_embeddings: true
   merge_tag: "[merged {n} similar]"
+
+rate_limiter:
+  enabled: true                # 启用速率限制
+  requests_per_minute: 60      # 每分钟最大请求数
+  burst: 10                    # 令牌桶容量（允许突发请求数）
 ```
 
 ### ConfigLoader
@@ -1300,6 +1322,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.1 | 速率限制（`RateLimiterConfig`、令牌桶算法、`rate_limiter→retry→_chat_impl` 三层调用链） |
 | v0.8.0 | 指数退避重试（`RetryConfig`、`with_retry`、`is_retryable_error`、`BaseLLM.chat→_chat_impl` 模式） |
 | v0.7.19 | 语义压缩（`SemanticCompressor`、`SemanticCompressorConfig`、`BaseEmbeddingClient`、Ollama/sentence-transformers/OpenAI embedding） |
 | v0.7.18 | 估算审计与准确性增强（`EstimationAudit`、`effective_token_estimate`、`/stats estimation`、偏差告警） |
