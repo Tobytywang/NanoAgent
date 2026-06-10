@@ -62,6 +62,7 @@ class AgentOrchestrator:
         self.session_id = self._generate_session_id()
         self.stats = SessionStats()
         self.events = EventEmitter()
+        self.last_sanitizer_result = None
 
     # Property proxies for backward compatibility with CLI
     @property
@@ -107,6 +108,7 @@ class AgentOrchestrator:
         # Sanitize input before processing
         if self.sanitizer and self.sanitizer.enabled:
             sanitizer_result = self.sanitizer.sanitize(user_input)
+            self.last_sanitizer_result = sanitizer_result
             if sanitizer_result.rejected:
                 return ExecutionResult(
                     response=f"Input rejected: {sanitizer_result.reason}",
@@ -118,6 +120,8 @@ class AgentOrchestrator:
                     termination_reason=TerminationReason.INPUT_REJECTED.value,
                 )
             user_input = sanitizer_result.sanitized_input
+        else:
+            self.last_sanitizer_result = None
 
         # Delegate to execution layer
         result = self.agent.run(user_input, dry_run=dry_run, session_id=self.session_id)

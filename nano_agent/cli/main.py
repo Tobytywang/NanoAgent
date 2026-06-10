@@ -876,6 +876,18 @@ def run_interactive(
                 print(f"⚠ 输入被拒绝: {result.response}")
                 continue
 
+            # Show PII desensitization notice
+            if (
+                orchestrator.last_sanitizer_result is not None
+                and orchestrator.last_sanitizer_result.pii_matches
+            ):
+                from nano_agent.agent.sanitizer import summarize_pii_matches
+
+                summary = summarize_pii_matches(
+                    orchestrator.last_sanitizer_result.pii_matches
+                )
+                print(f"[PII] 已脱敏 ({summary})")
+
             # Sanitize response for printing
             response = result.response
             try:
@@ -2175,6 +2187,13 @@ def _show_config(config, agent) -> None:
             print(
                 format_line("Max Line Length:", str(config.sanitizer.max_line_length))
             )
+            print(
+                format_line("PII Desensitization:", str(config.sanitizer.pii_enabled))
+            )
+            if config.sanitizer.pii_enabled:
+                print(format_line("PII Mask Mode:", config.sanitizer.pii_mask_mode))
+                print(format_line("PII Mask Char:", config.sanitizer.pii_mask_char))
+                print(format_line("PII Types:", ", ".join(config.sanitizer.pii_types)))
 
     print("\n" + "=" * 50 + "\n")
 
@@ -3011,6 +3030,10 @@ def _init_config_file(config, force: bool = False) -> None:
             "reject_null_bytes": config.sanitizer.reject_null_bytes,
             "reject_control_chars": config.sanitizer.reject_control_chars,
             "max_line_length": config.sanitizer.max_line_length,
+            "pii_enabled": config.sanitizer.pii_enabled,
+            "pii_mask_mode": config.sanitizer.pii_mask_mode,
+            "pii_mask_char": config.sanitizer.pii_mask_char,
+            "pii_types": config.sanitizer.pii_types,
         },
     }
 

@@ -552,6 +552,14 @@ class SanitizerConfig:
     reject_control_chars: bool = True
     max_line_length: int = 5000
 
+    # PII desensitization (v0.8.4)
+    pii_enabled: bool = False
+    pii_mask_char: str = "*"
+    pii_mask_mode: Literal["partial", "full"] = "partial"
+    pii_types: list[str] = field(
+        default_factory=lambda: ["phone", "id_card", "email", "api_key"]
+    )
+
 
 @dataclass
 class Config:

@@ -155,7 +155,7 @@ class ConfigLoader:
         # RetryConfig: "enabled", "max_retries", "base_delay", "max_delay", "jitter", "retryable_status_codes", "retry"
         # CircuitBreakerConfig: "enabled", "max_response_tokens", "duplicate_trigger_count", "stall_trigger_count", "auto_reset_on_user_confirm", "circuit_breaker"
         # RateLimiterConfig: "enabled", "requests_per_minute", "burst", "rate_limiter"
-        # SanitizerConfig: "enabled", "injection_patterns", "custom_patterns", "max_input_length", "length_action", "reject_null_bytes", "reject_control_chars", "max_line_length", "sanitizer"
+        # SanitizerConfig: "enabled", "injection_patterns", "custom_patterns", "max_input_length", "length_action", "reject_null_bytes", "reject_control_chars", "max_line_length", "pii_enabled", "pii_mask_char", "pii_mask_mode", "pii_types", "sanitizer"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -175,7 +175,7 @@ class ConfigLoader:
         # config.retry.enabled, config.retry.max_retries, config.retry.base_delay, config.retry.max_delay, config.retry.jitter, config.retry.retryable_status_codes
         # config.circuit_breaker.enabled, config.circuit_breaker.max_response_tokens, config.circuit_breaker.duplicate_trigger_count, config.circuit_breaker.stall_trigger_count, config.circuit_breaker.auto_reset_on_user_confirm
         # config.rate_limiter.enabled, config.rate_limiter.requests_per_minute, config.rate_limiter.burst
-        # config.sanitizer.enabled, config.sanitizer.injection_patterns, config.sanitizer.custom_patterns, config.sanitizer.max_input_length, config.sanitizer.length_action, config.sanitizer.reject_null_bytes, config.sanitizer.reject_control_chars, config.sanitizer.max_line_length
+        # config.sanitizer.enabled, config.sanitizer.injection_patterns, config.sanitizer.custom_patterns, config.sanitizer.max_input_length, config.sanitizer.length_action, config.sanitizer.reject_null_bytes, config.sanitizer.reject_control_chars, config.sanitizer.max_line_length, config.sanitizer.pii_enabled, config.sanitizer.pii_mask_char, config.sanitizer.pii_mask_mode, config.sanitizer.pii_types
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

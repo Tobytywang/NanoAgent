@@ -1,9 +1,11 @@
 """
-Input sanitizer - filters prompt injection patterns and validates input format.
+Input sanitizer - filters prompt injection patterns, validates input format,
+and optionally desensitizes PII (Personally Identifiable Information).
 
 Runs at the orchestrator boundary, before user input reaches the ReAct loop
 or memory. This is a hard gate: injection patterns always reject; format
-issues may truncate or reject depending on configuration.
+issues may truncate or reject depending on configuration; PII is masked
+in-place so the agent never sees raw sensitive data.
 """
 
 import re
@@ -23,6 +25,132 @@ _CONTROL_CHAR_TABLE = str.maketrans(
 
 
 @dataclass
+class PIIMatch:
+    """A single PII occurrence found in text."""
+
+    pii_type: str
+    start: int
+    end: int
+    original: str
+    masked: str
+
+
+def summarize_pii_matches(matches: list[PIIMatch]) -> str:
+    """Build a human-readable summary of PII match counts by type."""
+    type_counts: dict[str, int] = {}
+    for m in matches:
+        type_counts[m.pii_type] = type_counts.get(m.pii_type, 0) + 1
+    return ", ".join(f"{t}: {c}" for t, c in sorted(type_counts.items()))
+
+
+class PIIDesensitizer:
+    """
+    PII desensitizer - detects and masks personally identifiable information.
+
+    Supported PII types:
+    - phone: Chinese mobile numbers (1xx-xxxx-xxxx)
+    - id_card: Chinese national ID (18 digits with optional X)
+    - email: Email addresses
+    - api_key: Common API key / token patterns (Bearer, sk-, pk-, ghp_, etc.)
+    """
+
+    _PATTERNS: dict[str, str] = {
+        "phone": r"1[3-9]\d{9}",
+        "id_card": r"[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]",
+        "email": r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
+        "api_key": r"(?:Bearer\s+|sk-|pk-|ghp_|gho_|github_pat_|AKIA|AIza)[a-zA-Z0-9_\-]{16,}",
+    }
+
+    def __init__(self, config: SanitizerConfig):
+        self._mask_char = config.pii_mask_char
+        self._mask_mode = config.pii_mask_mode
+        self._enabled_types = set(config.pii_types)
+        self._compiled = {
+            name: re.compile(pattern)
+            for name, pattern in self._PATTERNS.items()
+            if name in self._enabled_types
+        }
+
+    def desensitize(self, text: str) -> tuple[str, list[PIIMatch]]:
+        """Find and mask PII in text. Returns (sanitized_text, matches)."""
+        # Collect raw matches as (start, end, pii_type, original)
+        raw: list[tuple[int, int, str, str]] = []
+        for pii_type, pattern in self._compiled.items():
+            for m in pattern.finditer(text):
+                raw.append((m.start(), m.end(), pii_type, m.group()))
+
+        if not raw:
+            return text, []
+
+        # Remove overlapping matches — keep longer spans
+        raw.sort(key=lambda x: (x[0], -(x[1] - x[0])))
+        filtered_raw: list[tuple[int, int, str, str]] = []
+        for item in raw:
+            if not filtered_raw or item[0] >= filtered_raw[-1][1]:
+                filtered_raw.append(item)
+            elif item[1] > filtered_raw[-1][1] and (item[1] - item[0]) > (
+                filtered_raw[-1][1] - filtered_raw[-1][0]
+            ):
+                filtered_raw[-1] = item
+
+        # Build PIIMatch objects only for surviving matches
+        matches: list[PIIMatch] = []
+        for start, end, pii_type, original in filtered_raw:
+            masked = self._mask(original, pii_type)
+            matches.append(
+                PIIMatch(
+                    pii_type=pii_type,
+                    start=start,
+                    end=end,
+                    original=original,
+                    masked=masked,
+                )
+            )
+
+        # Replace from end to avoid offset shift
+        for match in reversed(matches):
+            text = text[: match.start] + match.masked + text[match.end :]
+
+        return text, matches
+
+    def _mask(self, value: str, pii_type: str) -> str:
+        """Mask a single PII value based on mode."""
+        if self._mask_mode == "full":
+            return self._mask_char * len(value)
+
+        # Partial masking: show head/tail, mask middle
+        n = len(value)
+        if pii_type == "phone":
+            # 138****1234
+            return value[:3] + self._mask_char * 4 + value[-4:]
+        elif pii_type == "id_card":
+            # 110***********1234
+            return value[:3] + self._mask_char * (n - 7) + value[-4:]
+        elif pii_type == "email":
+            # u***@domain.com
+            at = value.index("@")
+            if at <= 1:
+                return self._mask_char * at + value[at:]
+            return value[0] + self._mask_char * (at - 1) + value[at:]
+        elif pii_type == "api_key":
+            # sk-****...****abcd
+            if n <= 8:
+                return self._mask_char * n
+            prefix_len = min(3, n // 4)
+            suffix_len = min(4, n // 4)
+            return (
+                value[:prefix_len]
+                + self._mask_char * (n - prefix_len - suffix_len)
+                + value[-suffix_len:]
+            )
+        else:
+            # Generic: show first 2 and last 2 chars
+            if n <= 4:
+                return self._mask_char * n
+            return value[:2] + self._mask_char * (n - 4) + value[-2:]
+
+
+@dataclass
 class SanitizerResult:
     """Result of input sanitization."""
 
@@ -31,16 +159,19 @@ class SanitizerResult:
     rejected: bool
     reason: str | None
     actions_taken: list[str]
+    pii_matches: list[PIIMatch] = field(default_factory=list)
 
 
 class InputSanitizer:
     """
-    Input sanitizer - filters prompt injection patterns and validates format.
+    Input sanitizer - filters prompt injection patterns, validates format,
+    and optionally desensitizes PII.
 
     Processing order:
     1. Format validation (null bytes, control chars) -- may reject or clean
-    2. Injection pattern matching -- always rejects on match
-    3. Length validation -- truncates or rejects based on config
+    2. PII desensitization (optional) -- masks sensitive data in-place
+    3. Injection pattern matching -- always rejects on match
+    4. Length validation -- truncates or rejects based on config
     """
 
     def __init__(self, config: SanitizerConfig, events: "EventEmitter | None" = None):
@@ -49,14 +180,18 @@ class InputSanitizer:
         self._compiled_patterns = [
             re.compile(p) for p in config.injection_patterns + config.custom_patterns
         ]
+        self._pii_desensitizer: PIIDesensitizer | None = None
+        if config.pii_enabled:
+            self._pii_desensitizer = PIIDesensitizer(config)
 
     @property
     def enabled(self) -> bool:
         return self._config.enabled
 
     def sanitize(self, user_input: str) -> SanitizerResult:
-        """Sanitize user input through format, injection, and length checks."""
+        """Sanitize user input through format, PII, injection, and length checks."""
         actions: list[str] = []
+        pii_matches: list[PIIMatch] = []
         current_input = user_input
 
         current_input, fmt_rejected, fmt_reason = self._check_format(
@@ -64,6 +199,16 @@ class InputSanitizer:
         )
         if fmt_rejected:
             return self._reject(user_input, current_input, fmt_reason, actions)
+
+        # PII desensitization (before injection check so masked text is checked)
+        if self._pii_desensitizer is not None:
+            current_input, pii_matches = self._pii_desensitizer.desensitize(
+                current_input
+            )
+            if pii_matches:
+                actions.append(
+                    f"pii_desensitized: {summarize_pii_matches(pii_matches)}"
+                )
 
         is_injection, matched_pattern = self._check_injection(current_input)
         if is_injection:
@@ -83,6 +228,7 @@ class InputSanitizer:
             rejected=False,
             reason=None,
             actions_taken=actions,
+            pii_matches=pii_matches,
         )
 
     def _reject(
@@ -96,6 +242,7 @@ class InputSanitizer:
             rejected=True,
             reason=reason,
             actions_taken=actions,
+            pii_matches=[],
         )
 
     def _check_format(

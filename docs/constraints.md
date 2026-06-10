@@ -334,8 +334,9 @@ smart_optimization:
 **处理顺序**（顺序不可调换，格式检查先于注入检查防止编码绕过）：
 
 1. **格式检查**：null 字节 → 直接拒绝；控制字符 → 剥离（保留换行/制表符）
-2. **注入检查**：正则匹配 injection_patterns + custom_patterns → 匹配则直接拒绝
-3. **长度检查**：超过 `max_input_length` → 按 `length_action` 截断或拒绝
+2. **PII 脱敏**（可选）：检测 phone/id_card/email/api_key → 遮蔽后替换原始文本
+3. **注入检查**：正则匹配 injection_patterns + custom_patterns → 匹配则直接拒绝
+4. **长度检查**：超过 `max_input_length` → 按 `length_action` 截断或拒绝
 
 **注入检测**：默认 18 条正则覆盖常见 prompt injection 模式（ignore previous instructions、system prompt override、role manipulation 等）。`custom_patterns` 允许用户添加领域特定的注入模式。
 
@@ -348,6 +349,10 @@ smart_optimization:
 | `sanitizer.length_action` | `"truncate"` | 超长处理方式：`truncate` 截断 / `reject` 拒绝 |
 | `sanitizer.reject_null_bytes` | `True` | 拒绝含 null 字节的输入 |
 | `sanitizer.reject_control_chars` | `True` | 剥离控制字符 |
+| `sanitizer.pii_enabled` | `False` | 启用 PII 脱敏（默认关闭） |
+| `sanitizer.pii_mask_mode` | `"partial"` | 遮蔽模式：`"partial"` 保留首尾 / `"full"` 全遮蔽 |
+| `sanitizer.pii_mask_char` | `"*"` | 遮蔽字符 |
+| `sanitizer.pii_types` | `["phone", "id_card", "email", "api_key"]` | 启用的 PII 检测类型 |
 
 ```yaml
 sanitizer:
@@ -357,6 +362,14 @@ sanitizer:
   reject_null_bytes: true
   reject_control_chars: true
   custom_patterns: []           # 添加自定义注入检测正则
+  pii_enabled: true             # 启用 PII 脱敏
+  pii_mask_mode: partial        # partial / full
+  pii_mask_char: "*"            # 遮蔽字符
+  pii_types:                    # 启用的 PII 类型
+    - phone
+    - id_card
+    - email
+    - api_key
 ```
 
 ---
@@ -591,6 +604,7 @@ semantic_compressor:
   │
   ├─ 〇 输入净化（sanitizer 硬门控）
   │   ├─ 格式检查：null 字节 → 拒绝，控制字符 → 剥离
+  │   ├─ PII 脱敏：phone/id_card/email/api_key → 遮蔽替换
   │   ├─ 注入检查：正则匹配 → 拒绝（TerminationReason.INPUT_REJECTED）
   │   ├─ 长度检查：超长 → 截断或拒绝
   │
@@ -647,7 +661,7 @@ semantic_compressor:
 - 重复检测阈值现在可通过 `smart_optimization.duplicate_threshold` 配置
 - Stall Detection 是**第三个提前干预机制**：与置信度早停（循环内部）和查询路由（循环入口）不同，Stall Detection 在循环末尾检测无进展并注入转向提示，不直接终止循环
 - 速率限制和重试是**LLM 调用的两层防护**：速率限制是"预防"（主动控制调用频率），重试是"治疗"（被动恢复失败调用）。调用链为 `rate_limiter.acquire() → with_retry(_chat_impl)`
-- 输入净化是**ReAct 循环前的硬门控**：在 orchestrator 边界执行，拒绝的输入不进入循环。处理顺序（format → injection → length）不可调换，格式检查先于注入检查防止通过编码绕过
+- 输入净化是**ReAct 循环前的硬门控**：在 orchestrator 边界执行，拒绝的输入不进入循环。处理顺序（format → PII → injection → length）不可调换，格式检查先于注入检查防止通过编码绕过，PII 脱敏在注入检查前执行确保遮蔽后的文本参与注入检测
 
 ---
 
@@ -720,6 +734,10 @@ semantic_compressor:
 | `sanitizer.length_action` | `"truncate"` | 超长处理方式 | 硬限制 |
 | `sanitizer.reject_null_bytes` | `True` | 拒绝 null 字节 | 硬限制 |
 | `sanitizer.reject_control_chars` | `True` | 剥离控制字符 | 硬限制 |
+| `sanitizer.pii_enabled` | `False` | 启用 PII 脱敏 | 硬限制 |
+| `sanitizer.pii_mask_mode` | `"partial"` | 遮蔽模式 | 硬限制 |
+| `sanitizer.pii_mask_char` | `"*"` | 遮蔽字符 | 硬限制 |
+| `sanitizer.pii_types` | `["phone","id_card","email","api_key"]` | PII 检测类型 | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |

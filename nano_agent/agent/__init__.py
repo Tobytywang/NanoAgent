@@ -32,7 +32,13 @@ from .output_simplifier import OutputSimplifier
 from .tool_offload import ToolOffloadManager, OffloadedResult
 from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
 from .subsystems import AgentSubsystems
-from .sanitizer import InputSanitizer, SanitizerResult
+from .sanitizer import (
+    InputSanitizer,
+    SanitizerResult,
+    PIIDesensitizer,
+    PIIMatch,
+    summarize_pii_matches,
+)
 
 __all__ = [
     # Base
@@ -92,4 +98,8 @@ __all__ = [
     # Input sanitizer (v0.8.3)
     "InputSanitizer",
     "SanitizerResult",
+    # PII desensitization (v0.8.4)
+    "PIIDesensitizer",
+    "PIIMatch",
+    "summarize_pii_matches",
 ]

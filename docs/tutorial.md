@@ -204,6 +204,14 @@ sanitizer:
   reject_null_bytes: true             # 拒绝含 null 字节的输入
   reject_control_chars: true          # 剥离控制字符
   custom_patterns: []                 # 自定义注入检测正则
+  pii_enabled: false                  # 启用 PII 脱敏（phone/id_card/email/api_key）
+  pii_mask_mode: partial              # 遮蔽模式：partial（保留首尾）/ full（全遮蔽）
+  pii_mask_char: "*"                  # 遮蔽字符
+  pii_types:                          # 启用的 PII 检测类型
+    - phone
+    - id_card
+    - email
+    - api_key
 ```
 
 ### 3.2 不同 LLM 配置
@@ -831,6 +839,7 @@ test_result = tester.run(f"请为这段代码编写测试：{code}")
 2. 自定义工具添加权限检查
 3. 使用环境变量管理 API Key
 4. 启用输入净化器（`sanitizer.enabled: true`），自动过滤 prompt injection 模式和异常格式输入
+5. 启用 PII 脱敏（`sanitizer.pii_enabled: true`），自动遮蔽手机号、身份证号、邮箱、API Key 等敏感信息
 
 ### Q: Agent 陷入循环怎么办？
 

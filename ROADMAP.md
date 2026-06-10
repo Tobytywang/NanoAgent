@@ -2270,14 +2270,51 @@ def run(user_input):
 
 ---
 
-### v0.8.4 - PII 脱敏
+### v0.8.4 - PII 脱敏 ✅
 
 **目标**: 敏感信息自动脱敏（可选）。
 
 **架构归属**: Input 层 - Sanitize 净化 (P1)
 
 **任务列表**:
-- [ ] #7 PII 脱敏 (`nano_agent/agent/sanitizer.py`) — 手机号/身份证/API key 等敏感信息自动脱敏
+- [x] #7 PII 脱敏 (`nano_agent/agent/sanitizer.py`) — 手机号/身份证/API key 等敏感信息自动脱敏
+
+**实现细节**:
+
+PII 脱敏作为 `InputSanitizer` 的子功能，在格式校验后、注入检测前执行。默认关闭（`pii_enabled: false`）。
+
+**支持的 PII 类型**:
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| phone | 中国手机号 (1xx-xxxx-xxxx) | 138\*\*\*\*5678 |
+| id_card | 中国身份证 (18位) | 110\*\*\*\*\*\*\*\*\*\*\*1234 |
+| email | 邮箱地址 | t\*\*\*@example.com |
+| api_key | API Key/Token (Bearer/sk-/pk-/ghp_/AKIA等) | sk-\*\*\*\*abcd |
+
+**脱敏模式**:
+- partial: 保留首尾字符，中间替换为掩码字符（默认）
+- full: 全部替换为掩码字符
+
+**重叠检测**: 手机号模式可能匹配身份证号子串。`PIIDesensitizer` 自动检测重叠匹配，保留更长的匹配。
+
+**配置示例**:
+```yaml
+sanitizer:
+  enabled: true
+  pii_enabled: true
+  pii_mask_mode: partial
+  pii_mask_char: "*"
+  pii_types: ["phone", "id_card", "email", "api_key"]
+```
+
+**新增/修改文件**:
+```
+nano_agent/agent/sanitizer.py          # PIIDesensitizer, PIIMatch 类
+nano_agent/config/schema.py            # SanitizerConfig 扩展 pii_* 字段
+nano_agent/agent/orchestrator.py       # last_sanitizer_result 属性
+nano_agent/cli/main.py                 # PII 配置显示 + 交互脱敏通知
+tests/test_sanitizer.py                # 32 个 PII 测试用例
+```
 
 ---
 
@@ -2814,7 +2851,7 @@ persona:
 | v0.8.1 | LLM API 限流器 ✅ | P0 — 调用频率限制，防止突发请求打爆 API |
 | v0.8.2 | 熔断器 (已合并到 v0.8.0) | P0 — 已在 v0.8.0 实现 |
 | v0.8.3 | 输入净化 ✅ | P1 — Prompt injection 过滤 + 输入校验 |
-| v0.8.4 | PII 脱敏 | P1 — 敏感信息自动脱敏（可选） |
+| v0.8.4 | PII 脱敏 ✅ | P1 — 手机号/身份证/API key 等敏感信息自动脱敏 |
 | v0.8.5 | 输出护栏 | P1 — 敏感信息拦截 + 中间件规则扩充 |
 | v0.8.6 | 有害内容过滤 | P1 — 输出内容安全检查（可选） |
 | v0.8.7 | 结果正确性验证 | P2 — 业务语义校验 hook |

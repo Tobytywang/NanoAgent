@@ -493,7 +493,43 @@ v0.8.3 输入净化器。在编排层（orchestrator）边界过滤 prompt injec
 - `reject_null_bytes: bool = True` — 拒绝含 null 字节的输入
 - `reject_control_chars: bool = True` — 剥离控制字符（保留换行/制表符）
 
-**处理顺序**: format check（null bytes reject, control chars strip） → injection check（regex match, always reject） → length check（truncate or reject）。格式检查先于注入检查，防止通过编码绕过注入检测。
+**处理顺序**: format check（null bytes reject, control chars strip） → PII desensitization（optional mask） → injection check（regex match, always reject） → length check（truncate or reject）。格式检查先于注入检查，防止通过编码绕过注入检测。
+
+**PII 脱敏** (v0.8.4): 在注入检查前，可选地检测并遮蔽 PII（个人身份信息），确保 Agent 不接触原始敏感数据。
+
+- `pii_enabled: bool = False` — 启用 PII 脱敏（默认关闭）
+- `pii_mask_char: str = "*"` — 遮蔽字符
+- `pii_mask_mode: Literal["partial", "full"] = "partial"` — 遮蔽模式：`"partial"` 保留首尾（如 138****1234），`"full"` 全遮蔽
+- `pii_types: list[str] = ["phone", "id_card", "email", "api_key"]` — 启用的 PII 检测类型
+
+**支持的 PII 类型**:
+
+| 类型 | 正则匹配 | Partial 示例 |
+|------|---------|-------------|
+| `phone` | 中国手机号 `1[3-9]\d{9}` | `138****1234` |
+| `id_card` | 中国身份证 18 位 | `110***********1234` |
+| `email` | 邮箱地址 | `u***@domain.com` |
+| `api_key` | Bearer/sk-/pk-/ghp_/AKIA/AIza 等前缀 | `sk-****...****abcd` |
+
+**重叠处理**: 当多个 PII 正则匹配重叠时（如手机号匹配在身份证号内部），保留更长的匹配。
+
+```python
+from nano_agent.agent.sanitizer import InputSanitizer, PIIDesensitizer, PIIMatch
+from nano_agent.config.schema import SanitizerConfig
+
+config = SanitizerConfig(
+    enabled=True,
+    pii_enabled=True,
+    pii_mask_mode="partial",
+    pii_types=["phone", "id_card", "email", "api_key"],
+)
+
+sanitizer = InputSanitizer(config)
+result = sanitizer.sanitize("我的手机号是13812345678，邮箱是test@example.com")
+# result.sanitized_input → "我的手机号是138****5678，邮箱是t***@example.com"
+# result.pii_matches → [PIIMatch(pii_type="phone", ...), PIIMatch(pii_type="email", ...)]
+# result.actions_taken → ["pii_desensitized: phone: 1, email: 1"]
+```
 
 **净化逻辑**: 放在 `AgentOrchestrator` 层，在 ReAct 循环之前执行。输入被拒绝时返回 `TerminationReason.INPUT_REJECTED`，触发 `AgentEvent.INPUT_REJECTED` 事件。
 
@@ -715,6 +751,10 @@ Rate Limiter (v0.8.1):
 - `sanitizer.length_action: str = "truncate"` — 超长处理方式（`"truncate"` / `"reject"`）
 - `sanitizer.reject_null_bytes: bool = True` — 拒绝含 null 字节的输入
 - `sanitizer.reject_control_chars: bool = True` — 剥离控制字符
+- `sanitizer.pii_enabled: bool = False` — 启用 PII 脱敏
+- `sanitizer.pii_mask_mode: str = "partial"` — 遮蔽模式（`"partial"` / `"full"`）
+- `sanitizer.pii_mask_char: str = "*"` — 遮蔽字符
+- `sanitizer.pii_types: list[str] = ["phone", "id_card", "email", "api_key"]` — 启用的 PII 类型
 
 
 ---
@@ -1149,6 +1189,14 @@ sanitizer:
   length_action: truncate      # 超长处理方式：truncate / reject
   reject_null_bytes: true      # 拒绝含 null 字节的输入
   reject_control_chars: true   # 剥离控制字符
+  pii_enabled: false           # 启用 PII 脱敏
+  pii_mask_mode: partial       # 遮蔽模式：partial / full
+  pii_mask_char: "*"           # 遮蔽字符
+  pii_types:                   # 启用的 PII 类型
+    - phone
+    - id_card
+    - email
+    - api_key
 ```
 
 ### ConfigLoader
@@ -1379,6 +1427,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.4 | PII 脱敏（`PIIDesensitizer`、`PIIMatch`、`summarize_pii_matches`、phone/id_card/email/api_key 检测、partial/full 遮蔽、重叠处理） |
 | v0.8.3 | 输入净化器（`SanitizerConfig`、`InputSanitizer`、prompt injection 检测、格式验证、编排层硬门控） |
 | v0.8.1 | 速率限制（`RateLimiterConfig`、令牌桶算法、`rate_limiter→retry→_chat_impl` 三层调用链） |
 | v0.8.0 | 指数退避重试（`RetryConfig`、`with_retry`、`is_retryable_error`、`BaseLLM.chat→_chat_impl` 模式） |
