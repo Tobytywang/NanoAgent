@@ -195,6 +195,15 @@ tools:
 skills:
   enabled: []                         # 启用的技能包
   directory: .nano_agent/skills       # 技能包目录
+
+# 输入净化设置
+sanitizer:
+  enabled: true                       # 启用输入净化（prompt injection 防护）
+  max_input_length: 10000             # 输入最大字符长度
+  length_action: truncate             # 超长处理方式：truncate / reject
+  reject_null_bytes: true             # 拒绝含 null 字节的输入
+  reject_control_chars: true          # 剥离控制字符
+  custom_patterns: []                 # 自定义注入检测正则
 ```
 
 ### 3.2 不同 LLM 配置
@@ -821,6 +830,7 @@ test_result = tester.run(f"请为这段代码编写测试：{code}")
 1. 不注册 `shell_execute` 工具
 2. 自定义工具添加权限检查
 3. 使用环境变量管理 API Key
+4. 启用输入净化器（`sanitizer.enabled: true`），自动过滤 prompt injection 模式和异常格式输入
 
 ### Q: Agent 陷入循环怎么办？
 

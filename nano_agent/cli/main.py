@@ -20,7 +20,7 @@ from ..memory import (
 )
 from ..tools import ToolRegistry
 from ..tools.builtin import register_builtin_tools
-from ..agent import ReActAgent, AgentOrchestrator, AgentEvent
+from ..agent import ReActAgent, AgentOrchestrator, AgentEvent, TerminationReason
 from ..agent.token_utils import estimate_text_tokens
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
@@ -870,6 +870,12 @@ def run_interactive(
             # Run agent through orchestrator
             print(f"\n[{agent_display}]:")
             result = orchestrator.run(user_input)
+
+            # Handle input rejection from sanitizer
+            if result.termination_reason == TerminationReason.INPUT_REJECTED.value:
+                print(f"⚠ 输入被拒绝: {result.response}")
+                continue
+
             # Sanitize response for printing
             response = result.response
             try:
@@ -2136,6 +2142,40 @@ def _show_config(config, agent) -> None:
             )
             print(format_line("Burst:", str(config.rate_limiter.burst)))
 
+    # Sanitizer 配置 (v0.8.3)
+    if hasattr(config, "sanitizer"):
+        print("\n## 输入净化 (Input Sanitizer)")
+        print(format_line("Enabled:", str(config.sanitizer.enabled)))
+        if config.sanitizer.enabled:
+            print(
+                format_line(
+                    "Injection Patterns:",
+                    str(len(config.sanitizer.injection_patterns)),
+                )
+            )
+            print(
+                format_line(
+                    "Custom Patterns:", str(len(config.sanitizer.custom_patterns))
+                )
+            )
+            print(
+                format_line("Max Input Length:", str(config.sanitizer.max_input_length))
+            )
+            print(format_line("Length Action:", config.sanitizer.length_action))
+            print(
+                format_line(
+                    "Reject Null Bytes:", str(config.sanitizer.reject_null_bytes)
+                )
+            )
+            print(
+                format_line(
+                    "Reject Control Chars:", str(config.sanitizer.reject_control_chars)
+                )
+            )
+            print(
+                format_line("Max Line Length:", str(config.sanitizer.max_line_length))
+            )
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -2963,6 +3003,14 @@ def _init_config_file(config, force: bool = False) -> None:
             "enabled": config.rate_limiter.enabled,
             "requests_per_minute": config.rate_limiter.requests_per_minute,
             "burst": config.rate_limiter.burst,
+        },
+        "sanitizer": {
+            "enabled": config.sanitizer.enabled,
+            "max_input_length": config.sanitizer.max_input_length,
+            "length_action": config.sanitizer.length_action,
+            "reject_null_bytes": config.sanitizer.reject_null_bytes,
+            "reject_control_chars": config.sanitizer.reject_control_chars,
+            "max_line_length": config.sanitizer.max_line_length,
         },
     }
 

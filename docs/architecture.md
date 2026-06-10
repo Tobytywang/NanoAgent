@@ -28,6 +28,7 @@ graph TB
         RETRY[RetryHandler<br/>重试处理]
         RL[RateLimiter<br/>速率限制]
         CB[CircuitBreaker<br/>熔断降级]
+        SAN[InputSanitizer<br/>输入净化]
     end
 
     subgraph Core["核心组件"]
@@ -51,6 +52,7 @@ graph TB
     MAIN --> SCANNER
     MAIN --> PLAN
     ORCH --> REACT
+    ORCH --> SAN
     REACT --> CTX
     REACT --> CONFIRM
     REACT --> UNDO
@@ -81,7 +83,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -239,7 +241,9 @@ class LLMCallMetrics:
 
 ```mermaid
 flowchart TD
-    START([用户输入]) --> PREP[准备执行<br/>重置状态/添加用户消息]
+    START([用户输入]) --> SANITIZE{输入净化<br/>InputSanitizer}
+    SANITIZE -->|拒绝| REJECTED[INPUT_REJECTED<br/>返回拒绝原因]
+    SANITIZE -->|通过| PREP[准备执行<br/>重置状态/添加用户消息]
     PREP --> THINK
 
     subgraph Loop["ReAct 循环"]
@@ -275,6 +279,7 @@ flowchart TD
 
 | 阶段 | 方法 | 描述 |
 |------|------|------|
+| **净化** | `InputSanitizer.sanitize()` | 编排层硬门控，格式检查→注入检查→长度检查 |
 | **Think** | `_think()` | 调用 LLM，获取响应文本和工具调用 |
 | **Act** | `_act()` | 执行工具，支持确认机制和撤销追踪 |
 | **Observe** | `_observe()` | 将工具结果记录到记忆系统 |
@@ -425,6 +430,29 @@ chat()                          ← 入口方法
 - **预防优于治疗**: RateLimiter 主动控制调用频率，减少 429 错误发生概率
 - **优雅降级**: 即使限流失败触发 429，RetryHandler 仍可自动恢复
 - **透明分层**: 子类只需实现 `_chat_impl()`，无需关心限流和重试逻辑
+
+### 输入净化门控
+
+`AgentOrchestrator` 在 ReAct 循环前执行 `InputSanitizer`，是编排层边界的硬门控：
+
+```
+用户输入
+  │
+  └─ InputSanitizer.sanitize()
+       │
+       ├─ ① 格式检查：null 字节 → 拒绝，控制字符 → 剥离
+       │
+       ├─ ② 注入检查：正则匹配 injection_patterns → 拒绝
+       │
+       ├─ ③ 长度检查：超长 → 截断或拒绝
+       │
+       └─ 通过 → 进入 ReAct 循环
+```
+
+**设计原则**：
+- **格式先于注入**: 先清理格式问题（null 字节、控制字符），再检测注入模式，防止通过编码绕过注入检测
+- **注入零容忍**: 注入模式匹配始终拒绝，不可配置为截断
+- **长度可配置**: `length_action` 支持 `truncate`（默认，保留输入）或 `reject`（严格模式）
 
 ### Token 消耗分析
 

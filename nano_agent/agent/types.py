@@ -23,6 +23,7 @@ class TerminationReason(str, Enum):
     ROUTING_LIMIT = "routing_limit"
     DUPLICATE_BLOCKED = "duplicate_blocked"
     PREJUDGMENT_SIMPLE = "prejudgment_simple"
+    INPUT_REJECTED = "input_rejected"
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,7 @@ class AgentEvent(Enum):
     LLM_RETRY = "llm_retry"
     LLM_RATE_LIMITED = "llm_rate_limited"
     CIRCUIT_BREAKER = "circuit_breaker"
+    INPUT_REJECTED = "input_rejected"
 
 
 class RiskLevel(Enum):

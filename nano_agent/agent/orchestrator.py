@@ -9,11 +9,12 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .types import ExecutionResult, AgentEvent
+from .types import ExecutionResult, AgentEvent, TerminationReason
 from .events import EventEmitter
 
 if TYPE_CHECKING:
     from .react import ReActAgent
+    from .sanitizer import InputSanitizer
 
 
 @dataclass
@@ -41,16 +42,23 @@ class AgentOrchestrator:
     - Execution mode switching (real vs dry-run)
     """
 
-    def __init__(self, agent: "ReActAgent", config: Any = None):
+    def __init__(
+        self,
+        agent: "ReActAgent",
+        config: Any = None,
+        sanitizer: "InputSanitizer | None" = None,
+    ):
         """
         Initialize the orchestrator.
 
         Args:
             agent: The execution layer agent to delegate to
             config: Optional configuration object
+            sanitizer: Optional input sanitizer for pre-execution validation
         """
         self.agent = agent
         self.config = config
+        self.sanitizer = sanitizer
         self.session_id = self._generate_session_id()
         self.stats = SessionStats()
         self.events = EventEmitter()
@@ -95,6 +103,21 @@ class AgentOrchestrator:
         self.events.emit(
             AgentEvent.RUN_START, {"input": user_input, "session_id": self.session_id}
         )
+
+        # Sanitize input before processing
+        if self.sanitizer and self.sanitizer.enabled:
+            sanitizer_result = self.sanitizer.sanitize(user_input)
+            if sanitizer_result.rejected:
+                return ExecutionResult(
+                    response=f"Input rejected: {sanitizer_result.reason}",
+                    success=False,
+                    iterations=0,
+                    tool_calls=[],
+                    tokens_used=0,
+                    session_id=self.session_id,
+                    termination_reason=TerminationReason.INPUT_REJECTED.value,
+                )
+            user_input = sanitizer_result.sanitized_input
 
         # Delegate to execution layer
         result = self.agent.run(user_input, dry_run=dry_run, session_id=self.session_id)

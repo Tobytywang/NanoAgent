@@ -517,6 +517,43 @@ class RateLimiterConfig:
 
 
 @dataclass
+class SanitizerConfig:
+    """Input sanitizer configuration."""
+
+    enabled: bool = True
+    injection_patterns: list[str] = field(
+        default_factory=lambda: [
+            # English patterns
+            r"(?i)ignore\s+(previous|all|above|prior)\s*(instructions?|prompts?|directions?)?",
+            r"(?i)disregard\s+(all|previous|above|prior)\s*(instructions?|prompts?|rules?)?",
+            r"(?i)forget\s+(all|previous|above|prior)\s*(instructions?|rules?)?",
+            r"(?i)you\s+are\s+now\s+",
+            r"(?i)act\s+as\s+if\s+you\s+are\s+",
+            r"(?i)pretend\s+(you\s+are|to\s+be)\s+",
+            r"(?i)new\s+instructions?\s*:",
+            r"(?i)system\s*:\s*",
+            r"(?i)\[?DAN\]?|do\s+anything\s+now",
+            r"(?i)jailbreak",
+            r"(?i)bypass\s+(your|the|all)\s*(rules?|restrictions?|guidelines?)?",
+            r"(?i)override\s+(your|the|all)\s*(rules?|restrictions?|guidelines?|instructions?)?",
+            # Chinese patterns
+            r"忽略(之前的?|所有的?|上面的?)(指令|提示|规则)",
+            r"忘记(之前的?|所有的?)(指令|规则)",
+            r"你现在是",
+            r"假装你是",
+            r"绕过(你的?|所有的?)(规则|限制)",
+            r"无视(之前的?|所有的?|上面的?)(指令|规则)",
+        ]
+    )
+    custom_patterns: list[str] = field(default_factory=list)
+    max_input_length: int = 10000
+    length_action: Literal["truncate", "reject"] = "truncate"
+    reject_null_bytes: bool = True
+    reject_control_chars: bool = True
+    max_line_length: int = 5000
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -551,3 +588,4 @@ class Config:
     )
     retry: RetryConfig = field(default_factory=RetryConfig)
     rate_limiter: RateLimiterConfig = field(default_factory=RateLimiterConfig)
+    sanitizer: SanitizerConfig = field(default_factory=SanitizerConfig)

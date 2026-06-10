@@ -42,6 +42,7 @@ class TestAgentBuilder:
         # Explicitly set retry and rate_limiter to None (no retry/rate limiting in tests)
         config.retry = None
         config.rate_limiter = None
+        config.sanitizer = None
         return config
 
     @pytest.fixture

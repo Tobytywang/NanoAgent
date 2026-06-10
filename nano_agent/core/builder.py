@@ -312,7 +312,14 @@ class AgentBuilder:
 
             self._llm._on_rate_limit_callback = _on_llm_rate_limit
 
+        # Create input sanitizer
+        sanitizer = None
+        if hasattr(self.config, "sanitizer") and self.config.sanitizer is not None:
+            from ..agent.sanitizer import InputSanitizer
+
+            sanitizer = InputSanitizer(self.config.sanitizer, events=agent.events)
+
         # Create orchestrator
-        orchestrator = AgentOrchestrator(agent, self.config)
+        orchestrator = AgentOrchestrator(agent, self.config, sanitizer=sanitizer)
 
         return orchestrator

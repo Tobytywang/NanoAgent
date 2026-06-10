@@ -481,6 +481,42 @@ cb.reset()  # 重置为 AUTO，同时发射 CIRCUIT_BREAKER 事件
 
 > **注意**: `max_retries` 必须 >= 0，负值会抛出 `ValueError`。
 
+### SanitizerConfig & InputSanitizer
+
+v0.8.3 输入净化器。在编排层（orchestrator）边界过滤 prompt injection 模式并验证输入格式，是 ReAct 循环前的硬门控。
+
+- `enabled: bool = True` — 启用输入净化
+- `injection_patterns: list[str]` — 注入检测正则列表（默认 18 条，覆盖常见 prompt injection 模式）
+- `custom_patterns: list[str] = []` — 用户自定义注入检测正则
+- `max_input_length: int = 10000` — 输入最大字符长度
+- `length_action: str = "truncate"` — 超长处理方式：`"truncate"` 截断 / `"reject"` 拒绝
+- `reject_null_bytes: bool = True` — 拒绝含 null 字节的输入
+- `reject_control_chars: bool = True` — 剥离控制字符（保留换行/制表符）
+
+**处理顺序**: format check（null bytes reject, control chars strip） → injection check（regex match, always reject） → length check（truncate or reject）。格式检查先于注入检查，防止通过编码绕过注入检测。
+
+**净化逻辑**: 放在 `AgentOrchestrator` 层，在 ReAct 循环之前执行。输入被拒绝时返回 `TerminationReason.INPUT_REJECTED`，触发 `AgentEvent.INPUT_REJECTED` 事件。
+
+```python
+from nano_agent.agent.sanitizer import InputSanitizer
+from nano_agent.config.schema import SanitizerConfig
+
+config = SanitizerConfig(
+    enabled=True,
+    max_input_length=10000,
+    length_action="truncate",     # "truncate" 或 "reject"
+    reject_null_bytes=True,
+    reject_control_chars=True,
+)
+
+sanitizer = InputSanitizer(config)
+result = sanitizer.sanitize(user_input)
+# result.is_valid → True / False
+# result.sanitized_input → 净化后的输入（可能截断）
+# result.rejection_reason → 拒绝原因（None 如果通过）
+# result.was_truncated → 是否被截断
+```
+
 ### ExecutionMode
 
 v0.8.0 执行模式枚举，由熔断器控制。
@@ -606,6 +642,7 @@ class AgentEvent(Enum):
     BUDGET_WRAPUP = "budget_wrapup"
     DUPLICATE_BLOCKED = "duplicate_blocked"
     STALL_DETECTED = "stall_detected"          # v0.7.16
+    INPUT_REJECTED = "input_rejected"          # v0.8.3
 ```
 
 ### TerminationReason 枚举
@@ -624,6 +661,7 @@ class TerminationReason(str, Enum):
     ROUTING_LIMIT = "routing_limit"
     DUPLICATE_BLOCKED = "duplicate_blocked"
     PREJUDGMENT_SIMPLE = "prejudgment_simple"
+    INPUT_REJECTED = "input_rejected"              # v0.8.3
 ```
 
 **配置** (SmartOptimizationConfig):
@@ -667,6 +705,16 @@ Rate Limiter (v0.8.1):
 - `smart_optimization.circuit_breaker.duplicate_trigger_count: int = 3` — 重复调用触发次数
 - `smart_optimization.circuit_breaker.stall_trigger_count: int = 3` — 停滞触发次数
 - `smart_optimization.circuit_breaker.auto_reset_on_user_confirm: bool = True` — 确认后恢复 AUTO
+
+**Sanitizer (sanitizer)**
+
+- `sanitizer.enabled: bool = True` — 启用输入净化
+- `sanitizer.injection_patterns: list[str]` — 注入检测正则列表（默认 18 条）
+- `sanitizer.custom_patterns: list[str] = []` — 自定义注入检测正则
+- `sanitizer.max_input_length: int = 10000` — 输入最大字符长度
+- `sanitizer.length_action: str = "truncate"` — 超长处理方式（`"truncate"` / `"reject"`）
+- `sanitizer.reject_null_bytes: bool = True` — 拒绝含 null 字节的输入
+- `sanitizer.reject_control_chars: bool = True` — 剥离控制字符
 
 
 ---
@@ -1092,6 +1140,15 @@ rate_limiter:
   enabled: true                # 启用速率限制
   requests_per_minute: 60      # 每分钟最大请求数
   burst: 10                    # 令牌桶容量（允许突发请求数）
+
+sanitizer:
+  enabled: true                # 启用输入净化
+  injection_patterns: null     # 使用默认 18 条注入检测正则
+  custom_patterns: []          # 自定义注入检测正则
+  max_input_length: 10000      # 输入最大字符长度
+  length_action: truncate      # 超长处理方式：truncate / reject
+  reject_null_bytes: true      # 拒绝含 null 字节的输入
+  reject_control_chars: true   # 剥离控制字符
 ```
 
 ### ConfigLoader
@@ -1322,6 +1379,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.3 | 输入净化器（`SanitizerConfig`、`InputSanitizer`、prompt injection 检测、格式验证、编排层硬门控） |
 | v0.8.1 | 速率限制（`RateLimiterConfig`、令牌桶算法、`rate_limiter→retry→_chat_impl` 三层调用链） |
 | v0.8.0 | 指数退避重试（`RetryConfig`、`with_retry`、`is_retryable_error`、`BaseLLM.chat→_chat_impl` 模式） |
 | v0.7.19 | 语义压缩（`SemanticCompressor`、`SemanticCompressorConfig`、`BaseEmbeddingClient`、Ollama/sentence-transformers/OpenAI embedding） |

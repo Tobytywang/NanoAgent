@@ -12,6 +12,7 @@ from .types import (
     ThinkResult,
     ExecutionEvent,
     AgentEvent,
+    TerminationReason,
     Plan,
     PlanPhase,
     RiskLevel,
@@ -31,6 +32,7 @@ from .output_simplifier import OutputSimplifier
 from .tool_offload import ToolOffloadManager, OffloadedResult
 from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
 from .subsystems import AgentSubsystems
+from .sanitizer import InputSanitizer, SanitizerResult
 
 __all__ = [
     # Base
@@ -45,6 +47,7 @@ __all__ = [
     "ThinkResult",
     "ExecutionEvent",
     "AgentEvent",
+    "TerminationReason",
     "Plan",
     "PlanPhase",
     "RiskLevel",
@@ -86,4 +89,7 @@ __all__ = [
     "SemanticCompressorConfig",
     # Subsystems facade (v0.7.20)
     "AgentSubsystems",
+    # Input sanitizer (v0.8.3)
+    "InputSanitizer",
+    "SanitizerResult",
 ]

@@ -321,6 +321,44 @@ smart_optimization:
     auto_reset_on_user_confirm: true
 ```
 
+### 14. 输入净化
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `sanitizer.*` |
+| 默认值 | `enabled: True` / `max_input_length: 10000` / `length_action: "truncate"` |
+| 源码位置 | `nano_agent/config/schema.py` → `SanitizerConfig`；`nano_agent/agent/sanitizer.py` → `InputSanitizer` |
+
+在编排层（orchestrator）边界对用户输入执行净化检查，是 ReAct 循环前的**硬门控**。输入被拒绝时返回 `TerminationReason.INPUT_REJECTED`，不进入 ReAct 循环。
+
+**处理顺序**（顺序不可调换，格式检查先于注入检查防止编码绕过）：
+
+1. **格式检查**：null 字节 → 直接拒绝；控制字符 → 剥离（保留换行/制表符）
+2. **注入检查**：正则匹配 injection_patterns + custom_patterns → 匹配则直接拒绝
+3. **长度检查**：超过 `max_input_length` → 按 `length_action` 截断或拒绝
+
+**注入检测**：默认 18 条正则覆盖常见 prompt injection 模式（ignore previous instructions、system prompt override、role manipulation 等）。`custom_patterns` 允许用户添加领域特定的注入模式。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `sanitizer.enabled` | `True` | 是否启用输入净化 |
+| `sanitizer.injection_patterns` | 18 条默认正则 | 注入检测正则列表 |
+| `sanitizer.custom_patterns` | `[]` | 用户自定义注入检测正则 |
+| `sanitizer.max_input_length` | `10000` | 输入最大字符长度 |
+| `sanitizer.length_action` | `"truncate"` | 超长处理方式：`truncate` 截断 / `reject` 拒绝 |
+| `sanitizer.reject_null_bytes` | `True` | 拒绝含 null 字节的输入 |
+| `sanitizer.reject_control_chars` | `True` | 剥离控制字符 |
+
+```yaml
+sanitizer:
+  enabled: true
+  max_input_length: 10000
+  length_action: truncate       # truncate / reject
+  reject_null_bytes: true
+  reject_control_chars: true
+  custom_patterns: []           # 添加自定义注入检测正则
+```
+
 ---
 
 ## 软限制（间接影响对话质量）
@@ -551,6 +589,11 @@ semantic_compressor:
 ```
 用户输入
   │
+  ├─ 〇 输入净化（sanitizer 硬门控）
+  │   ├─ 格式检查：null 字节 → 拒绝，控制字符 → 剥离
+  │   ├─ 注入检查：正则匹配 → 拒绝（TerminationReason.INPUT_REJECTED）
+  │   ├─ 长度检查：超长 → 截断或拒绝
+  │
   ├─ ① 查询复杂度路由 ─→ 简单问题直接返回（不进循环）
   │
   ├─ 进入 ReAct 循环
@@ -604,6 +647,7 @@ semantic_compressor:
 - 重复检测阈值现在可通过 `smart_optimization.duplicate_threshold` 配置
 - Stall Detection 是**第三个提前干预机制**：与置信度早停（循环内部）和查询路由（循环入口）不同，Stall Detection 在循环末尾检测无进展并注入转向提示，不直接终止循环
 - 速率限制和重试是**LLM 调用的两层防护**：速率限制是"预防"（主动控制调用频率），重试是"治疗"（被动恢复失败调用）。调用链为 `rate_limiter.acquire() → with_retry(_chat_impl)`
+- 输入净化是**ReAct 循环前的硬门控**：在 orchestrator 边界执行，拒绝的输入不进入循环。处理顺序（format → injection → length）不可调换，格式检查先于注入检查防止通过编码绕过
 
 ---
 
@@ -671,6 +715,11 @@ semantic_compressor:
 | `smart_optimization.circuit_breaker.duplicate_trigger_count` | `3` | 重复调用触发次数 | 硬限制 |
 | `smart_optimization.circuit_breaker.stall_trigger_count` | `3` | 停滞触发次数 | 硬限制 |
 | `smart_optimization.circuit_breaker.auto_reset_on_user_confirm` | `True` | 确认后恢复 AUTO | 硬限制 |
+| `sanitizer.enabled` | `True` | 输入净化开关 | 硬限制 |
+| `sanitizer.max_input_length` | `10000` | 输入最大字符长度 | 硬限制 |
+| `sanitizer.length_action` | `"truncate"` | 超长处理方式 | 硬限制 |
+| `sanitizer.reject_null_bytes` | `True` | 拒绝 null 字节 | 硬限制 |
+| `sanitizer.reject_control_chars` | `True` | 剥离控制字符 | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |
