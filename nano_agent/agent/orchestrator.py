@@ -13,6 +13,7 @@ from .types import ExecutionResult, AgentEvent, TerminationReason
 from .events import EventEmitter
 
 if TYPE_CHECKING:
+    from .output_guard import OutputGuard
     from .react import ReActAgent
     from .sanitizer import InputSanitizer
 
@@ -47,6 +48,7 @@ class AgentOrchestrator:
         agent: "ReActAgent",
         config: Any = None,
         sanitizer: "InputSanitizer | None" = None,
+        output_guard: "OutputGuard | None" = None,
     ):
         """
         Initialize the orchestrator.
@@ -55,14 +57,17 @@ class AgentOrchestrator:
             agent: The execution layer agent to delegate to
             config: Optional configuration object
             sanitizer: Optional input sanitizer for pre-execution validation
+            output_guard: Optional output guard for post-execution sensitive data interception
         """
         self.agent = agent
         self.config = config
         self.sanitizer = sanitizer
+        self.output_guard = output_guard
         self.session_id = self._generate_session_id()
         self.stats = SessionStats()
         self.events = EventEmitter()
         self.last_sanitizer_result = None
+        self.last_output_guard_result = None
 
     # Property proxies for backward compatibility with CLI
     @property
@@ -125,6 +130,33 @@ class AgentOrchestrator:
 
         # Delegate to execution layer
         result = self.agent.run(user_input, dry_run=dry_run, session_id=self.session_id)
+
+        # Guard output for sensitive information
+        if self.output_guard and self.output_guard.enabled:
+            guard_result = self.output_guard.guard(result.response)
+            self.last_output_guard_result = guard_result
+            if guard_result.blocked:
+                return ExecutionResult(
+                    response=f"Output blocked: {guard_result.reason}",
+                    success=False,
+                    iterations=result.iterations,
+                    tool_calls=result.tool_calls,
+                    tokens_used=result.tokens_used,
+                    session_id=self.session_id,
+                    termination_reason=TerminationReason.OUTPUT_BLOCKED.value,
+                )
+            if guard_result.matches:
+                result = ExecutionResult(
+                    response=guard_result.guarded,
+                    success=result.success,
+                    iterations=result.iterations,
+                    tool_calls=result.tool_calls,
+                    tokens_used=result.tokens_used,
+                    session_id=result.session_id,
+                    termination_reason=result.termination_reason,
+                )
+        else:
+            self.last_output_guard_result = None
 
         # Collect statistics
         self._collect_stats(result)

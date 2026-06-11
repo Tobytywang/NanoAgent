@@ -876,6 +876,11 @@ def run_interactive(
                 print(f"⚠ 输入被拒绝: {result.response}")
                 continue
 
+            # Handle output blocking from output guard
+            if result.termination_reason == TerminationReason.OUTPUT_BLOCKED.value:
+                print(f"⚠ 输出被拦截: {result.response}")
+                continue
+
             # Show PII desensitization notice
             if (
                 orchestrator.last_sanitizer_result is not None
@@ -887,6 +892,18 @@ def run_interactive(
                     orchestrator.last_sanitizer_result.pii_matches
                 )
                 print(f"[PII] 已脱敏 ({summary})")
+
+            # Show output guard masking notice
+            if (
+                orchestrator.last_output_guard_result is not None
+                and orchestrator.last_output_guard_result.matches
+            ):
+                from nano_agent.agent.output_guard import summarize_sensitive_matches
+
+                summary = summarize_sensitive_matches(
+                    orchestrator.last_output_guard_result.matches
+                )
+                print(f"[Guard] 输出已遮蔽 ({summary})")
 
             # Sanitize response for printing
             response = result.response
@@ -2195,6 +2212,31 @@ def _show_config(config, agent) -> None:
                 print(format_line("PII Mask Char:", config.sanitizer.pii_mask_char))
                 print(format_line("PII Types:", ", ".join(config.sanitizer.pii_types)))
 
+    print("\n## 输出护栏 (Output Guard)")
+    print(format_line("Enabled:", str(config.output_guard.enabled)))
+    if config.output_guard.enabled:
+        print(format_line("Action:", config.output_guard.action))
+        print(format_line("Mask Mode:", config.output_guard.mask_mode))
+        print(format_line("Mask Char:", config.output_guard.mask_char))
+        print(
+            format_line(
+                "Sensitive Types:",
+                ", ".join(config.output_guard.sensitive_types),
+            )
+        )
+        print(
+            format_line(
+                "Block Severity:",
+                ", ".join(config.output_guard.block_severity),
+            )
+        )
+        print(
+            format_line(
+                "Custom Patterns:",
+                str(len(config.output_guard.custom_patterns)),
+            )
+        )
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -3034,6 +3076,15 @@ def _init_config_file(config, force: bool = False) -> None:
             "pii_mask_mode": config.sanitizer.pii_mask_mode,
             "pii_mask_char": config.sanitizer.pii_mask_char,
             "pii_types": config.sanitizer.pii_types,
+        },
+        "output_guard": {
+            "enabled": config.output_guard.enabled,
+            "action": config.output_guard.action,
+            "mask_mode": config.output_guard.mask_mode,
+            "mask_char": config.output_guard.mask_char,
+            "sensitive_types": config.output_guard.sensitive_types,
+            "block_severity": config.output_guard.block_severity,
+            "custom_patterns": config.output_guard.custom_patterns,
         },
     }
 

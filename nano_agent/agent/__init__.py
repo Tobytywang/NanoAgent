@@ -38,6 +38,13 @@ from .sanitizer import (
     PIIDesensitizer,
     PIIMatch,
     summarize_pii_matches,
+    remove_overlapping,
+)
+from .output_guard import (
+    OutputGuard,
+    OutputGuardResult,
+    SensitiveMatch,
+    summarize_sensitive_matches,
 )
 
 __all__ = [
@@ -102,4 +109,10 @@ __all__ = [
     "PIIDesensitizer",
     "PIIMatch",
     "summarize_pii_matches",
+    "remove_overlapping",
+    # Output guard (v0.8.5)
+    "OutputGuard",
+    "OutputGuardResult",
+    "SensitiveMatch",
+    "summarize_sensitive_matches",
 ]

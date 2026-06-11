@@ -212,6 +212,24 @@ sanitizer:
     - id_card
     - email
     - api_key
+
+# 输出护栏设置
+output_guard:
+  enabled: true                       # 启用输出护栏（敏感信息拦截）
+  action: mask                        # 拦截动作：mask（遮蔽）/ block（拦截）/ warn（警告）
+  mask_mode: partial                  # 遮蔽模式：partial / full
+  mask_char: "*"                      # 遮蔽字符
+  sensitive_types:                    # 启用的敏感类型
+    - api_key
+    - password
+    - private_key
+    - connection_string
+    - phone
+    - id_card
+    - email
+  block_severity:                     # 强制拦截的类型（即使 action 为 mask）
+    - private_key
+  custom_patterns: []                 # 自定义检测模式
 ```
 
 ### 3.2 不同 LLM 配置
@@ -840,6 +858,7 @@ test_result = tester.run(f"请为这段代码编写测试：{code}")
 3. 使用环境变量管理 API Key
 4. 启用输入净化器（`sanitizer.enabled: true`），自动过滤 prompt injection 模式和异常格式输入
 5. 启用 PII 脱敏（`sanitizer.pii_enabled: true`），自动遮蔽手机号、身份证号、邮箱、API Key 等敏感信息
+6. 启用输出护栏（`output_guard.enabled: true`），自动拦截 Agent 响应中的敏感信息泄露
 
 ### Q: Agent 陷入循环怎么办？
 

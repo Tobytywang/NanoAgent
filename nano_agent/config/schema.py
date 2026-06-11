@@ -562,6 +562,29 @@ class SanitizerConfig:
 
 
 @dataclass
+class OutputGuardConfig:
+    """Output guard configuration for sensitive information interception."""
+
+    enabled: bool = True
+    action: Literal["mask", "block", "warn"] = "mask"
+    mask_char: str = "*"
+    mask_mode: Literal["partial", "full"] = "partial"
+    sensitive_types: list[str] = field(
+        default_factory=lambda: [
+            "api_key",
+            "password",
+            "private_key",
+            "connection_string",
+            "phone",
+            "id_card",
+            "email",
+        ]
+    )
+    block_severity: list[str] = field(default_factory=lambda: ["private_key"])
+    custom_patterns: list[dict] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -597,3 +620,4 @@ class Config:
     retry: RetryConfig = field(default_factory=RetryConfig)
     rate_limiter: RateLimiterConfig = field(default_factory=RateLimiterConfig)
     sanitizer: SanitizerConfig = field(default_factory=SanitizerConfig)
+    output_guard: OutputGuardConfig = field(default_factory=OutputGuardConfig)

@@ -15,6 +15,7 @@ from .middleware import (
     MiddlewarePhase,
     MiddlewareContext,
     MiddlewareChain,
+    SensitiveOutputMiddleware,
 )
 from .middlewares import (
     LoggingMiddleware,
@@ -36,6 +37,7 @@ __all__ = [
     "MiddlewarePhase",
     "MiddlewareContext",
     "MiddlewareChain",
+    "SensitiveOutputMiddleware",
     # Built-in middlewares
     "LoggingMiddleware",
     "TracingMiddleware",

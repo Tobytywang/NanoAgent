@@ -319,7 +319,19 @@ class AgentBuilder:
 
             sanitizer = InputSanitizer(self.config.sanitizer, events=agent.events)
 
+        # Create output guard
+        output_guard = None
+        if (
+            hasattr(self.config, "output_guard")
+            and self.config.output_guard is not None
+        ):
+            from ..agent.output_guard import OutputGuard
+
+            output_guard = OutputGuard(self.config.output_guard, events=agent.events)
+
         # Create orchestrator
-        orchestrator = AgentOrchestrator(agent, self.config, sanitizer=sanitizer)
+        orchestrator = AgentOrchestrator(
+            agent, self.config, sanitizer=sanitizer, output_guard=output_guard
+        )
 
         return orchestrator

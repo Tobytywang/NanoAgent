@@ -372,6 +372,44 @@ sanitizer:
     - api_key
 ```
 
+### 8b. 输出护栏 (Output Guard)
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `output_guard.*` |
+| 源码位置 | `nano_agent/config/schema.py` → `OutputGuardConfig`；`nano_agent/agent/output_guard.py` → `OutputGuard` |
+
+输出护栏在编排层（orchestrator）边界扫描 Agent 响应中的敏感信息，是 ReAct 循环后的硬门控。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `output_guard.enabled` | `True` | 是否启用输出护栏 |
+| `output_guard.action` | `"mask"` | 拦截动作：`mask` 遮蔽 / `block` 拦截 / `warn` 警告 |
+| `output_guard.mask_mode` | `"partial"` | 遮蔽模式：`"partial"` 保留首尾 / `"full"` 全遮蔽 |
+| `output_guard.mask_char` | `"*"` | 遮蔽字符 |
+| `output_guard.sensitive_types` | 7 种默认类型 | 启用的敏感检测类型 |
+| `output_guard.block_severity` | `["private_key"]` | 强制触发 block 的类型 |
+| `output_guard.custom_patterns` | `[]` | 用户自定义检测模式 |
+
+```yaml
+output_guard:
+  enabled: true
+  action: mask                # mask / block / warn
+  mask_mode: partial          # partial / full
+  mask_char: "*"              # 遮蔽字符
+  sensitive_types:            # 启用的敏感类型
+    - api_key
+    - password
+    - private_key
+    - connection_string
+    - phone
+    - id_card
+    - email
+  block_severity:             # 强制拦截的类型
+    - private_key
+  custom_patterns: []         # 添加自定义检测模式
+```
+
 ---
 
 ## 软限制（间接影响对话质量）
@@ -738,6 +776,12 @@ semantic_compressor:
 | `sanitizer.pii_mask_mode` | `"partial"` | 遮蔽模式 | 硬限制 |
 | `sanitizer.pii_mask_char` | `"*"` | 遮蔽字符 | 硬限制 |
 | `sanitizer.pii_types` | `["phone","id_card","email","api_key"]` | PII 检测类型 | 硬限制 |
+| `output_guard.enabled` | `True` | 输出护栏开关 | 硬限制 |
+| `output_guard.action` | `"mask"` | 拦截动作 | 硬限制 |
+| `output_guard.mask_mode` | `"partial"` | 遮蔽模式 | 硬限制 |
+| `output_guard.mask_char` | `"*"` | 遮蔽字符 | 硬限制 |
+| `output_guard.sensitive_types` | 7 种默认类型 | 敏感检测类型 | 硬限制 |
+| `output_guard.block_severity` | `["private_key"]` | 强制拦截类型 | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |

@@ -29,6 +29,7 @@ graph TB
         RL[RateLimiter<br/>速率限制]
         CB[CircuitBreaker<br/>熔断降级]
         SAN[InputSanitizer<br/>输入净化]
+        GUARD[OutputGuard<br/>输出护栏]
     end
 
     subgraph Core["核心组件"]
@@ -83,7 +84,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -268,7 +269,9 @@ flowchart TD
 
     FINAL --> BUILD[构建 ExecutionResult]
     MAX --> BUILD
-    BUILD --> END([返回响应])
+    BUILD --> GUARD{输出护栏<br/>OutputGuard}
+    GUARD -->|拦截| BLOCKED[OUTPUT_BLOCKED<br/>返回拦截原因]
+    GUARD -->|遮蔽/通过| END([返回响应])
 
     style THINK fill:#e1f5fe
     style ACT fill:#fff3e0
@@ -280,6 +283,7 @@ flowchart TD
 | 阶段 | 方法 | 描述 |
 |------|------|------|
 | **净化** | `InputSanitizer.sanitize()` | 编排层硬门控，格式检查→注入检查→长度检查 |
+| **护栏** | `OutputGuard.guard()` | 编排层后门控，敏感检测→遮蔽/拦截/警告 |
 | **Think** | `_think()` | 调用 LLM，获取响应文本和工具调用 |
 | **Act** | `_act()` | 执行工具，支持确认机制和撤销追踪 |
 | **Observe** | `_observe()` | 将工具结果记录到记忆系统 |
@@ -456,6 +460,30 @@ chat()                          ← 入口方法
 - **PII 先于注入**: PII 脱敏在注入检查前执行，遮蔽后的文本参与注入检测，确保遮蔽后的 PII 不会被误判为注入
 - **注入零容忍**: 注入模式匹配始终拒绝，不可配置为截断
 - **长度可配置**: `length_action` 支持 `truncate`（默认，保留输入）或 `reject`（严格模式）
+
+### 输出护栏门控
+
+`AgentOrchestrator` 在 ReAct 循环后执行 `OutputGuard`，是编排层边界的后门控——与输入净化器形成对称保护：
+
+```
+Agent 响应
+  │
+  └─ OutputGuard.guard()
+       │
+       ├─ ① PII 检测：phone/id_card/email/api_key → 遮蔽（复用 PIIDesensitizer）
+       │
+       ├─ ② 输出敏感检测：password/private_key/connection_string → 遮蔽或拦截
+       │
+       ├─ ③ 自定义模式检测：custom_patterns → 遮蔽或拦截
+       │
+       └─ 结果 → mask(遮蔽) / block(拦截) / warn(警告)
+```
+
+**设计原则**：
+- **输入输出对称**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据
+- **PII 模式复用**: phone/id_card/email/api_key 的正则和遮蔽逻辑复用 `PIIDesensitizer`，避免重复
+- **高危强制拦截**: `block_severity` 中的类型（默认 `private_key`）即使 action 为 mask 也会触发整响应拦截
+- **三种动作**: mask（默认，遮蔽敏感数据）、block（拦截整个响应）、warn（允许但记录警告）
 
 ### Token 消耗分析
 

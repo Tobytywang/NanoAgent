@@ -553,6 +553,53 @@ result = sanitizer.sanitize(user_input)
 # result.was_truncated → 是否被截断
 ```
 
+### OutputGuardConfig & OutputGuard
+
+v0.8.5 输出护栏。在编排层（orchestrator）边界扫描 Agent 响应中的敏感信息，是 ReAct 循环后的硬门控——输入净化器保护"进来"的数据，输出护栏保护"出去"的数据。
+
+- `enabled: bool = True` — 启用输出护栏
+- `action: Literal["mask", "block", "warn"] = "mask"` — 拦截动作：`"mask"` 遮蔽敏感数据（默认），`"block"` 整个响应被拦截，`"warn"` 允许但记录警告
+- `mask_mode: Literal["partial", "full"] = "partial"` — 遮蔽模式
+- `mask_char: str = "*"` — 遮蔽字符
+- `sensitive_types: list[str]` — 启用的敏感类型（默认全部启用）
+- `block_severity: list[str] = ["private_key"]` — 强制触发 block 的类型（即使 action 为 mask）
+- `custom_patterns: list[dict] = []` — 用户自定义检测模式 `[{"name": "type", "pattern": "regex"}]`
+
+**支持的敏感类型**:
+
+| 类型 | 说明 | Partial 遮蔽示例 |
+|------|------|-----------------|
+| `api_key` | Bearer/sk-/pk-/ghp_/AKIA 等前缀 | `sk-****abcd` |
+| `password` | password/passwd/pwd/secret/token 赋值 | `password=****` |
+| `private_key` | PEM 私钥头 | `[PRIVATE KEY REDACTED]` |
+| `connection_string` | 数据库连接串 | `postgres://user:****@host` |
+| `phone` | 中国手机号（复用 PII 检测） | `138****1234` |
+| `id_card` | 中国身份证（复用 PII 检测） | `110***********1234` |
+| `email` | 邮箱地址（复用 PII 检测） | `u***@domain.com` |
+
+**处理逻辑**: 放在 `AgentOrchestrator` 层，在 Agent 产生响应后、返回用户前执行。输出被拦截时返回 `TerminationReason.OUTPUT_BLOCKED`，触发 `AgentEvent.OUTPUT_BLOCKED` 事件。
+
+```python
+from nano_agent.agent.output_guard import OutputGuard, OutputGuardResult, SensitiveMatch
+from nano_agent.config.schema import OutputGuardConfig
+
+config = OutputGuardConfig(
+    enabled=True,
+    action="mask",
+    sensitive_types=["api_key", "password", "private_key", "connection_string"],
+    block_severity=["private_key"],
+)
+
+guard = OutputGuard(config)
+result = guard.guard("The database is at postgres://admin:secret@db.example.com:5432/app")
+# result.guarded → "The database is at postgres://admin:****@db.example.com:5432/app"
+# result.blocked → False
+# result.matches → [SensitiveMatch(sensitive_type="connection_string", ...)]
+# result.actions_taken → ["output_masked: connection_string: 1"]
+```
+
+**block_severity**: `private_key` 默认在 block_severity 中，即使 action 为 mask，检测到私钥也会拦截整个响应。这防止了私钥的部分泄露（因为 PEM 格式跨多行，单行遮蔽不够安全）。
+
 ### ExecutionMode
 
 v0.8.0 执行模式枚举，由熔断器控制。

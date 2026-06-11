@@ -43,6 +43,7 @@ class TestAgentBuilder:
         config.retry = None
         config.rate_limiter = None
         config.sanitizer = None
+        config.output_guard = None
         return config
 
     @pytest.fixture

@@ -24,6 +24,22 @@ _CONTROL_CHAR_TABLE = str.maketrans(
 )
 
 
+def remove_overlapping(
+    raw: list[tuple[int, int, str, str]],
+) -> list[tuple[int, int, str, str]]:
+    """Sort matches by position and remove overlaps, keeping longer spans."""
+    sorted_raw = sorted(raw, key=lambda x: (x[0], -(x[1] - x[0])))
+    filtered: list[tuple[int, int, str, str]] = []
+    for item in sorted_raw:
+        if not filtered or item[0] >= filtered[-1][1]:
+            filtered.append(item)
+        elif item[1] > filtered[-1][1] and (item[1] - item[0]) > (
+            filtered[-1][1] - filtered[-1][0]
+        ):
+            filtered[-1] = item
+    return filtered
+
+
 @dataclass
 class PIIMatch:
     """A single PII occurrence found in text."""
@@ -65,7 +81,7 @@ class PIIDesensitizer:
         self._mask_char = config.pii_mask_char
         self._mask_mode = config.pii_mask_mode
         self._enabled_types = set(config.pii_types)
-        self._compiled = {
+        self.compiled = {
             name: re.compile(pattern)
             for name, pattern in self._PATTERNS.items()
             if name in self._enabled_types
@@ -75,23 +91,14 @@ class PIIDesensitizer:
         """Find and mask PII in text. Returns (sanitized_text, matches)."""
         # Collect raw matches as (start, end, pii_type, original)
         raw: list[tuple[int, int, str, str]] = []
-        for pii_type, pattern in self._compiled.items():
+        for pii_type, pattern in self.compiled.items():
             for m in pattern.finditer(text):
                 raw.append((m.start(), m.end(), pii_type, m.group()))
 
         if not raw:
             return text, []
 
-        # Remove overlapping matches — keep longer spans
-        raw.sort(key=lambda x: (x[0], -(x[1] - x[0])))
-        filtered_raw: list[tuple[int, int, str, str]] = []
-        for item in raw:
-            if not filtered_raw or item[0] >= filtered_raw[-1][1]:
-                filtered_raw.append(item)
-            elif item[1] > filtered_raw[-1][1] and (item[1] - item[0]) > (
-                filtered_raw[-1][1] - filtered_raw[-1][0]
-            ):
-                filtered_raw[-1] = item
+        filtered_raw = remove_overlapping(raw)
 
         # Build PIIMatch objects only for surviving matches
         matches: list[PIIMatch] = []

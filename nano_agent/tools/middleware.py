@@ -195,3 +195,43 @@ class MiddlewareChain:
 
     def __iter__(self):
         return iter(self._middlewares)
+
+
+class SensitiveOutputMiddleware(BaseMiddleware):
+    """
+    Middleware that automatically masks sensitive information in tool output.
+
+    Scans tool results for API keys, passwords, private keys, connection
+    strings, and other sensitive patterns. Detected data is masked in-place.
+
+    This middleware operates at the tool execution boundary (after phase).
+    It is designed for use with ToolRegistry.execute() — the programmatic
+    API path. When the agent's execution flow is refactored to route
+    through the middleware chain, this will activate automatically.
+    """
+
+    priority = 100  # Run after other middlewares
+
+    def __init__(self, output_guard=None):
+        """
+        Args:
+            output_guard: OutputGuard instance for scanning and masking.
+                         If None, a default guard is created.
+        """
+        self._output_guard = output_guard
+
+    def after(self, ctx: MiddlewareContext) -> None:
+        """Scan tool output for sensitive data and mask if found."""
+        if self._output_guard is None or not self._output_guard.enabled:
+            return
+
+        if ctx.result is None or not ctx.result.success:
+            return
+
+        original_output = ctx.result.output
+        if not original_output:
+            return
+
+        guarded_output = self._output_guard.scan_tool_output(original_output)
+        if guarded_output != original_output:
+            ctx.result.output = guarded_output
