@@ -585,6 +585,20 @@ class OutputGuardConfig:
 
 
 @dataclass
+class HarmfulContentFilterConfig:
+    """Harmful content filter configuration for output safety checks."""
+
+    enabled: bool = False
+    categories: list[str] = field(
+        default_factory=lambda: ["violence", "hate", "dangerous", "illegal"]
+    )
+    default_action: Literal["block", "warn", "replace"] = "block"
+    category_actions: dict[str, str] = field(default_factory=dict)
+    replacement_text: str = "[Content removed for safety]"
+    custom_patterns: list[dict] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -621,3 +635,6 @@ class Config:
     rate_limiter: RateLimiterConfig = field(default_factory=RateLimiterConfig)
     sanitizer: SanitizerConfig = field(default_factory=SanitizerConfig)
     output_guard: OutputGuardConfig = field(default_factory=OutputGuardConfig)
+    harmful_content_filter: HarmfulContentFilterConfig = field(
+        default_factory=HarmfulContentFilterConfig
+    )

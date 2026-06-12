@@ -25,6 +25,7 @@ class TerminationReason(str, Enum):
     PREJUDGMENT_SIMPLE = "prejudgment_simple"
     INPUT_REJECTED = "input_rejected"
     OUTPUT_BLOCKED = "output_blocked"
+    HARMFUL_CONTENT_BLOCKED = "harmful_content_blocked"
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,7 @@ class AgentEvent(Enum):
     CIRCUIT_BREAKER = "circuit_breaker"
     INPUT_REJECTED = "input_rejected"
     OUTPUT_BLOCKED = "output_blocked"
+    HARMFUL_CONTENT_DETECTED = "harmful_content_detected"
 
 
 class RiskLevel(Enum):

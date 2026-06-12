@@ -410,6 +410,61 @@ output_guard:
   custom_patterns: []         # 添加自定义检测模式
 ```
 
+### 8c. 有害内容过滤 (Harmful Content Filter)
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `harmful_content_filter.*` |
+| 默认值 | `enabled: False` / `default_action: "block"` |
+| 源码位置 | `nano_agent/config/schema.py` → `HarmfulContentFilterConfig`；`nano_agent/agent/harmful_filter.py` → `HarmfulContentFilter` |
+
+有害内容过滤器在编排层（orchestrator）边界扫描 Agent 响应中的有害/危险内容，是输出护栏之后的第二道防线。OutputGuard 防止信息*泄露*，HarmfulContentFilter 防止*有害内容*触达用户。默认关闭（opt-in），用户需显式启用并配置检测类别。
+
+**四种检测类别**:
+
+| 类别 | 严重度 | 说明 |
+|------|--------|------|
+| `violence` | high | 暴力内容（制造武器/爆炸物指示、杀人方法、暴力犯罪教唆） |
+| `hate` | high | 仇恨言论（仇恨言论+攻击意图、种族歧视+暴力、种族清洗） |
+| `dangerous` | high | 危险内容（自杀/自残方法、毒品合成、黑客攻击/入侵教程） |
+| `illegal` | medium | 违法内容（洗钱方法、逃税方法、伪造货币/证件、身份盗窃） |
+
+**三种处理动作**:
+
+| 动作 | 说明 |
+|------|------|
+| `block` | 拦截整个响应，返回空文本（block 优先于 warn/replace） |
+| `warn` | 允许响应但添加 `[Content Warning: ...]` 前缀 |
+| `replace` | 将有害片段替换为 `replacement_text`，保留非有害部分 |
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `harmful_content_filter.enabled` | `False` | 是否启用有害内容过滤 |
+| `harmful_content_filter.categories` | `["violence", "hate", "dangerous", "illegal"]` | 启用的检测类别 |
+| `harmful_content_filter.default_action` | `"block"` | 默认处理动作：`"block"` / `"warn"` / `"replace"` |
+| `harmful_content_filter.category_actions` | `{}` | 按类别覆盖动作（如 `{"illegal": "warn"}`） |
+| `harmful_content_filter.replacement_text` | `"[Content removed for safety]"` | replace 动作的替换文本 |
+| `harmful_content_filter.custom_patterns` | `[]` | 用户自定义有害内容模式 |
+
+**HarmfulContentMiddleware**: priority=99，在工具执行边界（after phase）扫描工具输出，仅执行替换不拦截。低于 SensitiveOutputMiddleware（priority=100），确保敏感信息先被处理。
+
+**事件**: 拦截时触发 `AgentEvent.HARMFUL_CONTENT_DETECTED`（action="blocked"）和 `AgentEvent.OUTPUT_BLOCKED`（filter_type="harmful_content"），终止原因为 `TerminationReason.HARMFUL_CONTENT_BLOCKED`。
+
+```yaml
+harmful_content_filter:
+  enabled: true
+  categories:                      # 启用的检测类别
+    - violence
+    - hate
+    - dangerous
+    - illegal
+  default_action: block            # 默认动作：block / warn / replace
+  category_actions:                # 按类别覆盖动作
+    illegal: warn                  # illegal 仅警告
+  replacement_text: "[Content removed for safety]"
+  custom_patterns: []              # 自定义有害内容模式
+```
+
 ---
 
 ## 软限制（间接影响对话质量）
@@ -689,6 +744,10 @@ semantic_compressor:
 │   └─ 回到循环顶部 ↺
   │
   └─ 循环结束 → 返回 ExecutionResult
+      │
+      ├─ OutputGuard.guard() → 敏感信息遮蔽/拦截
+      │
+      └─ HarmfulContentFilter.filter() → 有害内容过滤/拦截
 ```
 
 **关键交互**：
@@ -782,6 +841,12 @@ semantic_compressor:
 | `output_guard.mask_char` | `"*"` | 遮蔽字符 | 硬限制 |
 | `output_guard.sensitive_types` | 7 种默认类型 | 敏感检测类型 | 硬限制 |
 | `output_guard.block_severity` | `["private_key"]` | 强制拦截类型 | 硬限制 |
+| `harmful_content_filter.enabled` | `False` | 有害内容过滤开关 | 硬限制 |
+| `harmful_content_filter.categories` | `["violence","hate","dangerous","illegal"]` | 启用的检测类别 | 硬限制 |
+| `harmful_content_filter.default_action` | `"block"` | 默认处理动作 | 硬限制 |
+| `harmful_content_filter.category_actions` | `{}` | 按类别覆盖动作 | 硬限制 |
+| `harmful_content_filter.replacement_text` | `"[Content removed for safety]"` | 替换文本 | 硬限制 |
+| `harmful_content_filter.custom_patterns` | `[]` | 自定义有害内容模式 | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |

@@ -157,6 +157,7 @@ class ConfigLoader:
         # RateLimiterConfig: "enabled", "requests_per_minute", "burst", "rate_limiter"
         # SanitizerConfig: "enabled", "injection_patterns", "custom_patterns", "max_input_length", "length_action", "reject_null_bytes", "reject_control_chars", "max_line_length", "pii_enabled", "pii_mask_char", "pii_mask_mode", "pii_types", "sanitizer"
         # OutputGuardConfig: "enabled", "action", "mask_mode", "mask_char", "sensitive_types", "block_severity", "custom_patterns", "output_guard"
+        # HarmfulContentFilterConfig: "enabled", "categories", "default_action", "category_actions", "replacement_text", "custom_patterns", "harmful_content_filter"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -178,6 +179,7 @@ class ConfigLoader:
         # config.rate_limiter.enabled, config.rate_limiter.requests_per_minute, config.rate_limiter.burst
         # config.sanitizer.enabled, config.sanitizer.injection_patterns, config.sanitizer.custom_patterns, config.sanitizer.max_input_length, config.sanitizer.length_action, config.sanitizer.reject_null_bytes, config.sanitizer.reject_control_chars, config.sanitizer.max_line_length, config.sanitizer.pii_enabled, config.sanitizer.pii_mask_char, config.sanitizer.pii_mask_mode, config.sanitizer.pii_types
         # config.output_guard.enabled, config.output_guard.action, config.output_guard.mask_mode, config.output_guard.mask_char, config.output_guard.sensitive_types, config.output_guard.block_severity, config.output_guard.custom_patterns
+        # config.harmful_content_filter.enabled, config.harmful_content_filter.categories, config.harmful_content_filter.default_action, config.harmful_content_filter.category_actions, config.harmful_content_filter.replacement_text, config.harmful_content_filter.custom_patterns
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

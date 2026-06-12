@@ -30,6 +30,7 @@ graph TB
         CB[CircuitBreaker<br/>熔断降级]
         SAN[InputSanitizer<br/>输入净化]
         GUARD[OutputGuard<br/>输出护栏]
+        HFILTER[HarmfulContentFilter<br/>有害内容过滤]
     end
 
     subgraph Core["核心组件"]
@@ -84,7 +85,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -271,7 +272,9 @@ flowchart TD
     MAX --> BUILD
     BUILD --> GUARD{输出护栏<br/>OutputGuard}
     GUARD -->|拦截| BLOCKED[OUTPUT_BLOCKED<br/>返回拦截原因]
-    GUARD -->|遮蔽/通过| END([返回响应])
+    GUARD -->|遮蔽/通过| HFILTER{有害内容过滤<br/>HarmfulContentFilter}
+    HFILTER -->|拦截| HARMFUL_BLOCKED[HARMFUL_CONTENT_BLOCKED<br/>返回拦截原因]
+    HFILTER -->|替换/警告/通过| END([返回响应])
 
     style THINK fill:#e1f5fe
     style ACT fill:#fff3e0
@@ -284,6 +287,7 @@ flowchart TD
 |------|------|------|
 | **净化** | `InputSanitizer.sanitize()` | 编排层硬门控，格式检查→注入检查→长度检查 |
 | **护栏** | `OutputGuard.guard()` | 编排层后门控，敏感检测→遮蔽/拦截/警告 |
+| **有害过滤** | `HarmfulContentFilter.filter()` | 编排层第二道防线，有害内容检测→拦截/替换/警告 |
 | **Think** | `_think()` | 调用 LLM，获取响应文本和工具调用 |
 | **Act** | `_act()` | 执行工具，支持确认机制和撤销追踪 |
 | **Observe** | `_observe()` | 将工具结果记录到记忆系统 |
@@ -307,6 +311,7 @@ graph LR
         confirmation
         undo
         git_manager
+        harmful_filter
     end
 
     subgraph llm[llm]
@@ -479,13 +484,39 @@ Agent 响应
        └─ 结果 → mask(遮蔽) / block(拦截) / warn(警告)
 ```
 
+### 有害内容过滤门控
+
+`AgentOrchestrator` 在 OutputGuard 之后执行 `HarmfulContentFilter`，是编排层边界的第二道防线——OutputGuard 防止信息*泄露*，HarmfulContentFilter 防止*有害内容*触达用户：
+
+```
+OutputGuard 通过的响应
+  │
+  └─ HarmfulContentFilter.filter()
+       │
+       ├─ ① 多类别检测：violence/hate/dangerous/illegal + custom_patterns
+       │
+       ├─ ② 优先级规则：block > replace > warn
+       │
+       ├─ ③ block → 整个响应被拦截（HARMFUL_CONTENT_BLOCKED）
+       │
+       ├─ ④ replace → 有害片段替换为 replacement_text
+       │
+       └─ ⑤ warn → 添加 [Content Warning: ...] 前缀
+```
+
+**设计原则**：
+- **输入输出+有害内容三层防护**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据不含敏感信息泄露，有害内容过滤器保护"出去"的数据不含危险内容
+- **默认关闭**: 有害内容的定义因使用场景而异，用户需显式启用并选择检测类别
+- **灵活动作**: 每个类别可独立配置 block/warn/replace，允许用户对低风险内容（如 illegal）仅警告
+- **工具输出也受保护**: HarmfulContentMiddleware（priority=99）在工具执行边界扫描输出，防止有害内容通过工具结果间接进入上下文
+
 **设计原则**：
 - **输入输出对称**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据
 - **PII 模式复用**: phone/id_card/email/api_key 的正则和遮蔽逻辑复用 `PIIDesensitizer`，避免重复
 - **高危强制拦截**: `block_severity` 中的类型（默认 `private_key`）即使 action 为 mask 也会触发整响应拦截
 - **三种动作**: mask（默认，遮蔽敏感数据）、block（拦截整个响应）、warn（允许但记录警告）
 
-### Token 消耗分析
+### 有害内容过滤门控
 
 NanoAgent 提供精细化的 Token 消耗分析，支持三个层次的查看：
 

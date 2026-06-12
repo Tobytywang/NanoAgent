@@ -46,6 +46,12 @@ from .output_guard import (
     SensitiveMatch,
     summarize_sensitive_matches,
 )
+from .harmful_filter import (
+    HarmfulContentFilter,
+    HarmfulFilterResult,
+    HarmfulMatch,
+    summarize_harmful_matches,
+)
 
 __all__ = [
     # Base
@@ -115,4 +121,9 @@ __all__ = [
     "OutputGuardResult",
     "SensitiveMatch",
     "summarize_sensitive_matches",
+    # Harmful content filter (v0.8.6)
+    "HarmfulContentFilter",
+    "HarmfulFilterResult",
+    "HarmfulMatch",
+    "summarize_harmful_matches",
 ]

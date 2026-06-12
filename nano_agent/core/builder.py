@@ -329,9 +329,29 @@ class AgentBuilder:
 
             output_guard = OutputGuard(self.config.output_guard, events=agent.events)
 
+        # Create harmful content filter
+        harmful_filter = None
+        if (
+            hasattr(self.config, "harmful_content_filter")
+            and self.config.harmful_content_filter is not None
+        ):
+            from ..agent.harmful_filter import HarmfulContentFilter
+            from ..config.schema import HarmfulContentFilterConfig
+
+            if isinstance(
+                self.config.harmful_content_filter, HarmfulContentFilterConfig
+            ):
+                harmful_filter = HarmfulContentFilter(
+                    self.config.harmful_content_filter, events=agent.events
+                )
+
         # Create orchestrator
         orchestrator = AgentOrchestrator(
-            agent, self.config, sanitizer=sanitizer, output_guard=output_guard
+            agent,
+            self.config,
+            sanitizer=sanitizer,
+            output_guard=output_guard,
+            harmful_filter=harmful_filter,
         )
 
         return orchestrator

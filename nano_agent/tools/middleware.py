@@ -235,3 +235,39 @@ class SensitiveOutputMiddleware(BaseMiddleware):
         guarded_output = self._output_guard.scan_tool_output(original_output)
         if guarded_output != original_output:
             ctx.result.output = guarded_output
+
+
+class HarmfulContentMiddleware(BaseMiddleware):
+    """
+    Middleware that scans tool output for harmful/dangerous content.
+
+    Replaces harmful segments with safe substitution text. This operates
+    at the tool execution boundary (after phase), complementing
+    SensitiveOutputMiddleware which handles data leakage.
+    """
+
+    priority = 99  # Just below SensitiveOutputMiddleware (100)
+
+    def __init__(self, harmful_filter=None):
+        """
+        Args:
+            harmful_filter: HarmfulContentFilter instance for scanning and replacing.
+                          If None, the middleware is inactive.
+        """
+        self._harmful_filter = harmful_filter
+
+    def after(self, ctx: MiddlewareContext) -> None:
+        """Scan tool output for harmful content and replace if found."""
+        if self._harmful_filter is None or not self._harmful_filter.enabled:
+            return
+
+        if ctx.result is None or not ctx.result.success:
+            return
+
+        original_output = ctx.result.output
+        if not original_output:
+            return
+
+        filtered_output = self._harmful_filter.scan_tool_output(original_output)
+        if filtered_output != original_output:
+            ctx.result.output = filtered_output

@@ -13,6 +13,7 @@ from .types import ExecutionResult, AgentEvent, TerminationReason
 from .events import EventEmitter
 
 if TYPE_CHECKING:
+    from .harmful_filter import HarmfulContentFilter
     from .output_guard import OutputGuard
     from .react import ReActAgent
     from .sanitizer import InputSanitizer
@@ -49,6 +50,7 @@ class AgentOrchestrator:
         config: Any = None,
         sanitizer: "InputSanitizer | None" = None,
         output_guard: "OutputGuard | None" = None,
+        harmful_filter: "HarmfulContentFilter | None" = None,
     ):
         """
         Initialize the orchestrator.
@@ -58,16 +60,19 @@ class AgentOrchestrator:
             config: Optional configuration object
             sanitizer: Optional input sanitizer for pre-execution validation
             output_guard: Optional output guard for post-execution sensitive data interception
+            harmful_filter: Optional harmful content filter for post-execution safety checks
         """
         self.agent = agent
         self.config = config
         self.sanitizer = sanitizer
         self.output_guard = output_guard
+        self.harmful_filter = harmful_filter
         self.session_id = self._generate_session_id()
         self.stats = SessionStats()
         self.events = EventEmitter()
         self.last_sanitizer_result = None
         self.last_output_guard_result = None
+        self.last_harmful_filter_result = None
 
     # Property proxies for backward compatibility with CLI
     @property
@@ -157,6 +162,33 @@ class AgentOrchestrator:
                 )
         else:
             self.last_output_guard_result = None
+
+        # Filter harmful content in output
+        if self.harmful_filter and self.harmful_filter.enabled:
+            filter_result = self.harmful_filter.filter(result.response)
+            self.last_harmful_filter_result = filter_result
+            if filter_result.blocked:
+                return ExecutionResult(
+                    response=f"Output blocked: {filter_result.reason}",
+                    success=False,
+                    iterations=result.iterations,
+                    tool_calls=result.tool_calls,
+                    tokens_used=result.tokens_used,
+                    session_id=self.session_id,
+                    termination_reason=TerminationReason.HARMFUL_CONTENT_BLOCKED.value,
+                )
+            if filter_result.matches:
+                result = ExecutionResult(
+                    response=filter_result.filtered,
+                    success=result.success,
+                    iterations=result.iterations,
+                    tool_calls=result.tool_calls,
+                    tokens_used=result.tokens_used,
+                    session_id=result.session_id,
+                    termination_reason=result.termination_reason,
+                )
+        else:
+            self.last_harmful_filter_result = None
 
         # Collect statistics
         self._collect_stats(result)

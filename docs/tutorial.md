@@ -12,7 +12,8 @@
 6. [技能包](#6-技能包)
 7. [个性化设置](#7-个性化设置)
 8. [运行监控](#8-运行监控)
-9. [高级用法](#9-高级用法)
+9. [安全防护](#9-安全防护)
+10. [高级用法](#10-高级用法)
 
 ---
 
@@ -720,7 +721,96 @@ smart_optimization:
 
 ---
 
-## 9. 高级用法
+## 9. 安全防护
+
+NanoAgent 提供三层安全防护机制，从输入到输出形成完整保护链：
+
+### 9.1 输入净化（sanitizer）
+
+防止 prompt injection 和异常格式输入进入 ReAct 循环：
+
+```yaml
+sanitizer:
+  enabled: true
+  max_input_length: 10000
+  length_action: truncate       # truncate / reject
+  pii_enabled: true             # 启用 PII 脱敏
+  pii_mask_mode: partial        # partial / full
+```
+
+### 9.2 输出护栏（output_guard）
+
+防止敏感信息（API Key、密码、私钥等）通过 Agent 响应泄露：
+
+```yaml
+output_guard:
+  enabled: true
+  action: mask                  # mask / block / warn
+  mask_mode: partial
+  sensitive_types:
+    - api_key
+    - password
+    - private_key
+    - connection_string
+```
+
+### 9.3 有害内容过滤（harmful_content_filter）
+
+防止有害/危险内容（暴力、仇恨、危险活动、违法内容）触达用户。默认关闭，需显式启用：
+
+```yaml
+harmful_content_filter:
+  enabled: true                       # 启用有害内容过滤
+  categories:                         # 启用的检测类别
+    - violence                        # 暴力内容（严重度: high）
+    - hate                            # 仇恨言论（严重度: high）
+    - dangerous                       # 危险内容（严重度: high）
+    - illegal                         # 违法内容（严重度: medium）
+  default_action: block               # 默认动作：block / warn / replace
+  category_actions:                   # 按类别覆盖动作
+    illegal: warn                     # 违法内容仅警告，不拦截
+  replacement_text: "[Content removed for safety]"
+  custom_patterns: []                 # 自定义有害内容模式
+```
+
+**使用场景**：
+
+1. **客服系统**：启用所有类别，`default_action: block`，确保客服回复不包含有害内容
+2. **内容创作助手**：启用 violence 和 hate，`default_action: warn`，提醒但不阻止创作
+3. **技术文档助手**：仅启用 dangerous（防止黑客教程），其他类别关闭
+4. **教育平台**：启用所有类别，illegal 设为 `warn`（允许讨论法律概念但提醒注意）
+
+**三种动作的区别**：
+
+| 动作 | 行为 | 适用场景 |
+|------|------|---------|
+| `block` | 整个响应被拦截，返回空文本 | 严格环境（客服、教育） |
+| `warn` | 响应正常返回，添加 `[Content Warning: ...]` 前缀 | 宽松环境（创作、讨论） |
+| `replace` | 有害片段替换为安全文本，非有害部分保留 | 部分过滤（保留上下文） |
+
+**自定义模式示例**：
+
+```yaml
+harmful_content_filter:
+  enabled: true
+  categories:
+    - violence
+    - dangerous
+  custom_patterns:
+    # 添加企业特定的有害内容模式
+    - category: corporate
+      severity: medium
+      pattern: "(?i)insider\\s+trading\\s+(?:tips|guide|methods)"
+    - category: corporate
+      severity: high
+      pattern: "(?i)trade\\s+secret\\s+(?:theft|exfiltration)\\s+guide"
+```
+
+**防护管线**：输入 → `InputSanitizer` → ReAct 循环 → `OutputGuard` → `HarmfulContentFilter` → 输出
+
+---
+
+## 10. 高级用法
 
 ### 9.1 自定义 Agent 行为
 
@@ -859,6 +949,7 @@ test_result = tester.run(f"请为这段代码编写测试：{code}")
 4. 启用输入净化器（`sanitizer.enabled: true`），自动过滤 prompt injection 模式和异常格式输入
 5. 启用 PII 脱敏（`sanitizer.pii_enabled: true`），自动遮蔽手机号、身份证号、邮箱、API Key 等敏感信息
 6. 启用输出护栏（`output_guard.enabled: true`），自动拦截 Agent 响应中的敏感信息泄露
+7. 启用有害内容过滤（`harmful_content_filter.enabled: true`），自动拦截或替换暴力、仇恨、危险、违法等有害内容
 
 ### Q: Agent 陷入循环怎么办？
 

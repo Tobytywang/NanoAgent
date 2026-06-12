@@ -881,6 +881,14 @@ def run_interactive(
                 print(f"⚠ 输出被拦截: {result.response}")
                 continue
 
+            # Handle harmful content blocking
+            if (
+                result.termination_reason
+                == TerminationReason.HARMFUL_CONTENT_BLOCKED.value
+            ):
+                print(f"⚠ 输出被拦截: 有害内容 ({result.response})")
+                continue
+
             # Show PII desensitization notice
             if (
                 orchestrator.last_sanitizer_result is not None
@@ -904,6 +912,21 @@ def run_interactive(
                     orchestrator.last_output_guard_result.matches
                 )
                 print(f"[Guard] 输出已遮蔽 ({summary})")
+
+            # Show harmful content filter notice
+            if (
+                orchestrator.last_harmful_filter_result is not None
+                and orchestrator.last_harmful_filter_result.matches
+            ):
+                from nano_agent.agent.harmful_filter import summarize_harmful_matches
+
+                summary = summarize_harmful_matches(
+                    orchestrator.last_harmful_filter_result.matches
+                )
+                if orchestrator.last_harmful_filter_result.warned:
+                    print(f"[HarmfulFilter] 内容警告 ({summary})")
+                else:
+                    print(f"[HarmfulFilter] 内容已替换 ({summary})")
 
             # Sanitize response for printing
             response = result.response
@@ -2237,6 +2260,43 @@ def _show_config(config, agent) -> None:
             )
         )
 
+    # 有害内容过滤 (v0.8.6)
+    if hasattr(config, "harmful_content_filter"):
+        print("\n## 有害内容过滤 (Harmful Content Filter)")
+        print(format_line("Enabled:", str(config.harmful_content_filter.enabled)))
+        if config.harmful_content_filter.enabled:
+            print(
+                format_line(
+                    "Categories:",
+                    ", ".join(config.harmful_content_filter.categories),
+                )
+            )
+            print(
+                format_line(
+                    "Default Action:",
+                    config.harmful_content_filter.default_action,
+                )
+            )
+            if config.harmful_content_filter.category_actions:
+                print(
+                    format_line(
+                        "Category Actions:",
+                        str(config.harmful_content_filter.category_actions),
+                    )
+                )
+            print(
+                format_line(
+                    "Replacement Text:",
+                    config.harmful_content_filter.replacement_text,
+                )
+            )
+            print(
+                format_line(
+                    "Custom Patterns:",
+                    str(len(config.harmful_content_filter.custom_patterns)),
+                )
+            )
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -3085,6 +3145,14 @@ def _init_config_file(config, force: bool = False) -> None:
             "sensitive_types": config.output_guard.sensitive_types,
             "block_severity": config.output_guard.block_severity,
             "custom_patterns": config.output_guard.custom_patterns,
+        },
+        "harmful_content_filter": {
+            "enabled": config.harmful_content_filter.enabled,
+            "categories": config.harmful_content_filter.categories,
+            "default_action": config.harmful_content_filter.default_action,
+            "category_actions": config.harmful_content_filter.category_actions,
+            "replacement_text": config.harmful_content_filter.replacement_text,
+            "custom_patterns": config.harmful_content_filter.custom_patterns,
         },
     }
 

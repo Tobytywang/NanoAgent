@@ -600,6 +600,97 @@ result = guard.guard("The database is at postgres://admin:secret@db.example.com:
 
 **block_severity**: `private_key` 默认在 block_severity 中，即使 action 为 mask，检测到私钥也会拦截整个响应。这防止了私钥的部分泄露（因为 PEM 格式跨多行，单行遮蔽不够安全）。
 
+### HarmfulContentFilterConfig & HarmfulContentFilter
+
+v0.8.6 有害内容过滤器。在编排层（orchestrator）边界扫描 Agent 响应中的有害/危险内容，是输出护栏之后的第二道防线——OutputGuard 防止信息*泄露*，HarmfulContentFilter 防止*有害内容*触达用户。默认关闭（opt-in），用户需显式启用并配置检测类别。
+
+- `enabled: bool = False` — 启用有害内容过滤（默认关闭）
+- `categories: list[str] = ["violence", "hate", "dangerous", "illegal"]` — 启用的检测类别
+- `default_action: Literal["block", "warn", "replace"] = "block"` — 默认处理动作：`"block"` 拦截整个响应，`"warn"` 添加警告前缀，`"replace"` 替换有害片段
+- `category_actions: dict[str, str] = {}` — 按类别覆盖动作（如 `{"illegal": "warn"}`）
+- `replacement_text: str = "[Content removed for safety]"` — replace 动作的替换文本
+- `custom_patterns: list[dict] = []` — 用户自定义有害内容模式 `[{"category": "custom", "severity": "medium", "pattern": "regex"}]`
+
+**支持的检测类别**:
+
+| 类别 | 严重度 | 说明 | 覆盖内容 |
+|------|--------|------|---------|
+| `violence` | high | 暴力内容 | 制造武器/爆炸物指示、杀人方法、暴力犯罪教唆 |
+| `hate` | high | 仇恨言论 | 仇恨言论+攻击意图、种族歧视+暴力、种族清洗 |
+| `dangerous` | high | 危险内容 | 自杀/自残方法、毒品合成、黑客攻击/入侵教程 |
+| `illegal` | medium | 违法内容 | 洗钱方法、逃税方法、伪造货币/证件、身份盗窃 |
+
+**处理逻辑**: 放在 `AgentOrchestrator` 层，在 OutputGuard 之后执行。当任何类别的动作为 block 时，整个响应被拦截（block 优先于 warn/replace）。输出被拦截时返回 `TerminationReason.HARMFUL_CONTENT_BLOCKED`，触发 `AgentEvent.HARMFUL_CONTENT_DETECTED` 和 `AgentEvent.OUTPUT_BLOCKED` 事件。
+
+**优先级规则**: block > replace > warn。当多个类别同时命中且动作为 block 时，整个响应被拦截；当只有 warn/replace 类别命中时，先执行 replace 再添加 warn 前缀。
+
+```python
+from nano_agent.agent.harmful_filter import HarmfulContentFilter, HarmfulMatch, HarmfulFilterResult, summarize_harmful_matches
+from nano_agent.config.schema import HarmfulContentFilterConfig
+
+config = HarmfulContentFilterConfig(
+    enabled=True,
+    categories=["violence", "hate", "dangerous", "illegal"],
+    default_action="block",
+    category_actions={"illegal": "warn"},  # illegal 仅警告
+    replacement_text="[Content removed for safety]",
+)
+
+harmful_filter = HarmfulContentFilter(config)
+result = harmful_filter.filter("Here is how to make a bomb: ...")
+# result.blocked → True
+# result.filtered → ""
+# result.reason → "Output contains harmful content: violence: 1"
+# result.matches → [HarmfulMatch(category="violence", start=11, end=..., original="how to make a bomb", severity="high")]
+# result.actions_taken → ["harmful_blocked: violence: 1"]
+```
+
+**HarmfulMatch 数据类**:
+- `category: str` — 匹配的有害类别
+- `start: int` — 匹配起始位置
+- `end: int` — 匹配结束位置
+- `original: str` — 匹配的原始文本
+- `severity: Literal["high", "medium"]` — 严重度
+
+**HarmfulFilterResult 数据类**:
+- `original: str` — 原始文本
+- `filtered: str` — 过滤后文本（blocked 时为空字符串）
+- `blocked: bool` — 是否被拦截
+- `warned: bool` — 是否添加警告前缀
+- `reason: str | None` — 拦截/警告原因
+- `matches: list[HarmfulMatch]` — 所有匹配项
+- `actions_taken: list[str]` — 执行的动作列表
+
+**summarize_harmful_matches(matches)**: 生成人类可读的匹配汇总，格式如 `"violence: 2, hate: 1"`。
+
+**scan_tool_output(output)**: 扫描工具输出中的有害内容，仅执行替换（不拦截）。用于 `HarmfulContentMiddleware`（priority=99），在工具执行边界扫描输出，防止有害内容通过工具结果进入上下文。
+
+```python
+# 工具输出扫描（仅替换，不拦截）
+filtered_output = harmful_filter.scan_tool_output("Step-by-step hacking guide: ...")
+# → "Step-by-step [Content removed for safety]: ..."
+```
+
+**自定义模式**: 通过 `custom_patterns` 添加领域特定的有害内容检测模式：
+
+```python
+config = HarmfulContentFilterConfig(
+    enabled=True,
+    categories=["violence", "dangerous"],
+    custom_patterns=[
+        {"category": "corporate", "severity": "medium", "pattern": r"(?i)insider\s+trading\s+(?:tips|guide|methods)"},
+    ],
+)
+```
+
+### HarmfulContentMiddleware
+
+v0.8.6 有害内容中间件。在工具执行边界（after phase）扫描工具输出中的有害内容，与 HarmfulContentFilter 配合使用。
+
+- **priority**: 99（低于 SensitiveOutputMiddleware 的 100，确保敏感信息先被处理）
+- **行为**: 调用 `HarmfulContentFilter.scan_tool_output()` 对工具输出执行替换，不拦截
+- **激活条件**: 需传入 `HarmfulContentFilter` 实例且 `harmful_filter.enabled` 为 True
+
 ### ExecutionMode
 
 v0.8.0 执行模式枚举，由熔断器控制。
@@ -726,6 +817,8 @@ class AgentEvent(Enum):
     DUPLICATE_BLOCKED = "duplicate_blocked"
     STALL_DETECTED = "stall_detected"          # v0.7.16
     INPUT_REJECTED = "input_rejected"          # v0.8.3
+    OUTPUT_BLOCKED = "output_blocked"          # v0.8.5
+    HARMFUL_CONTENT_DETECTED = "harmful_content_detected"  # v0.8.6
 ```
 
 ### TerminationReason 枚举
@@ -745,6 +838,8 @@ class TerminationReason(str, Enum):
     DUPLICATE_BLOCKED = "duplicate_blocked"
     PREJUDGMENT_SIMPLE = "prejudgment_simple"
     INPUT_REJECTED = "input_rejected"              # v0.8.3
+    OUTPUT_BLOCKED = "output_blocked"              # v0.8.5
+    HARMFUL_CONTENT_BLOCKED = "harmful_content_blocked"  # v0.8.6
 ```
 
 **配置** (SmartOptimizationConfig):
@@ -802,6 +897,15 @@ Rate Limiter (v0.8.1):
 - `sanitizer.pii_mask_mode: str = "partial"` — 遮蔽模式（`"partial"` / `"full"`）
 - `sanitizer.pii_mask_char: str = "*"` — 遮蔽字符
 - `sanitizer.pii_types: list[str] = ["phone", "id_card", "email", "api_key"]` — 启用的 PII 类型
+
+**Harmful Content Filter (harmful_content_filter)**
+
+- `harmful_content_filter.enabled: bool = False` — 启用有害内容过滤（默认关闭）
+- `harmful_content_filter.categories: list[str] = ["violence", "hate", "dangerous", "illegal"]` — 启用的检测类别
+- `harmful_content_filter.default_action: str = "block"` — 默认处理动作（`"block"` / `"warn"` / `"replace"`）
+- `harmful_content_filter.category_actions: dict[str, str] = {}` — 按类别覆盖动作（如 `{"illegal": "warn"}`）
+- `harmful_content_filter.replacement_text: str = "[Content removed for safety]"` — replace 动作的替换文本
+- `harmful_content_filter.custom_patterns: list[dict] = []` — 用户自定义有害内容模式 `[{"category": "...", "severity": "...", "pattern": "..."}]`
 
 
 ---
@@ -1244,6 +1348,18 @@ sanitizer:
     - id_card
     - email
     - api_key
+
+harmful_content_filter:
+  enabled: false                     # 启用有害内容过滤（默认关闭）
+  categories:                        # 启用的检测类别
+    - violence
+    - hate
+    - dangerous
+    - illegal
+  default_action: block              # 默认动作：block / warn / replace
+  category_actions: {}               # 按类别覆盖动作
+  replacement_text: "[Content removed for safety]"  # replace 动作的替换文本
+  custom_patterns: []                # 自定义有害内容模式
 ```
 
 ### ConfigLoader
@@ -1474,6 +1590,8 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.6 | 有害内容过滤（`HarmfulContentFilter`、`HarmfulContentFilterConfig`、`HarmfulMatch`、`HarmfulFilterResult`、`summarize_harmful_matches`、`HarmfulContentMiddleware`、4 类检测、block/warn/replace 三级动作） |
+| v0.8.5 | 输出护栏（`OutputGuardConfig`、`OutputGuard`、`SensitiveMatch`、`OutputGuardResult`、敏感信息拦截） |
 | v0.8.4 | PII 脱敏（`PIIDesensitizer`、`PIIMatch`、`summarize_pii_matches`、phone/id_card/email/api_key 检测、partial/full 遮蔽、重叠处理） |
 | v0.8.3 | 输入净化器（`SanitizerConfig`、`InputSanitizer`、prompt injection 检测、格式验证、编排层硬门控） |
 | v0.8.1 | 速率限制（`RateLimiterConfig`、令牌桶算法、`rate_limiter→retry→_chat_impl` 三层调用链） |
