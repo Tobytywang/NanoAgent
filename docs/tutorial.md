@@ -231,6 +231,19 @@ output_guard:
   block_severity:                     # 强制拦截的类型（即使 action 为 mask）
     - private_key
   custom_patterns: []                 # 自定义检测模式
+
+# 有害内容过滤设置
+harmful_content_filter:
+  enabled: false                      # 启用有害内容过滤（默认关闭）
+  categories:                         # 启用的检测类别
+    - violence
+    - hate
+    - dangerous
+    - illegal
+  default_action: block               # 默认动作：block / warn / replace
+  category_actions: {}                # 按类别覆盖动作
+  replacement_text: "[Content removed for safety]"
+  custom_patterns: []                 # 自定义有害内容模式
 ```
 
 ### 3.2 不同 LLM 配置
@@ -812,7 +825,7 @@ harmful_content_filter:
 
 ## 10. 高级用法
 
-### 9.1 自定义 Agent 行为
+### 10.1 自定义 Agent 行为
 
 ```python
 # 自定义系统提示
@@ -833,7 +846,7 @@ memory = ShortTermMemory(
 )
 ```
 
-### 9.2 限制工具使用
+### 10.2 限制工具使用
 
 ```python
 from nano_agent.tools.base import ToolRegistry
@@ -848,7 +861,7 @@ registry.register(FileWriteTool())
 # 不注册 shell_execute，限制系统命令执行
 ```
 
-### 9.3 流式响应
+### 10.3 流式响应
 
 ```python
 # 流式获取响应
@@ -856,7 +869,7 @@ for chunk in agent.run_stream("请写一个快速排序算法"):
     print(chunk, end="", flush=True)
 ```
 
-### 9.4 错误处理
+### 10.4 错误处理
 
 ```python
 from nano_agent.tools.base import ToolResult
@@ -896,7 +909,7 @@ class SafeFileReadTool(BaseTool):
             return ToolResult(success=False, error=f"读取失败: {str(e)}")
 ```
 
-### 9.5 多 Agent 协作示例
+### 10.5 多 Agent 协作示例
 
 ```python
 from nano_agent.agent.react import ReActAgent
