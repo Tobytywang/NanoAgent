@@ -52,6 +52,12 @@ from .harmful_filter import (
     HarmfulMatch,
     summarize_harmful_matches,
 )
+from .result_validator import (
+    ResultValidator,
+    ValidationResult,
+    ValidationCheck,
+    summarize_validation_checks,
+)
 
 __all__ = [
     # Base
@@ -126,4 +132,9 @@ __all__ = [
     "HarmfulFilterResult",
     "HarmfulMatch",
     "summarize_harmful_matches",
+    # Result validator (v0.8.7)
+    "ResultValidator",
+    "ValidationResult",
+    "ValidationCheck",
+    "summarize_validation_checks",
 ]

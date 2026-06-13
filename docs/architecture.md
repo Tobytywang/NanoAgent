@@ -31,6 +31,7 @@ graph TB
         SAN[InputSanitizer<br/>输入净化]
         GUARD[OutputGuard<br/>输出护栏]
         HFILTER[HarmfulContentFilter<br/>有害内容过滤]
+        RVALIDATOR[ResultValidator<br/>结果验证]
     end
 
     subgraph Core["核心组件"]
@@ -85,7 +86,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -274,7 +275,9 @@ flowchart TD
     GUARD -->|拦截| BLOCKED[OUTPUT_BLOCKED<br/>返回拦截原因]
     GUARD -->|遮蔽/通过| HFILTER{有害内容过滤<br/>HarmfulContentFilter}
     HFILTER -->|拦截| HARMFUL_BLOCKED[HARMFUL_CONTENT_BLOCKED<br/>返回拦截原因]
-    HFILTER -->|替换/警告/通过| END([返回响应])
+    HFILTER -->|替换/警告/通过| RVALIDATOR{结果验证<br/>ResultValidator}
+    RVALIDATOR -->|拦截| VALIDATION_BLOCKED[VALIDATION_FAILED<br/>返回验证失败原因]
+    RVALIDATOR -->|标注/通过| END([返回响应])
 
     style THINK fill:#e1f5fe
     style ACT fill:#fff3e0
@@ -288,6 +291,7 @@ flowchart TD
 | **净化** | `InputSanitizer.sanitize()` | 编排层硬门控，格式检查→注入检查→长度检查 |
 | **护栏** | `OutputGuard.guard()` | 编排层后门控，敏感检测→遮蔽/拦截/警告 |
 | **有害过滤** | `HarmfulContentFilter.filter()` | 编排层第二道防线，有害内容检测→拦截/替换/警告 |
+| **结果验证** | `ResultValidator.validate()` | 编排层第三道防线，验证声明正确性→拦截/警告/标注 |
 | **Think** | `_think()` | 调用 LLM，获取响应文本和工具调用 |
 | **Act** | `_act()` | 执行工具，支持确认机制和撤销追踪 |
 | **Observe** | `_observe()` | 将工具结果记录到记忆系统 |
@@ -312,6 +316,7 @@ graph LR
         undo
         git_manager
         harmful_filter
+        result_validator
     end
 
     subgraph llm[llm]
@@ -515,6 +520,32 @@ OutputGuard 通过的响应
 - **PII 模式复用**: phone/id_card/email/api_key 的正则和遮蔽逻辑复用 `PIIDesensitizer`，避免重复
 - **高危强制拦截**: `block_severity` 中的类型（默认 `private_key`）即使 action 为 mask 也会触发整响应拦截
 - **三种动作**: mask（默认，遮蔽敏感数据）、block（拦截整个响应）、warn（允许但记录警告）
+
+### 结果验证门控
+
+`AgentOrchestrator` 在 HarmfulContentFilter 之后执行 `ResultValidator`，是编排层边界的第三道防线——OutputGuard 防止信息*泄露*，HarmfulContentFilter 防止*有害内容*触达用户，ResultValidator 防止*不正确的声明*误导用户：
+
+```
+HarmfulContentFilter 通过的响应
+  │
+  └─ ResultValidator.validate()
+       │
+       ├─ ① 声明提取：从 Agent 输出中提取可验证的声明
+       │
+       ├─ ② 逐项验证：file_exists/code_syntax/command_success + custom_validators
+       │
+       ├─ ③ block（仅 high-severity）→ 整个响应被拦截（VALIDATION_FAILED）
+       │
+       ├─ ④ warn → 添加 [Validation Warning: ...] 前缀
+       │
+       └─ ⑤ annotate → 在响应中添加验证标注
+```
+
+**设计原则**：
+- **四层防护管线**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据不含敏感信息泄露，有害内容过滤器保护"出去"的数据不含危险内容，结果验证器保护"出去"的数据不含错误声明
+- **默认关闭**: 结果验证会增加额外开销（文件系统检查、语法解析），用户需显式启用
+- **block 限高严重度**: 仅 high-severity 失败（如声称创建了文件但不存在）触发拦截，medium/low 失败仅标注或警告
+- **opt-in 渐进增强**: 从 annotate（默认）开始，用户可根据信任度调整到 warn 或 block
 
 ### 有害内容过滤门控
 

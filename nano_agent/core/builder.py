@@ -345,6 +345,20 @@ class AgentBuilder:
                     self.config.harmful_content_filter, events=agent.events
                 )
 
+        # Create result validator
+        validator = None
+        if (
+            hasattr(self.config, "result_validator")
+            and self.config.result_validator is not None
+        ):
+            from ..agent.result_validator import ResultValidator
+            from ..config.schema import ResultValidatorConfig
+
+            if isinstance(self.config.result_validator, ResultValidatorConfig):
+                validator = ResultValidator(
+                    self.config.result_validator, events=agent.events
+                )
+
         # Create orchestrator
         orchestrator = AgentOrchestrator(
             agent,
@@ -352,6 +366,7 @@ class AgentBuilder:
             sanitizer=sanitizer,
             output_guard=output_guard,
             harmful_filter=harmful_filter,
+            validator=validator,
         )
 
         return orchestrator

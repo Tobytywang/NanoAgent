@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .harmful_filter import HarmfulContentFilter
     from .output_guard import OutputGuard
     from .react import ReActAgent
+    from .result_validator import ResultValidator
     from .sanitizer import InputSanitizer
 
 
@@ -51,6 +52,7 @@ class AgentOrchestrator:
         sanitizer: "InputSanitizer | None" = None,
         output_guard: "OutputGuard | None" = None,
         harmful_filter: "HarmfulContentFilter | None" = None,
+        validator: "ResultValidator | None" = None,
     ):
         """
         Initialize the orchestrator.
@@ -61,18 +63,21 @@ class AgentOrchestrator:
             sanitizer: Optional input sanitizer for pre-execution validation
             output_guard: Optional output guard for post-execution sensitive data interception
             harmful_filter: Optional harmful content filter for post-execution safety checks
+            validator: Optional result validator for post-execution correctness verification
         """
         self.agent = agent
         self.config = config
         self.sanitizer = sanitizer
         self.output_guard = output_guard
         self.harmful_filter = harmful_filter
+        self.validator = validator
         self.session_id = self._generate_session_id()
         self.stats = SessionStats()
         self.events = EventEmitter()
         self.last_sanitizer_result = None
         self.last_output_guard_result = None
         self.last_harmful_filter_result = None
+        self.last_validator_result = None
 
     # Property proxies for backward compatibility with CLI
     @property
@@ -189,6 +194,33 @@ class AgentOrchestrator:
                 )
         else:
             self.last_harmful_filter_result = None
+
+        # Validate result correctness
+        if self.validator and self.validator.enabled:
+            validator_result = self.validator.validate(result.response)
+            self.last_validator_result = validator_result
+            if validator_result.blocked:
+                return ExecutionResult(
+                    response=f"Output blocked: {validator_result.reason}",
+                    success=False,
+                    iterations=result.iterations,
+                    tool_calls=result.tool_calls,
+                    tokens_used=result.tokens_used,
+                    session_id=self.session_id,
+                    termination_reason=TerminationReason.VALIDATION_FAILED.value,
+                )
+            if validator_result.failed_checks:
+                result = ExecutionResult(
+                    response=validator_result.validated,
+                    success=result.success,
+                    iterations=result.iterations,
+                    tool_calls=result.tool_calls,
+                    tokens_used=result.tokens_used,
+                    session_id=result.session_id,
+                    termination_reason=result.termination_reason,
+                )
+        else:
+            self.last_validator_result = None
 
         # Collect statistics
         self._collect_stats(result)

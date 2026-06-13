@@ -889,6 +889,11 @@ def run_interactive(
                 print(f"⚠ 输出被拦截: 有害内容 ({result.response})")
                 continue
 
+            # Handle validation failure blocking
+            if result.termination_reason == TerminationReason.VALIDATION_FAILED.value:
+                print(f"⚠ 输出被拦截: 验证失败 ({result.response})")
+                continue
+
             # Show PII desensitization notice
             if (
                 orchestrator.last_sanitizer_result is not None
@@ -927,6 +932,30 @@ def run_interactive(
                     print(f"[HarmfulFilter] 内容警告 ({summary})")
                 else:
                     print(f"[HarmfulFilter] 内容已替换 ({summary})")
+
+            # Show result validator notice
+            if (
+                orchestrator.last_validator_result is not None
+                and orchestrator.last_validator_result.failed_checks
+            ):
+                from nano_agent.agent.result_validator import (
+                    summarize_validation_checks,
+                )
+
+                summary = summarize_validation_checks(
+                    orchestrator.last_validator_result.failed_checks
+                )
+                action = (
+                    orchestrator.last_validator_result.actions_taken[0]
+                    if orchestrator.last_validator_result.actions_taken
+                    else ""
+                )
+                if "validation_blocked" in action:
+                    print(f"[Validator] 输出被拦截 ({summary})")
+                elif "validation_warning" in action:
+                    print(f"[Validator] 验证警告 ({summary})")
+                else:
+                    print(f"[Validator] 验证标注 ({summary})")
 
             # Sanitize response for printing
             response = result.response
@@ -2297,6 +2326,26 @@ def _show_config(config, agent) -> None:
                 )
             )
 
+    # 结果正确性验证 (v0.8.7)
+    if hasattr(config, "result_validator"):
+        print("\n## 结果验证 (Result Validator)")
+        print(format_line("Enabled:", str(config.result_validator.enabled)))
+        if config.result_validator.enabled:
+            print(
+                format_line(
+                    "Checks:",
+                    ", ".join(config.result_validator.checks),
+                )
+            )
+            print(format_line("On Fail:", config.result_validator.on_fail))
+            print(format_line("On Pass:", config.result_validator.on_pass))
+            print(
+                format_line(
+                    "Custom Validators:",
+                    str(len(config.result_validator.custom_validators)),
+                )
+            )
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -3153,6 +3202,13 @@ def _init_config_file(config, force: bool = False) -> None:
             "category_actions": config.harmful_content_filter.category_actions,
             "replacement_text": config.harmful_content_filter.replacement_text,
             "custom_patterns": config.harmful_content_filter.custom_patterns,
+        },
+        "result_validator": {
+            "enabled": config.result_validator.enabled,
+            "checks": config.result_validator.checks,
+            "on_fail": config.result_validator.on_fail,
+            "on_pass": config.result_validator.on_pass,
+            "custom_validators": config.result_validator.custom_validators,
         },
     }
 

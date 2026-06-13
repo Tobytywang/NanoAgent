@@ -465,6 +465,39 @@ harmful_content_filter:
   custom_patterns: []              # 自定义有害内容模式
 ```
 
+### 8d. 结果正确性验证 (Result Validator)
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `result_validator.*` |
+| 默认值 | `enabled: False` / `on_fail: "annotate"` |
+| 源码位置 | `nano_agent/config/schema.py` → `ResultValidatorConfig`；`nano_agent/agent/result_validator.py` → `ResultValidator` |
+
+作为第三道输出防线，在 OutputGuard 和 HarmfulContentFilter 之后验证结果正确性。验证 Agent 输出中的声明是否与实际结果一致（如声称创建了文件但文件不存在）。默认关闭（opt-in），用户需显式启用。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `result_validator.enabled` | `False` | 是否启用结果正确性验证 |
+| `result_validator.checks` | `["file_exists", "code_syntax", "command_success"]` | 启用的验证检查类型 |
+| `result_validator.on_fail` | `"annotate"` | 检查失败时的动作：`"block"` 拦截（仅 high-severity）/ `"warn"` 警告 / `"annotate"` 添加验证标注 |
+| `result_validator.on_pass` | `"silent"` | 所有检查通过时的动作：`"silent"` 无输出 / `"annotate"` 添加通过标注 |
+| `result_validator.custom_validators` | `[]` | 自定义验证器函数列表 |
+| `result_validator` | — | 结果正确性验证器整体配置 |
+
+**事件**: 拦截时触发 `AgentEvent.VALIDATION_FAILED`（action="blocked"）和 `AgentEvent.OUTPUT_BLOCKED`（filter_type="result_validator"），终止原因为 `TerminationReason.VALIDATION_FAILED`。
+
+```yaml
+result_validator:
+  enabled: true                       # 启用结果正确性验证
+  checks:                             # 启用的验证检查类型
+    - file_exists                     # 验证声称创建的文件是否存在
+    - code_syntax                     # 验证声称正确的代码语法
+    - command_success                 # 验证声称成功的命令结果
+  on_fail: annotate                   # 失败时动作：block / warn / annotate
+  on_pass: silent                     # 通过时动作：silent / annotate
+  custom_validators: []               # 自定义验证器函数列表
+```
+
 ---
 
 ## 软限制（间接影响对话质量）
@@ -747,7 +780,9 @@ semantic_compressor:
       │
       ├─ OutputGuard.guard() → 敏感信息遮蔽/拦截
       │
-      └─ HarmfulContentFilter.filter() → 有害内容过滤/拦截
+      ├─ HarmfulContentFilter.filter() → 有害内容过滤/拦截
+      │
+      └─ ResultValidator.validate() → 结果正确性验证/拦截
 ```
 
 **关键交互**：
@@ -759,6 +794,7 @@ semantic_compressor:
 - Stall Detection 是**第三个提前干预机制**：与置信度早停（循环内部）和查询路由（循环入口）不同，Stall Detection 在循环末尾检测无进展并注入转向提示，不直接终止循环
 - 速率限制和重试是**LLM 调用的两层防护**：速率限制是"预防"（主动控制调用频率），重试是"治疗"（被动恢复失败调用）。调用链为 `rate_limiter.acquire() → with_retry(_chat_impl)`
 - 输入净化是**ReAct 循环前的硬门控**：在 orchestrator 边界执行，拒绝的输入不进入循环。处理顺序（format → PII → injection → length）不可调换，格式检查先于注入检查防止通过编码绕过，PII 脱敏在注入检查前执行确保遮蔽后的文本参与注入检测
+- ResultValidator 是**第四道输出防线**：在 OutputGuard（防信息泄露）、HarmfulContentFilter（防有害内容）之后验证结果正确性。block 动作仅对 high-severity 失败生效，medium/low 失败不会触发拦截
 
 ---
 
@@ -847,6 +883,11 @@ semantic_compressor:
 | `harmful_content_filter.category_actions` | `{}` | 按类别覆盖动作 | 硬限制 |
 | `harmful_content_filter.replacement_text` | `"[Content removed for safety]"` | 替换文本 | 硬限制 |
 | `harmful_content_filter.custom_patterns` | `[]` | 自定义有害内容模式 | 硬限制 |
+| `result_validator.enabled` | `False` | 结果正确性验证开关 | 硬限制 |
+| `result_validator.checks` | `["file_exists","code_syntax","command_success"]` | 启用的验证检查类型 | 硬限制 |
+| `result_validator.on_fail` | `"annotate"` | 检查失败时的动作 | 硬限制 |
+| `result_validator.on_pass` | `"silent"` | 检查通过时的动作 | 硬限制 |
+| `result_validator.custom_validators` | `[]` | 自定义验证器函数列表 | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |

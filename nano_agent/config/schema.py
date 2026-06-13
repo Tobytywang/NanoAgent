@@ -599,6 +599,19 @@ class HarmfulContentFilterConfig:
 
 
 @dataclass
+class ResultValidatorConfig:
+    """Result correctness validator configuration for verifying agent output."""
+
+    enabled: bool = False
+    checks: list[str] = field(
+        default_factory=lambda: ["file_exists", "code_syntax", "command_success"]
+    )
+    on_fail: Literal["block", "warn", "annotate"] = "annotate"
+    on_pass: Literal["silent", "annotate"] = "silent"
+    custom_validators: list = field(default_factory=list)
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -637,4 +650,7 @@ class Config:
     output_guard: OutputGuardConfig = field(default_factory=OutputGuardConfig)
     harmful_content_filter: HarmfulContentFilterConfig = field(
         default_factory=HarmfulContentFilterConfig
+    )
+    result_validator: ResultValidatorConfig = field(
+        default_factory=ResultValidatorConfig
     )

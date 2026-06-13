@@ -2379,7 +2379,7 @@ nano_agent/cli/main.py                # CLI 拦截提示、结果通知、配置
 
 ---
 
-### v0.8.7 - 结果正确性验证
+### v0.8.7 - 结果正确性验证 ✅
 
 **目标**: 业务语义校验。
 
@@ -2389,7 +2389,52 @@ Agent 管控体系审计发现 Validate 校验层仅格式+置信度，无业务
 **架构归属**: Output 层 - Validate 校验 (P2)
 
 **任务列表**:
-- [ ] #11 结果正确性验证 hook (`nano_agent/agent/validator.py`) — 如文件路径是否存在、代码是否可编译、命令是否真正执行成功
+- [x] #11 结果正确性验证 hook (`nano_agent/agent/result_validator.py`) — 文件路径是否存在、代码是否可编译、命令是否真正执行成功
+
+**实现细节**:
+
+独立模块 `ResultValidator`，在 Orchestrator 管线中 OutputGuard 和 HarmfulContentFilter 之后执行。
+
+**验证检查类型**:
+| 检查类型 | 说明 | 严重度 |
+|----------|------|--------|
+| file_exists | Agent 声称创建了文件 → 验证路径是否存在 | high |
+| code_syntax | Agent 声称代码正确 → 验证 Python/JSON/YAML 语法 | medium |
+| command_success | Agent 声称命令成功 → 检查输出中是否有矛盾的非零退出码 | high/low |
+
+**失败动作模式**: block（拦截）/ warn（警告放行）/ annotate（标注附注），按配置可配。
+
+**配置示例**:
+```yaml
+result_validator:
+  enabled: true
+  checks: ["file_exists", "code_syntax", "command_success"]
+  on_fail: annotate
+  on_pass: silent
+```
+
+**新增文件**:
+```
+nano_agent/agent/result_validator.py   # ResultValidator, ValidationCheck, ValidationResult
+tests/test_result_validator.py          # 57 个测试用例
+```
+
+**修改文件**:
+```
+nano_agent/agent/types.py               # TerminationReason.VALIDATION_FAILED, AgentEvent.VALIDATION_FAILED
+nano_agent/agent/orchestrator.py        # validator 参数和管线步骤
+nano_agent/agent/__init__.py            # 导出新模块
+nano_agent/core/builder.py             # 创建和传递 validator
+nano_agent/config/schema.py            # ResultValidatorConfig
+nano_agent/config/loader.py            # 文档注释
+nano_agent/cli/main.py                 # CLI 拦截提示、结果通知、配置显示
+pyproject.toml                          # v0.8.7
+nano_agent/__init__.py                  # v0.8.7
+```
+
+**预期效果**:
+- 默认关闭（opt-in），3 类验证检查
+- 保守模式：仅验证明确的可验证声明，避免误报
 
 ---
 
@@ -2889,7 +2934,7 @@ persona:
 | v0.8.4 | PII 脱敏 ✅ | P1 — 手机号/身份证/API key 等敏感信息自动脱敏 |
 | v0.8.5 | 输出护栏 ✅ | P1 — 敏感信息拦截 + 中间件规则扩充 |
 | v0.8.6 | 有害内容过滤 ✅ | P1 — 输出内容安全检查（可选） |
-| v0.8.7 | 结果正确性验证 | P2 — 业务语义校验 hook |
+| v0.8.7 | 结果正确性验证 ✅ | P2 — 文件存在/代码语法/命令成功 验证 hook |
 | v0.8.8 | Schema-based 校验 | P2 — 工具返回值结构校验 |
 | v0.8.9 | 反馈闭环 | P2 — 偏差信号回流 + 自纠正循环 |
 | v0.8.10 | 工具资源限制 | P2 — 执行超时 + 调用频率限制 |

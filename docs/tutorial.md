@@ -244,6 +244,17 @@ harmful_content_filter:
   category_actions: {}                # 按类别覆盖动作
   replacement_text: "[Content removed for safety]"
   custom_patterns: []                 # 自定义有害内容模式
+
+# 结果正确性验证设置
+result_validator:
+  enabled: false                      # 启用结果正确性验证（默认关闭）
+  checks:                             # 启用的验证检查类型
+    - file_exists                     # 验证声称创建的文件是否存在
+    - code_syntax                     # 验证声称正确的代码语法
+    - command_success                 # 验证声称成功的命令结果
+  on_fail: annotate                   # 失败时动作：block / warn / annotate
+  on_pass: silent                     # 通过时动作：silent / annotate
+  custom_validators: []               # 自定义验证器函数列表
 ```
 
 ### 3.2 不同 LLM 配置
@@ -819,7 +830,38 @@ harmful_content_filter:
       pattern: "(?i)trade\\s+secret\\s+(?:theft|exfiltration)\\s+guide"
 ```
 
-**防护管线**：输入 → `InputSanitizer` → ReAct 循环 → `OutputGuard` → `HarmfulContentFilter` → 输出
+**防护管线**：输入 → `InputSanitizer` → ReAct 循环 → `OutputGuard` → `HarmfulContentFilter` → `ResultValidator` → 输出
+
+### 9.4 结果正确性验证（result_validator）
+
+验证 Agent 输出中的声明是否与实际结果一致（如声称创建了文件但文件不存在）。默认关闭，需显式启用：
+
+```yaml
+result_validator:
+  enabled: true                       # 启用结果正确性验证
+  checks:                             # 启用的验证检查类型
+    - file_exists                     # 验证声称创建的文件是否存在（严重度: high）
+    - code_syntax                     # 验证声称正确的代码语法（严重度: medium）
+    - command_success                 # 验证声称成功的命令结果（严重度: high/low）
+  on_fail: annotate                   # 失败时动作：block / warn / annotate
+  on_pass: silent                     # 通过时动作：silent / annotate
+  custom_validators: []               # 自定义验证器函数列表
+```
+
+**使用场景**：
+
+1. **文件操作密集场景**：启用 `file_exists`，确保 Agent 声称创建的文件确实存在
+2. **代码生成场景**：启用 `code_syntax`，验证生成的 Python/JSON/YAML 代码语法正确
+3. **命令执行场景**：启用 `command_success`，检查 Agent 声称命令成功但实际有错误
+4. **高可靠性场景**：启用所有检查 + `on_fail: block`，任何 high-severity 失败都拦截响应
+
+**三种失败动作的区别**：
+
+| 动作 | 行为 | 适用场景 |
+|------|------|---------|
+| `block` | 仅 high-severity 失败时拦截整个响应 | 严格环境（生产部署） |
+| `warn` | 响应正常返回，添加 `[Validation Warning: ...]` 前缀 | 宽松环境（开发调试） |
+| `annotate` | 在响应中添加验证标注，标明哪些声明通过/失败 | 默认模式（渐进增强） |
 
 ---
 
@@ -963,6 +1005,7 @@ test_result = tester.run(f"请为这段代码编写测试：{code}")
 5. 启用 PII 脱敏（`sanitizer.pii_enabled: true`），自动遮蔽手机号、身份证号、邮箱、API Key 等敏感信息
 6. 启用输出护栏（`output_guard.enabled: true`），自动拦截 Agent 响应中的敏感信息泄露
 7. 启用有害内容过滤（`harmful_content_filter.enabled: true`），自动拦截或替换暴力、仇恨、危险、违法等有害内容
+8. 启用结果正确性验证（`result_validator.enabled: true`），自动验证 Agent 声称创建的文件是否存在、代码语法是否正确、命令是否真正成功
 
 ### Q: Agent 陷入循环怎么办？
 
