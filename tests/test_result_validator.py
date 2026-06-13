@@ -1,9 +1,9 @@
 """
-Tests for ResultValidator (v0.8.7).
+Tests for ResultValidator (v0.8.7, v0.8.8).
 
 Verifies result correctness validation for agent output,
 including file existence checks, code syntax validation,
-and command success verification.
+command success verification, and schema validation (v0.8.8).
 """
 
 import json
@@ -662,3 +662,263 @@ class TestPatternEdgeCases:
         result = v.validate(text)
         cmd_checks = [c for c in result.checks if c.check_type == "command_success"]
         assert len(cmd_checks) >= 1
+
+
+# === Schema Validation (v0.8.8) ===
+
+
+class TestSchemaValidation:
+    """Tests for schema validation check type (v0.8.8)."""
+
+    def test_valid_status_schema_passes(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={"status": "success", "exit_code": 0, "stdout": "hello"},
+        )
+        assert sto.validate() == []
+
+    def test_status_missing_required_key(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={"exit_code": 0},
+        )
+        errors = sto.validate()
+        assert len(errors) >= 1
+        assert "status" in errors[0]
+
+    def test_status_wrong_type(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={"status": "success", "exit_code": "zero"},
+        )
+        errors = sto.validate()
+        assert any("exit_code" in e for e in errors)
+
+    def test_status_python_executor_variant(self):
+        """PythonExecutor uses 'output' key instead of stdout/stderr."""
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={"status": "success", "output": "42"},
+        )
+        assert sto.validate() == []
+
+    def test_list_schema_valid(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.LIST,
+            data={"items": [{"path": "a.py"}], "total": 1},
+        )
+        assert sto.validate() == []
+
+    def test_list_missing_items(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.LIST,
+            data={"total": 5},
+        )
+        errors = sto.validate()
+        assert any("items" in e for e in errors)
+
+    def test_list_wrong_type_total(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.LIST,
+            data={"items": [], "total": "five"},
+        )
+        errors = sto.validate()
+        assert any("total" in e for e in errors)
+
+    def test_content_schema_valid(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.CONTENT,
+            data={"source": "/tmp/test.py", "content": "print('hi')"},
+        )
+        assert sto.validate() == []
+
+    def test_content_missing_source(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.CONTENT,
+            data={"content": "print('hi')"},
+        )
+        errors = sto.validate()
+        assert any("source" in e for e in errors)
+
+    def test_content_missing_content(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.CONTENT,
+            data={"source": "/tmp/test.py"},
+        )
+        errors = sto.validate()
+        assert any("content" in e for e in errors)
+
+    def test_structure_always_passes(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.STRUCTURE,
+            data={"arbitrary": "data"},
+        )
+        assert sto.validate() == []
+
+    def test_error_schema_always_passes(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.ERROR,
+            data={"error_type": "ValueError", "message": "bad input"},
+        )
+        assert sto.validate() == []
+
+    def test_error_schema_empty_data_passes(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.ERROR,
+            data={},
+        )
+        assert sto.validate() == []
+
+    def test_validate_tool_output_valid(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        v = _make_validator(checks=["schema"])
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={"status": "success"},
+        )
+        is_valid, errors = v.validate_tool_output(sto)
+        assert is_valid
+        assert errors == []
+
+    def test_validate_tool_output_invalid(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        v = _make_validator(checks=["schema"])
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={"exit_code": 0},
+        )
+        is_valid, errors = v.validate_tool_output(sto)
+        assert not is_valid
+        assert len(errors) >= 1
+
+    def test_validate_tool_output_disabled_when_schema_not_in_checks(self):
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        v = _make_validator(checks=["file_exists"])
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={},
+        )
+        is_valid, errors = v.validate_tool_output(sto)
+        assert is_valid
+
+    def test_schema_check_not_in_validate_dispatch(self):
+        """schema check is handled via validate_tool_output(), not validate()."""
+        v = _make_validator(checks=["schema"])
+        result = v.validate("Some response text")
+        schema_checks = [c for c in result.checks if c.check_type == "schema"]
+        assert len(schema_checks) == 0
+
+    def test_validate_tool_output_emits_event(self):
+        from nano_agent.agent.events import EventEmitter
+        from nano_agent.agent.types import AgentEvent
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        events = EventEmitter()
+        emitted = []
+        events.on(AgentEvent.VALIDATION_FAILED, lambda e, d: emitted.append(d))
+
+        config = _make_config(checks=["schema"])
+        v = ResultValidator(config, events=events)
+
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={},
+        )
+        v.validate_tool_output(sto)
+        assert len(emitted) >= 1
+        assert emitted[0]["format"] == "status"
+
+    def test_bool_value_rejected_for_int_key(self):
+        """bool is subclass of int but should not pass int type check."""
+        from nano_agent.tools.standard_output import StandardToolOutput, OutputFormat
+
+        sto = StandardToolOutput(
+            format=OutputFormat.STATUS,
+            data={"status": "success", "exit_code": True},
+        )
+        errors = sto.validate()
+        assert any("exit_code" in e for e in errors)
+
+
+class TestIsTypeCompatible:
+    """Tests for _is_type_compatible helper (v0.8.8)."""
+
+    def test_str_matches_str(self):
+        from nano_agent.tools.standard_output import _is_type_compatible
+
+        assert _is_type_compatible("hello", str)
+
+    def test_int_matches_int(self):
+        from nano_agent.tools.standard_output import _is_type_compatible
+
+        assert _is_type_compatible(42, int)
+
+    def test_bool_rejected_for_int(self):
+        from nano_agent.tools.standard_output import _is_type_compatible
+
+        assert not _is_type_compatible(True, int)
+
+    def test_bool_accepted_for_bool(self):
+        from nano_agent.tools.standard_output import _is_type_compatible
+
+        assert _is_type_compatible(True, bool)
+
+    def test_int_accepted_for_float(self):
+        from nano_agent.tools.standard_output import _is_type_compatible
+
+        assert _is_type_compatible(42, float)
+
+    def test_str_rejected_for_int(self):
+        from nano_agent.tools.standard_output import _is_type_compatible
+
+        assert not _is_type_compatible("42", int)
+
+    def test_list_matches_list(self):
+        from nano_agent.tools.standard_output import _is_type_compatible
+
+        assert _is_type_compatible([1, 2], list)
+
+
+class TestFormatSchema:
+    """Tests for FormatSchema dataclass (v0.8.8)."""
+
+    def test_format_schemas_use_dataclass(self):
+        from nano_agent.tools.standard_output import FORMAT_SCHEMAS, FormatSchema
+
+        for fmt, schema in FORMAT_SCHEMAS.items():
+            assert isinstance(schema, FormatSchema)
+
+    def test_required_keys_are_tuple(self):
+        from nano_agent.tools.standard_output import FORMAT_SCHEMAS
+
+        for fmt, schema in FORMAT_SCHEMAS.items():
+            assert isinstance(schema.required_keys, tuple)

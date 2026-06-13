@@ -478,13 +478,13 @@ harmful_content_filter:
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `result_validator.enabled` | `False` | 是否启用结果正确性验证 |
-| `result_validator.checks` | `["file_exists", "code_syntax", "command_success"]` | 启用的验证检查类型 |
+| `result_validator.checks` | `["file_exists", "code_syntax", "command_success", "schema"]` | 启用的验证检查类型 |
 | `result_validator.on_fail` | `"annotate"` | 检查失败时的动作：`"block"` 拦截（仅 high-severity）/ `"warn"` 警告 / `"annotate"` 添加验证标注 |
 | `result_validator.on_pass` | `"silent"` | 所有检查通过时的动作：`"silent"` 无输出 / `"annotate"` 添加通过标注 |
 | `result_validator.custom_validators` | `[]` | 自定义验证器函数列表 |
 | `result_validator` | — | 结果正确性验证器整体配置 |
 
-**事件**: 拦截时触发 `AgentEvent.VALIDATION_FAILED`（action="blocked"）和 `AgentEvent.OUTPUT_BLOCKED`（filter_type="result_validator"），终止原因为 `TerminationReason.VALIDATION_FAILED`。
+**事件**: 拦截时触发 `AgentEvent.VALIDATION_FAILED`（action="blocked"或"schema_mismatch"）和 `AgentEvent.OUTPUT_BLOCKED`（filter_type="result_validator"），终止原因为 `TerminationReason.VALIDATION_FAILED`。
 
 ```yaml
 result_validator:

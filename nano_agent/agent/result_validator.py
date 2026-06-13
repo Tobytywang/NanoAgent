@@ -8,6 +8,7 @@ detect common falsehoods in agent output:
 - file_exists: Agent claims a file was created/modified → verify the path exists
 - code_syntax: Agent claims code is correct → verify syntax (Python/JSON/YAML)
 - command_success: Agent claims a command succeeded → verify exit code patterns
+- schema: Tool return value structure doesn't match expected format schema
 
 Default: disabled (opt-in). Validation is conservative — it only flags
 clearly verifiable falsehoods, not ambiguous claims.
@@ -25,6 +26,7 @@ from .types import AgentEvent
 
 if TYPE_CHECKING:
     from .events import EventEmitter
+    from ..tools.standard_output import StandardToolOutput
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +147,10 @@ class ResultValidator:
 
         if "command_success" in self._enabled_checks:
             checks.extend(self._check_command_claims(response_text))
+
+        # Note: "schema" check is handled separately via validate_tool_output(),
+        # not through text-based validate(). It operates on StandardToolOutput
+        # objects in _observe(), not on response text.
 
         # Run custom validators
         for validator in self._config.custom_validators:
@@ -399,6 +405,45 @@ class ResultValidator:
         passed_count = len(checks)
         types = summarize_validation_checks(checks)
         return f"{text}\n\n[Validation: {passed_count} check(s) passed ({types})]"
+
+    def validate_tool_output(
+        self, standard_output: "StandardToolOutput"
+    ) -> tuple[bool, list[str]]:
+        """Validate a StandardToolOutput's data against its format schema.
+
+        Called from _observe() before rendering the tool result.
+
+        Args:
+            standard_output: The StandardToolOutput to validate.
+
+        Returns:
+            Tuple of (is_valid, error_messages).
+        """
+        if "schema" not in self._enabled_checks:
+            return True, []
+
+        errors = standard_output.validate()
+        if errors:
+            self._emit_schema_failure(standard_output, errors)
+            return False, errors
+
+        return True, []
+
+    def _emit_schema_failure(
+        self, standard_output: "StandardToolOutput", errors: list[str]
+    ) -> None:
+        """Emit event for schema validation failure."""
+        if self._events:
+            self._events.emit(
+                AgentEvent.VALIDATION_FAILED,
+                {
+                    "action": "schema_mismatch",
+                    "reason": f"Schema validation failed for {standard_output.format.value}: "
+                    + "; ".join(errors),
+                    "format": standard_output.format.value,
+                    "errors": errors,
+                },
+            )
 
     def _build_warning(self, failed: list[ValidationCheck]) -> str:
         """Build a warning message for failed checks."""

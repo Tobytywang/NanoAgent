@@ -359,6 +359,10 @@ class AgentBuilder:
                     self.config.result_validator, events=agent.events
                 )
 
+        # Wire result validator to agent subsystems for schema validation in _observe()
+        if validator is not None:
+            agent._subsystems.result_validator = validator
+
         # Create orchestrator
         orchestrator = AgentOrchestrator(
             agent,

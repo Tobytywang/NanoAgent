@@ -532,7 +532,7 @@ HarmfulContentFilter 通过的响应
        │
        ├─ ① 声明提取：从 Agent 输出中提取可验证的声明
        │
-       ├─ ② 逐项验证：file_exists/code_syntax/command_success + custom_validators
+       ├─ ② 逐项验证：file_exists/code_syntax/command_success/schema + custom_validators
        │
        ├─ ③ block（仅 high-severity）→ 整个响应被拦截（VALIDATION_FAILED）
        │
@@ -542,7 +542,7 @@ HarmfulContentFilter 通过的响应
 ```
 
 **设计原则**：
-- **四层防护管线**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据不含敏感信息泄露，有害内容过滤器保护"出去"的数据不含危险内容，结果验证器保护"出去"的数据不含错误声明
+- **四层防护管线**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据不含敏感信息泄露，有害内容过滤器保护"出去"的数据不含危险内容，结果验证器保护"出去"的数据不含错误声明，schema 验证保护工具返回值结构正确性
 - **默认关闭**: 结果验证会增加额外开销（文件系统检查、语法解析），用户需显式启用
 - **block 限高严重度**: 仅 high-severity 失败（如声称创建了文件但不存在）触发拦截，medium/low 失败仅标注或警告
 - **opt-in 渐进增强**: 从 annotate（默认）开始，用户可根据信任度调整到 warn 或 block

@@ -962,9 +962,31 @@ class ReActAgent(BaseAgent):
             and "standard_output" in result.metadata
             and self.standardized_output_config.enabled
         ):
-            result_content = result.metadata["standard_output"].to_llm_message(
-                detailed=self.standardized_output_config.detailed
-            )
+            standard_output = result.metadata["standard_output"]
+
+            # v0.8.8: Schema validation before rendering
+            result_validator = self._subsystems.result_validator
+            schema_valid = True
+            schema_errors: list[str] = []
+            if result_validator is not None and result_validator.enabled:
+                schema_valid, schema_errors = result_validator.validate_tool_output(
+                    standard_output
+                )
+                if not schema_valid and self.verbose:
+                    print(
+                        f"[Validator] Schema mismatch for {standard_output.format.value}: "
+                        + "; ".join(schema_errors)
+                    )
+
+            if schema_valid:
+                result_content = standard_output.to_llm_message(
+                    detailed=self.standardized_output_config.detailed
+                )
+            else:
+                result_content = (
+                    f"[Schema validation failed for {standard_output.format.value} format; "
+                    f"showing raw output]\n{result.output}"
+                )
         elif self.output_style_config.style == "concise":
             # Use intelligent summarization with config
             summarizer_config = SummarizerConfig(

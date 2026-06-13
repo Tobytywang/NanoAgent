@@ -387,6 +387,18 @@ message = sto.to_llm_message(detailed=False)
 - `enabled: bool = True` — 默认启用
 - `detailed: bool = False` — 紧凑模式（默认）或详细模式
 
+**Schema 验证** (v0.8.8):
+```python
+# 验证 data 是否符合格式 schema
+errors = sto.validate()  # → [] (空列表表示通过)
+
+# 格式不匹配的示例
+bad_sto = StandardToolOutput(format=OutputFormat.STATUS, data={"exit_code": 0})
+bad_sto.validate()  # → ["Missing required key: status"]
+```
+
+`FORMAT_SCHEMAS` 定义了每个 `OutputFormat` 的 `required_keys`、`optional_keys`、`key_types`。
+
 ### StallDetector & StallConfig
 
 v0.7.16 停滞检测。检测 Agent 在 ReAct 循环中连续迭代无进展，注入转向提示让 LLM 换策略。
@@ -708,6 +720,7 @@ v0.8.7 结果正确性验证器。在编排层（orchestrator）管线的 Output
 | `file_exists` | high | Agent 声称创建了文件 → 验证路径是否存在 |
 | `code_syntax` | medium | Agent 声称代码正确 → 验证 Python/JSON/YAML 语法 |
 | `command_success` | high/low | Agent 声称命令成功 → 检查是否有矛盾的非零退出码 |
+| `schema` | medium | StandardToolOutput.data 不符合格式 schema → 回退原始输出 |
 
 **处理逻辑**: 在 Orchestrator 管线中 OutputGuard 和 HarmfulContentFilter 之后执行。block 动作仅对 high-severity 失败生效。输出被拦截时返回 `TerminationReason.VALIDATION_FAILED`，触发 `AgentEvent.VALIDATION_FAILED` 和 `AgentEvent.OUTPUT_BLOCKED` 事件。
 
@@ -717,7 +730,7 @@ from nano_agent.config.schema import ResultValidatorConfig
 
 config = ResultValidatorConfig(
     enabled=True,
-    checks=["file_exists", "code_syntax", "command_success"],
+    checks=["file_exists", "code_syntax", "command_success", "schema"],
     on_fail="annotate",   # 失败时添加验证标注
     on_pass="silent",     # 通过时无额外输出
 )
@@ -731,7 +744,7 @@ result = validator.validate("I've created the file output.txt for you.", tool_re
 ```
 
 **ValidationCheck 数据类**:
-- `check_type: str` — 检查类型（`"file_exists"` / `"code_syntax"` / `"command_success"`）
+- `check_type: str` — 检查类型（`"file_exists"` / `"code_syntax"` / `"command_success"` / `"schema"`）
 - `claim: str` — Agent 的声明内容
 - `passed: bool` — 是否通过验证
 - `detail: str` — 验证详情
@@ -969,7 +982,7 @@ Rate Limiter (v0.8.1):
 **Result Validator (result_validator)**
 
 - `result_validator.enabled: bool = False` — 启用结果正确性验证（默认关闭）
-- `result_validator.checks: list[str] = ["file_exists", "code_syntax", "command_success"]` — 启用的验证检查类型
+- `result_validator.checks: list[str] = ["file_exists", "code_syntax", "command_success", "schema"]` — 启用的验证检查类型
 - `result_validator.on_fail: str = "annotate"` — 检查失败时的动作（`"block"` / `"warn"` / `"annotate"`）
 - `result_validator.on_pass: str = "silent"` — 所有检查通过时的动作（`"silent"` / `"annotate"`）
 - `result_validator.custom_validators: list = []` — 自定义验证器函数列表

@@ -604,7 +604,12 @@ class ResultValidatorConfig:
 
     enabled: bool = False
     checks: list[str] = field(
-        default_factory=lambda: ["file_exists", "code_syntax", "command_success"]
+        default_factory=lambda: [
+            "file_exists",
+            "code_syntax",
+            "command_success",
+            "schema",
+        ]
     )
     on_fail: Literal["block", "warn", "annotate"] = "annotate"
     on_pass: Literal["silent", "annotate"] = "silent"

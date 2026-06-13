@@ -843,6 +843,7 @@ result_validator:
     - file_exists                     # 验证声称创建的文件是否存在（严重度: high）
     - code_syntax                     # 验证声称正确的代码语法（严重度: medium）
     - command_success                 # 验证声称成功的命令结果（严重度: high/low）
+    - schema                          # 验证工具返回值结构是否符合格式 schema（严重度: medium）
   on_fail: annotate                   # 失败时动作：block / warn / annotate
   on_pass: silent                     # 通过时动作：silent / annotate
   custom_validators: []               # 自定义验证器函数列表

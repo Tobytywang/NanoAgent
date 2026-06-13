@@ -130,3 +130,90 @@ class StandardToolOutput:
         error_type = self.data.get("error_type", "error")
         message = self.data.get("message", "Unknown error")
         return f"[{error_type}] {message}"
+
+    def validate(self) -> list[str]:
+        """Validate data dict against format-specific schema.
+
+        Returns:
+            List of validation error messages. Empty list means valid.
+        """
+        schema = FORMAT_SCHEMAS.get(self.format)
+        if schema is None:
+            return [f"Unknown format: {self.format}"]
+
+        errors: list[str] = []
+
+        for key in schema.required_keys:
+            if key not in self.data:
+                errors.append(f"Missing required key: {key}")
+
+        for key, expected_type in schema.key_types.items():
+            if key in self.data and self.data[key] is not None:
+                if not _is_type_compatible(self.data[key], expected_type):
+                    errors.append(
+                        f"Key '{key}': expected {expected_type.__name__}, got {type(self.data[key]).__name__}"
+                    )
+
+        return errors
+
+
+def _is_type_compatible(value: Any, expected_type: type) -> bool:
+    """Check if value matches expected_type, accounting for Python's type hierarchy.
+
+    Python's bool is a subclass of int, so isinstance(True, int) is True.
+    We reject bool where int is expected, and allow int where float is expected.
+    """
+    if isinstance(value, bool):
+        return expected_type is bool
+    if isinstance(value, expected_type):
+        return True
+    return expected_type is float and isinstance(value, int)
+
+
+@dataclass(frozen=True)
+class FormatSchema:
+    """Schema definition for a StandardToolOutput format."""
+
+    required_keys: tuple[str, ...]
+    optional_keys: tuple[str, ...]
+    key_types: dict[str, type] = field(default_factory=dict)
+
+
+FORMAT_SCHEMAS: dict[OutputFormat, FormatSchema] = {
+    OutputFormat.STATUS: FormatSchema(
+        required_keys=("status",),
+        optional_keys=("exit_code", "stdout", "stderr", "output"),
+        key_types={
+            "status": str,
+            "exit_code": int,
+            "stdout": str,
+            "stderr": str,
+            "output": str,
+        },
+    ),
+    OutputFormat.LIST: FormatSchema(
+        required_keys=("items", "total"),
+        optional_keys=("max_display",),
+        key_types={"items": list, "total": int, "max_display": int},
+    ),
+    OutputFormat.CONTENT: FormatSchema(
+        required_keys=("source", "content"),
+        optional_keys=("lines_total", "lines_shown", "start_line"),
+        key_types={
+            "source": str,
+            "content": str,
+            "lines_total": int,
+            "lines_shown": int,
+            "start_line": int,
+        },
+    ),
+    OutputFormat.STRUCTURE: FormatSchema(
+        required_keys=(),
+        optional_keys=(),
+    ),
+    OutputFormat.ERROR: FormatSchema(
+        required_keys=(),
+        optional_keys=("error_type", "message"),
+        key_types={"error_type": str, "message": str},
+    ),
+}

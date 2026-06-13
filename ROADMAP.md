@@ -2438,14 +2438,28 @@ nano_agent/__init__.py                  # v0.8.7
 
 ---
 
-### v0.8.8 - Schema-based 校验
+### v0.8.8 - Schema-based 校验 ✅
 
 **目标**: 工具返回值结构校验。
 
 **架构归属**: Output 层 - Validate 校验 (P2)
 
 **任务列表**:
-- [ ] #12 Schema-based 校验 (`nano_agent/agent/validator.py`) — 工具返回值按预期 schema 校验，不符则标记/修复
+- [x] #12 Schema-based 校验 — StandardToolOutput.data 按格式 schema 校验，不符则回退原始输出
+
+**新增文件**:
+```
+tests/test_result_validator.py  # 新增 TestSchemaValidation (20 个测试用例)
+```
+
+**修改文件**:
+```
+nano_agent/tools/standard_output.py  # FORMAT_SCHEMAS 常量 + validate() 方法
+nano_agent/agent/result_validator.py # validate_tool_output() + _check_schema_claims() 分发
+nano_agent/agent/react.py            # _observe() 集成 schema 验证
+nano_agent/config/schema.py          # checks 默认列表添加 "schema"
+nano_agent/core/builder.py           # 注入 _result_validator 到 agent
+```
 
 ---
 
@@ -2935,7 +2949,7 @@ persona:
 | v0.8.5 | 输出护栏 ✅ | P1 — 敏感信息拦截 + 中间件规则扩充 |
 | v0.8.6 | 有害内容过滤 ✅ | P1 — 输出内容安全检查（可选） |
 | v0.8.7 | 结果正确性验证 ✅ | P2 — 文件存在/代码语法/命令成功 验证 hook |
-| v0.8.8 | Schema-based 校验 | P2 — 工具返回值结构校验 |
+| v0.8.8 | Schema-based 校验 ✅ | P2 — StandardToolOutput.data 按格式 schema 校验 |
 | v0.8.9 | 反馈闭环 | P2 — 偏差信号回流 + 自纠正循环 |
 | v0.8.10 | 工具资源限制 | P2 — 执行超时 + 调用频率限制 |
 | v0.8.11 | 工具沙箱隔离 | P2 — 进程级隔离（可选） |

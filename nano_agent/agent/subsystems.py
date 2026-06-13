@@ -21,6 +21,7 @@ from .prejudgment import QueryPrejudgment
 from .context import ContextManager
 from .confirmation import ConfirmationManager, ConfirmationConfig
 from .circuit_breaker import CircuitBreaker
+from .result_validator import ResultValidator
 from ..config.schema import (
     SmartOptimizationConfig,
     OutputStyleConfig,
@@ -50,6 +51,7 @@ class AgentSubsystems:
         confirmation: ConfirmationManager,
         context_manager: ContextManager | None,
         circuit_breaker: CircuitBreaker | None = None,
+        result_validator: ResultValidator | None = None,
         # Config references (for ReActAgent convenience accessors)
         smart_optimization_config=None,
         output_style_config=None,
@@ -73,6 +75,7 @@ class AgentSubsystems:
         self.confirmation = confirmation
         self.context_manager = context_manager
         self.circuit_breaker = circuit_breaker
+        self.result_validator = result_validator
         # Store config references for ReActAgent
         self._smart_optimization_config = smart_optimization_config
         self._output_style_config = output_style_config
@@ -120,6 +123,7 @@ class AgentSubsystems:
         llm_config=None,
         verbose: bool = False,
         circuit_breaker_config=None,
+        result_validator=None,
     ) -> "AgentSubsystems":
         """从配置对象创建所有子系统"""
         # Token budget
@@ -246,6 +250,7 @@ class AgentSubsystems:
             confirmation=confirmation,
             context_manager=context_manager,
             circuit_breaker=circuit_breaker,
+            result_validator=result_validator,
             # Config references
             smart_optimization_config=smart_optimization,
             output_style_config=output_style,
