@@ -159,6 +159,8 @@ class ConfigLoader:
         # OutputGuardConfig: "enabled", "action", "mask_mode", "mask_char", "sensitive_types", "block_severity", "custom_patterns", "output_guard"
         # HarmfulContentFilterConfig: "enabled", "categories", "default_action", "category_actions", "replacement_text", "custom_patterns", "harmful_content_filter"
         # ResultValidatorConfig: "enabled", "checks", "on_fail", "on_pass", "custom_validators", "result_validator"
+        # FeedbackLoopConfig: "deviation_feedback_enabled", "deviation_feedback_threshold", "deviation_feedback_cooldown",
+        #   "deviation_feedback_hint_injection", "self_correction_enabled", "self_correction_max_attempts", "feedback_loop"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -182,6 +184,7 @@ class ConfigLoader:
         # config.output_guard.enabled, config.output_guard.action, config.output_guard.mask_mode, config.output_guard.mask_char, config.output_guard.sensitive_types, config.output_guard.block_severity, config.output_guard.custom_patterns
         # config.harmful_content_filter.enabled, config.harmful_content_filter.categories, config.harmful_content_filter.default_action, config.harmful_content_filter.category_actions, config.harmful_content_filter.replacement_text, config.harmful_content_filter.custom_patterns
         # config.result_validator.enabled, config.result_validator.checks, config.result_validator.on_fail, config.result_validator.on_pass, config.result_validator.custom_validators
+        # config.feedback_loop.deviation_feedback_enabled, config.feedback_loop.deviation_feedback_threshold, config.feedback_loop.deviation_feedback_cooldown, config.feedback_loop.deviation_feedback_hint_injection, config.feedback_loop.self_correction_enabled, config.feedback_loop.self_correction_max_attempts
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

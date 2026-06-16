@@ -48,6 +48,7 @@ class EstimationAudit:
         self.config = config or EstimationAuditConfig()
         self._history: list[EstimationDeviation] = []
         self._warning_count: int = 0
+        self._last_result: EstimationAuditResult | None = None
 
     def record(
         self, estimated: int, actual: int, calibration_factor: float = 1.0
@@ -98,12 +99,13 @@ class EstimationAudit:
         if len(self._history) > self.config.audit_window:
             self._history = self._history[-self.config.audit_window :]
 
-        return EstimationAuditResult(
+        self._last_result = EstimationAuditResult(
             deviation_pct=deviation_pct,
             is_warning=is_warning,
             direction=direction,
             calibration_factor=calibration_factor,
         )
+        return self._last_result
 
     def get_summary(self) -> dict:
         """Get audit summary for /stats display.
@@ -155,6 +157,10 @@ class EstimationAudit:
         """Get deviation history."""
         return self._history.copy()
 
+    def get_latest_result(self) -> EstimationAuditResult | None:
+        """Get the result from the most recent record() call."""
+        return self._last_result
+
     def is_converged(self) -> bool:
         """Check if calibration has converged (recent deviations < threshold).
 
@@ -171,3 +177,4 @@ class EstimationAudit:
         """Reset audit state."""
         self._history.clear()
         self._warning_count = 0
+        self._last_result = None

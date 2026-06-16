@@ -617,6 +617,21 @@ class ResultValidatorConfig:
 
 
 @dataclass
+class FeedbackLoopConfig:
+    """Feedback loop configuration for deviation backflow and self-correction."""
+
+    # #13 Deviation feedback (偏差信号回流)
+    deviation_feedback_enabled: bool = True
+    deviation_feedback_threshold: float = 0.50  # Inject hint when deviation > threshold
+    deviation_feedback_cooldown: int = 3  # Inject once per N warnings
+    deviation_feedback_hint_injection: bool = True  # Inject hint into LLM prompt
+
+    # #14 Self-correction loop (自纠正循环)
+    self_correction_enabled: bool = True
+    self_correction_max_attempts: int = 2  # Max correction attempts (3 total runs)
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -659,3 +674,4 @@ class Config:
     result_validator: ResultValidatorConfig = field(
         default_factory=ResultValidatorConfig
     )
+    feedback_loop: FeedbackLoopConfig = field(default_factory=FeedbackLoopConfig)

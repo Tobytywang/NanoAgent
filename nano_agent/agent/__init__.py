@@ -58,6 +58,11 @@ from .result_validator import (
     ValidationCheck,
     summarize_validation_checks,
 )
+from .feedback_loop import (
+    FeedbackLoop,
+    DeviationFeedbackResult,
+    SelfCorrectionResult,
+)
 
 __all__ = [
     # Base
@@ -137,4 +142,8 @@ __all__ = [
     "ValidationResult",
     "ValidationCheck",
     "summarize_validation_checks",
+    # Feedback loop (v0.8.9)
+    "FeedbackLoop",
+    "DeviationFeedbackResult",
+    "SelfCorrectionResult",
 ]

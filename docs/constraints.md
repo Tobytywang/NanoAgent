@@ -796,6 +796,24 @@ semantic_compressor:
 - 输入净化是**ReAct 循环前的硬门控**：在 orchestrator 边界执行，拒绝的输入不进入循环。处理顺序（format → PII → injection → length）不可调换，格式检查先于注入检查防止通过编码绕过，PII 脱敏在注入检查前执行确保遮蔽后的文本参与注入检测
 - ResultValidator 是**第四道输出防线**：在 OutputGuard（防信息泄露）、HarmfulContentFilter（防有害内容）之后验证结果正确性。block 动作仅对 high-severity 失败生效，medium/low 失败不会触发拦截
 
+### 8e. 反馈闭环 (Feedback Loop)
+
+v0.8.9 引入反馈闭环机制，包含偏差信号回流和自纠正循环：
+
+**偏差信号回流** (#13):
+- EstimationAudit 检测到高偏差时，将提示注入 LLM 上下文引导策略调整
+- 冷却机制：每 N 次警告注入 1 次提示，默认 cooldown=3
+- 不消耗额外 LLM 调用 — 提示作为下一轮用户消息进入上下文
+
+**自纠正循环** (#14):
+- ResultValidator 拦截输出时，注入验证反馈后重新执行 agent
+- **Token 预算影响**: 最坏情况下总 token 消耗公式为：
+  ```
+  total_tokens >= normal_tokens * (1 + self_correction_max_attempts)
+  ```
+  即 max_attempts=2 时，token 消耗可达正常 3 倍
+- 终止原因: `SELF_CORRECTION_EXHAUSTED`（耗尽）或 `VALIDATION_FAILED`（自纠正禁用）
+
 ---
 
 ## 配置速查表
@@ -888,6 +906,11 @@ semantic_compressor:
 | `result_validator.on_fail` | `"annotate"` | 检查失败时的动作 | 硬限制 |
 | `result_validator.on_pass` | `"silent"` | 检查通过时的动作 | 硬限制 |
 | `result_validator.custom_validators` | `[]` | 自定义验证器函数列表 | 硬限制 |
+| `feedback_loop.deviation_feedback_enabled` | `True` | 偏差信号回流开关 | 软限制 |
+| `feedback_loop.deviation_feedback_threshold` | `0.50` | 触发回流的偏差阈值 | 软限制 |
+| `feedback_loop.deviation_feedback_cooldown` | `3` | 偏差提示冷却间隔 | 软限制 |
+| `feedback_loop.self_correction_enabled` | `True` | 自纠正循环开关 | 软限制 |
+| `feedback_loop.self_correction_max_attempts` | `2` | 最大纠正尝试次数 | 硬限制 |
 | `semantic_compressor.enabled` | `False` | 语义压缩开关 | 软限制 |
 | `semantic_compressor.similarity_threshold` | `0.85` | 相似度阈值 | 软限制 |
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |

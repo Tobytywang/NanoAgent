@@ -604,6 +604,10 @@ class ReActAgent(BaseAgent):
         if self.circuit_breaker:
             self.circuit_breaker.reset()
 
+        # Reset feedback loop deviation state (correction state managed by orchestrator)
+        if self._subsystems.feedback_loop is not None:
+            self._subsystems.feedback_loop.reset_run()
+
         # Reset real token tracking for v0.7.12
         self._last_prompt_tokens = None
 
@@ -740,6 +744,21 @@ class ReActAgent(BaseAgent):
                     f"[Estimation] Deviation: {deviation_pct:.0%} "
                     f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
                 )
+
+        # Deviation feedback — check if hint should be injected
+        if self._subsystems.feedback_loop is not None and usage.prompt_tokens > 0:
+            audit_result = self.tracker.estimation_audit.get_latest_result()
+            if audit_result is not None:
+                feedback_result = self._subsystems.feedback_loop.check_deviation(
+                    audit_result
+                )
+                if feedback_result.should_inject and feedback_result.hint:
+                    self.memory.add_user_message(f"[System] {feedback_result.hint}")
+                    if self.verbose:
+                        print(
+                            f"[DeviationFeedback] {feedback_result.direction} "
+                            f"({feedback_result.deviation_pct:.0%}), hint injected"
+                        )
 
         # Verbose output
         if self.verbose and response_text:

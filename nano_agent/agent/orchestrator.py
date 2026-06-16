@@ -13,6 +13,7 @@ from .types import ExecutionResult, AgentEvent, TerminationReason
 from .events import EventEmitter
 
 if TYPE_CHECKING:
+    from .feedback_loop import FeedbackLoop
     from .harmful_filter import HarmfulContentFilter
     from .output_guard import OutputGuard
     from .react import ReActAgent
@@ -53,6 +54,7 @@ class AgentOrchestrator:
         output_guard: "OutputGuard | None" = None,
         harmful_filter: "HarmfulContentFilter | None" = None,
         validator: "ResultValidator | None" = None,
+        feedback_loop: "FeedbackLoop | None" = None,
     ):
         """
         Initialize the orchestrator.
@@ -64,6 +66,7 @@ class AgentOrchestrator:
             output_guard: Optional output guard for post-execution sensitive data interception
             harmful_filter: Optional harmful content filter for post-execution safety checks
             validator: Optional result validator for post-execution correctness verification
+            feedback_loop: Optional feedback loop for deviation backflow and self-correction
         """
         self.agent = agent
         self.config = config
@@ -71,6 +74,7 @@ class AgentOrchestrator:
         self.output_guard = output_guard
         self.harmful_filter = harmful_filter
         self.validator = validator
+        self.feedback_loop = feedback_loop
         self.session_id = self._generate_session_id()
         self.stats = SessionStats()
         self.events = EventEmitter()
@@ -119,6 +123,10 @@ class AgentOrchestrator:
         self.events.emit(
             AgentEvent.RUN_START, {"input": user_input, "session_id": self.session_id}
         )
+
+        # Reset feedback loop for new user query
+        if self.feedback_loop is not None:
+            self.feedback_loop.reset_all()
 
         # Sanitize input before processing
         if self.sanitizer and self.sanitizer.enabled:
@@ -195,30 +203,85 @@ class AgentOrchestrator:
         else:
             self.last_harmful_filter_result = None
 
-        # Validate result correctness
+        # Validate result correctness — with self-correction loop
         if self.validator and self.validator.enabled:
-            validator_result = self.validator.validate(result.response)
-            self.last_validator_result = validator_result
-            if validator_result.blocked:
-                return ExecutionResult(
-                    response=f"Output blocked: {validator_result.reason}",
-                    success=False,
-                    iterations=result.iterations,
-                    tool_calls=result.tool_calls,
-                    tokens_used=result.tokens_used,
-                    session_id=self.session_id,
-                    termination_reason=TerminationReason.VALIDATION_FAILED.value,
-                )
-            if validator_result.failed_checks:
-                result = ExecutionResult(
-                    response=validator_result.validated,
-                    success=result.success,
-                    iterations=result.iterations,
-                    tool_calls=result.tool_calls,
-                    tokens_used=result.tokens_used,
-                    session_id=result.session_id,
-                    termination_reason=result.termination_reason,
-                )
+            max_correction = (
+                self.feedback_loop.remaining_correction_attempts
+                if self.feedback_loop
+                else 0
+            )
+            cumulative_tokens = result.tokens_used
+
+            for validation_pass in range(max_correction + 1):
+                validator_result = self.validator.validate(result.response)
+                self.last_validator_result = validator_result
+
+                if not validator_result.blocked:
+                    # Validation passed (or only warnings/annotations)
+                    if validator_result.failed_checks:
+                        result = ExecutionResult(
+                            response=validator_result.validated,
+                            success=result.success,
+                            iterations=result.iterations,
+                            tool_calls=result.tool_calls,
+                            tokens_used=cumulative_tokens,
+                            session_id=result.session_id,
+                            termination_reason=result.termination_reason,
+                        )
+                    break
+
+                # Validation blocked — attempt self-correction if enabled and attempts remain
+                if (
+                    self.feedback_loop is not None
+                    and self.feedback_loop.should_retry(validator_result)
+                    and validation_pass < max_correction
+                ):
+                    # Emit self-correction event
+                    failed_check_types = [
+                        c.check_type for c in validator_result.failed_checks
+                    ]
+                    self.feedback_loop.record_correction_attempt()
+                    self.feedback_loop.emit_self_correction_event(failed_check_types)
+
+                    # Build feedback and inject into agent memory
+                    feedback_msg = self.feedback_loop.build_correction_feedback(
+                        validator_result
+                    )
+                    self.agent.memory.add_user_message(feedback_msg)
+
+                    if self.agent.verbose:
+                        print(
+                            f"[Self-Correction] Attempt "
+                            f"{self.feedback_loop.correction_attempts_used}/"
+                            f"{self.feedback_loop.config.self_correction_max_attempts}: "
+                            f"retrying..."
+                        )
+
+                    # Re-run agent with feedback in memory
+                    result = self.agent.run(
+                        user_input, dry_run=dry_run, session_id=self.session_id
+                    )
+                    cumulative_tokens += result.tokens_used
+                    continue
+                else:
+                    # All attempts exhausted or self-correction disabled
+                    used_correction = (
+                        self.feedback_loop is not None
+                        and self.feedback_loop.correction_attempts_used > 0
+                    )
+                    return ExecutionResult(
+                        response=f"Output blocked: {validator_result.reason}",
+                        success=False,
+                        iterations=result.iterations,
+                        tool_calls=result.tool_calls,
+                        tokens_used=cumulative_tokens,
+                        session_id=self.session_id,
+                        termination_reason=(
+                            TerminationReason.SELF_CORRECTION_EXHAUSTED.value
+                            if used_correction
+                            else TerminationReason.VALIDATION_FAILED.value
+                        ),
+                    )
         else:
             self.last_validator_result = None
 

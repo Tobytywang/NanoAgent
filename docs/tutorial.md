@@ -255,6 +255,15 @@ result_validator:
   on_fail: annotate                   # 失败时动作：block / warn / annotate
   on_pass: silent                     # 通过时动作：silent / annotate
   custom_validators: []               # 自定义验证器函数列表
+
+# 反馈闭环设置
+feedback_loop:
+  deviation_feedback_enabled: true    # 偏差信号回流（Token 估算偏差过高时提示 LLM）
+  deviation_feedback_threshold: 0.50  # 触发回流的偏差阈值
+  deviation_feedback_cooldown: 3      # 每 N 次警告注入 1 次提示
+  deviation_feedback_hint_injection: true  # 注入提示到 LLM 上下文
+  self_correction_enabled: true       # 自纠正循环（验证失败时重试）
+  self_correction_max_attempts: 2     # 最大纠正尝试次数
 ```
 
 ### 3.2 不同 LLM 配置

@@ -761,6 +761,53 @@ result = validator.validate("I've created the file output.txt for you.", tool_re
 
 **summarize_validation_checks(checks)**: 生成人类可读的检查汇总，格式如 `"file_exists: 2 passed, code_syntax: 1 failed"`。
 
+### FeedbackLoop & FeedbackLoopConfig
+
+v0.8.9 反馈闭环：偏差信号回流 (#13) + 自纠正循环 (#14)。
+
+```python
+from nano_agent.agent.feedback_loop import FeedbackLoop, DeviationFeedbackResult, SelfCorrectionResult
+from nano_agent.config.schema import FeedbackLoopConfig
+
+config = FeedbackLoopConfig(
+    deviation_feedback_enabled=True,   # 偏差信号回流
+    deviation_feedback_threshold=0.50, # 触发阈值
+    deviation_feedback_cooldown=3,     # 冷却间隔
+    self_correction_enabled=True,      # 自纠正循环
+    self_correction_max_attempts=2,    # 最大尝试次数
+)
+
+fl = FeedbackLoop(config, events=agent.events)
+
+# #13: 检查偏差并注入提示
+result = fl.check_deviation(audit_result)
+if result.should_inject and result.hint:
+    memory.add_user_message(f"[System] {result.hint}")
+
+# #14: 判断是否应重试
+if fl.should_retry(validator_result):
+    feedback = fl.build_correction_feedback(validator_result)
+    fl.record_correction_attempt()
+```
+
+**FeedbackLoop 核心方法**：
+- `check_deviation(audit_result)` → `DeviationFeedbackResult` — 检查偏差是否需要注入提示
+- `should_retry(validator_result)` → `bool` — 判断是否应自纠正重试
+- `build_correction_feedback(validator_result)` → `str` — 构建结构化反馈消息
+- `record_correction_attempt()` → `SelfCorrectionResult` — 记录纠正尝试
+- `reset()` — 重置状态（新 run 前调用）
+
+**DeviationFeedbackResult 数据类**：
+- `should_inject: bool` — 是否应注入提示
+- `hint: str | None` — 提示文本
+- `deviation_pct: float` — 当前偏差
+- `direction: str` — "over"（高估）或 "under"（低估）
+
+**SelfCorrectionResult 数据类**：
+- `attempted: bool` — 是否已尝试纠正
+- `attempt_number: int` — 当前尝试编号
+- `remaining_attempts: int` — 剩余尝试次数
+
 ### ExecutionMode
 
 v0.8.0 执行模式枚举，由熔断器控制。
@@ -1681,6 +1728,7 @@ enabled: true
 | 版本 | 主要功能 |
 |------|---------|
 | v0.8.7 | 结果正确性验证（`ResultValidatorConfig`、`ResultValidator`、`ValidationCheck`、`ValidationResult`、`summarize_validation_checks`、file_exists/code_syntax/command_success 三类检查、block/warn/annotate 三级动作） |
+| v0.8.9 | 反馈闭环（`FeedbackLoopConfig`、`FeedbackLoop`、`DeviationFeedbackResult`、`SelfCorrectionResult`、偏差信号回流、自纠正循环、DEVIATION_FEEDBACK/SELF_CORRECTION 事件、SELF_CORRECTION_EXHAUSTED 终止原因） |
 | v0.8.6 | 有害内容过滤（`HarmfulContentFilter`、`HarmfulContentFilterConfig`、`HarmfulMatch`、`HarmfulFilterResult`、`summarize_harmful_matches`、`HarmfulContentMiddleware`、4 类检测、block/warn/replace 三级动作） |
 | v0.8.5 | 输出护栏（`OutputGuardConfig`、`OutputGuard`、`SensitiveMatch`、`OutputGuardResult`、敏感信息拦截） |
 | v0.8.4 | PII 脱敏（`PIIDesensitizer`、`PIIMatch`、`summarize_pii_matches`、phone/id_card/email/api_key 检测、partial/full 遮蔽、重叠处理） |

@@ -27,6 +27,7 @@ class TerminationReason(str, Enum):
     OUTPUT_BLOCKED = "output_blocked"
     HARMFUL_CONTENT_BLOCKED = "harmful_content_blocked"
     VALIDATION_FAILED = "validation_failed"
+    SELF_CORRECTION_EXHAUSTED = "self_correction_exhausted"
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,8 @@ class AgentEvent(Enum):
     OUTPUT_BLOCKED = "output_blocked"
     HARMFUL_CONTENT_DETECTED = "harmful_content_detected"
     VALIDATION_FAILED = "validation_failed"
+    DEVIATION_FEEDBACK = "deviation_feedback"
+    SELF_CORRECTION = "self_correction"
 
 
 class RiskLevel(Enum):

@@ -363,6 +363,28 @@ class AgentBuilder:
         if validator is not None:
             agent._subsystems.result_validator = validator
 
+        # Create feedback loop
+        feedback_loop = None
+        if (
+            hasattr(self.config, "feedback_loop")
+            and self.config.feedback_loop is not None
+        ):
+            from ..agent.feedback_loop import FeedbackLoop
+            from ..config.schema import FeedbackLoopConfig
+
+            if isinstance(self.config.feedback_loop, FeedbackLoopConfig):
+                if (
+                    self.config.feedback_loop.deviation_feedback_enabled
+                    or self.config.feedback_loop.self_correction_enabled
+                ):
+                    feedback_loop = FeedbackLoop(
+                        self.config.feedback_loop, events=agent.events
+                    )
+
+        # Wire feedback loop to agent subsystems for deviation injection in _think()
+        if feedback_loop is not None:
+            agent._subsystems.feedback_loop = feedback_loop
+
         # Create orchestrator
         orchestrator = AgentOrchestrator(
             agent,
@@ -371,6 +393,7 @@ class AgentBuilder:
             output_guard=output_guard,
             harmful_filter=harmful_filter,
             validator=validator,
+            feedback_loop=feedback_loop,
         )
 
         return orchestrator

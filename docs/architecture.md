@@ -547,6 +547,56 @@ HarmfulContentFilter 通过的响应
 - **block 限高严重度**: 仅 high-severity 失败（如声称创建了文件但不存在）触发拦截，medium/low 失败仅标注或警告
 - **opt-in 渐进增强**: 从 annotate（默认）开始，用户可根据信任度调整到 warn 或 block
 
+### 反馈闭环 (Feedback Loop)
+
+v0.8.9 引入反馈闭环机制，连接观测层和执行层，实现偏差信号回流和自纠正循环：
+
+```
+#13 偏差信号回流:
+
+  EstimationAudit.record()
+       │
+       ▼
+  FeedbackLoop.check_deviation()
+       │
+       ├── deviation > threshold?
+       │       │
+       │       ▼ yes (冷却后)
+       │   build_deviation_hint()
+       │       │
+       │       ▼
+       │   memory.add_user_message("[System] {hint}")
+       │       │
+       │       ▼
+       │   LLM 调整策略 → 偏差收敛
+       │
+       └── no → 继续
+
+#14 自纠正循环:
+
+  ResultValidator.validate()
+       │
+       ├── blocked?
+       │       │
+       │       ▼ yes (attempts remain)
+       │   FeedbackLoop.build_correction_feedback()
+       │       │
+       │       ▼
+       │   memory.add_user_message("[Self-Correction] ...")
+       │       │
+       │       ▼
+       │   agent.run() 重试 → 验证通过 or 耗尽
+       │
+       └── no → 输出结果
+```
+
+**设计原则**：
+- **偏差信号回流**: EstimationAudit 检测到高偏差时，注入提示引导 LLM 调整策略（与 StallDetector 模式一致）
+- **冷却机制**: 每 N 次警告注入 1 次提示，防止上下文污染
+- **自纠正循环**: ResultValidator 拦截时不直接返回失败，而是注入反馈重试
+- **Token 累积**: 跨重试追踪总 token 消耗
+- **终止原因**: 自纠正耗尽时返回 `SELF_CORRECTION_EXHAUSTED`
+
 ### 有害内容过滤门控
 
 NanoAgent 提供精细化的 Token 消耗分析，支持三个层次的查看：

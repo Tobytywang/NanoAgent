@@ -754,6 +754,9 @@ def run_interactive(
                     Console.print("[熔断器] 已恢复 AUTO 模式", style="info")
                 else:
                     Console.print("[熔断器] 未启用", style="warning")
+                # Also reset feedback loop
+                if orchestrator.feedback_loop is not None:
+                    orchestrator.feedback_loop.reset_all()
                 continue
 
             if user_input.lower() == "/sessions":
@@ -894,6 +897,14 @@ def run_interactive(
                 print(f"⚠ 输出被拦截: 验证失败 ({result.response})")
                 continue
 
+            # Handle self-correction exhaustion
+            if (
+                result.termination_reason
+                == TerminationReason.SELF_CORRECTION_EXHAUSTED.value
+            ):
+                print(f"⚠ 自纠正失败: 验证未通过 ({result.response})")
+                continue
+
             # Show PII desensitization notice
             if (
                 orchestrator.last_sanitizer_result is not None
@@ -956,6 +967,17 @@ def run_interactive(
                     print(f"[Validator] 验证警告 ({summary})")
                 else:
                     print(f"[Validator] 验证标注 ({summary})")
+
+            # Show self-correction notice
+            if (
+                orchestrator.feedback_loop is not None
+                and orchestrator.feedback_loop.correction_attempts_used > 0
+            ):
+                print(
+                    f"[Self-Correction] "
+                    f"{orchestrator.feedback_loop.correction_attempts_used} "
+                    f"attempt(s) made to correct validation failures"
+                )
 
             # Sanitize response for printing
             response = result.response
@@ -2346,6 +2368,46 @@ def _show_config(config, agent) -> None:
                 )
             )
 
+    # 反馈闭环
+    if config.feedback_loop:
+        print("\n## 反馈闭环 (Feedback Loop)")
+        print(
+            format_line(
+                "偏差信号回流:", str(config.feedback_loop.deviation_feedback_enabled)
+            )
+        )
+        if config.feedback_loop.deviation_feedback_enabled:
+            print(
+                format_line(
+                    "告警阈值:",
+                    str(config.feedback_loop.deviation_feedback_threshold),
+                )
+            )
+            print(
+                format_line(
+                    "冷却间隔:",
+                    str(config.feedback_loop.deviation_feedback_cooldown),
+                )
+            )
+            print(
+                format_line(
+                    "提示注入:",
+                    str(config.feedback_loop.deviation_feedback_hint_injection),
+                )
+            )
+        print(
+            format_line(
+                "自纠正循环:", str(config.feedback_loop.self_correction_enabled)
+            )
+        )
+        if config.feedback_loop.self_correction_enabled:
+            print(
+                format_line(
+                    "最大尝试次数:",
+                    str(config.feedback_loop.self_correction_max_attempts),
+                )
+            )
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -3209,6 +3271,14 @@ def _init_config_file(config, force: bool = False) -> None:
             "on_fail": config.result_validator.on_fail,
             "on_pass": config.result_validator.on_pass,
             "custom_validators": config.result_validator.custom_validators,
+        },
+        "feedback_loop": {
+            "deviation_feedback_enabled": config.feedback_loop.deviation_feedback_enabled,
+            "deviation_feedback_threshold": config.feedback_loop.deviation_feedback_threshold,
+            "deviation_feedback_cooldown": config.feedback_loop.deviation_feedback_cooldown,
+            "deviation_feedback_hint_injection": config.feedback_loop.deviation_feedback_hint_injection,
+            "self_correction_enabled": config.feedback_loop.self_correction_enabled,
+            "self_correction_max_attempts": config.feedback_loop.self_correction_max_attempts,
         },
     }
 
