@@ -23,6 +23,7 @@ from .confirmation import ConfirmationManager, ConfirmationConfig
 from .circuit_breaker import CircuitBreaker
 from .result_validator import ResultValidator
 from .feedback_loop import FeedbackLoop
+from ..tools.resource_limiter import ToolTimeoutWrapper, ToolRateLimiter
 from ..config.schema import (
     SmartOptimizationConfig,
     OutputStyleConfig,
@@ -54,6 +55,8 @@ class AgentSubsystems:
         circuit_breaker: CircuitBreaker | None = None,
         result_validator: ResultValidator | None = None,
         feedback_loop: FeedbackLoop | None = None,
+        timeout_wrapper: ToolTimeoutWrapper | None = None,
+        rate_limiter: ToolRateLimiter | None = None,
         # Config references (for ReActAgent convenience accessors)
         smart_optimization_config=None,
         output_style_config=None,
@@ -79,6 +82,8 @@ class AgentSubsystems:
         self.circuit_breaker = circuit_breaker
         self.result_validator = result_validator
         self.feedback_loop = feedback_loop
+        self.timeout_wrapper = timeout_wrapper
+        self.rate_limiter = rate_limiter
         # Store config references for ReActAgent
         self._smart_optimization_config = smart_optimization_config
         self._output_style_config = output_style_config
@@ -128,6 +133,7 @@ class AgentSubsystems:
         circuit_breaker_config=None,
         result_validator=None,
         feedback_loop=None,
+        tool_resource_limiter_config=None,
     ) -> "AgentSubsystems":
         """从配置对象创建所有子系统"""
         # Token budget
@@ -239,6 +245,27 @@ class AgentSubsystems:
         )
         circuit_breaker = CircuitBreaker(cb_config) if cb_config else None
 
+        # Tool resource limiter (timeout + rate limit)
+        timeout_wrapper = None
+        rate_limiter = None
+        if tool_resource_limiter_config is not None:
+            from ..config.schema import ToolResourceLimiterConfig
+
+            if (
+                isinstance(tool_resource_limiter_config, ToolResourceLimiterConfig)
+                and tool_resource_limiter_config.enabled
+            ):
+                if tool_resource_limiter_config.timeout_enabled:
+                    timeout_wrapper = ToolTimeoutWrapper(
+                        default_timeout=tool_resource_limiter_config.default_timeout,
+                        timeout_overrides=tool_resource_limiter_config.timeout_overrides,
+                    )
+                if tool_resource_limiter_config.rate_limit_enabled:
+                    rate_limiter = ToolRateLimiter(
+                        per_tool_calls_per_minute=tool_resource_limiter_config.per_tool_calls_per_minute,
+                        global_calls_per_minute=tool_resource_limiter_config.global_calls_per_minute,
+                    )
+
         return cls(
             token_budget=token_budget,
             query_router=query_router,
@@ -256,6 +283,8 @@ class AgentSubsystems:
             circuit_breaker=circuit_breaker,
             result_validator=result_validator,
             feedback_loop=feedback_loop,
+            timeout_wrapper=timeout_wrapper,
+            rate_limiter=rate_limiter,
             # Config references
             smart_optimization_config=smart_optimization,
             output_style_config=output_style,

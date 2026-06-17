@@ -17,6 +17,7 @@ class PythonExecutorTool(BaseTool):
     description = "Execute Python code and return the result. Useful for calculations, data processing, and algorithm implementation."
     risk_level = RiskLevel.DANGEROUS  # Can execute arbitrary code
     can_offload = True
+    has_builtin_timeout = True  # Uses subprocess.run(timeout=...)
 
     @property
     def parameters_schema(self) -> dict:

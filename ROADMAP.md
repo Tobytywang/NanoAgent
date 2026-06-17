@@ -2526,7 +2526,7 @@ feedback_loop:
 
 ---
 
-### v0.8.10 - 工具资源限制
+### v0.8.10 - 工具资源限制 ✅
 
 **目标**: 防止工具执行失控。
 
@@ -2536,8 +2536,66 @@ Agent 管控体系审计发现 ToolGuard 工具防护层无资源限制。P2 优
 **架构归属**: Runtime 层 - ToolGuard 工具防护 (P2)
 
 **任务列表**:
-- [ ] #15 工具执行超时 (`nano_agent/tools/resource_limiter.py`) — 单次工具调用超时上限，防止挂死
-- [ ] #16 工具调用频率限制 (`nano_agent/tools/resource_limiter.py`) — 单工具/全局调用频率上限
+- [x] #15 工具执行超时 (`nano_agent/tools/resource_limiter.py`) — 单次工具调用超时上限，防止挂死
+- [x] #16 工具调用频率限制 (`nano_agent/tools/resource_limiter.py`) — 单工具/全局调用频率上限
+
+**实现细节**:
+
+框架级工具资源限制，提供两层保护：
+
+1. **ToolTimeoutWrapper**: 框架级超时保护
+   - `signal.setitimer` (Unix/macOS) + `ThreadPoolExecutor` (跨平台 fallback)
+   - 超时后返回 `ToolResult(success=False, error="工具执行超时")`
+   - `has_builtin_timeout` 属性：shell/python_executor/web_search 自管超时，跳过框架包装
+   - `_build_result()` 中调用 `close()` 释放 ThreadPoolExecutor
+
+2. **ToolRateLimiter**: 单工具+全局双层令牌桶频率限制
+   - `_MiniTokenBucket`: try_acquire/release/wait_time/reset
+   - 非阻塞设计：超限立即返回 `RateLimitResult(allowed=False, wait_time=N)`
+   - 全局令牌归还：per-tool 拒绝时释放 global token
+   - `RateLimitType(str, Enum)`: GLOBAL/PER_TOOL 类型安全标识
+
+**_act() 集成顺序**:
+```
+1. 重复检测 → 跳过
+2. 事件发射
+3. 缓存检查
+4. 熔断确认
+5. 风险确认
+6. 【新增】频率限制检查 → 超限则跳过
+7. 【新增】超时包装执行
+8. 记录追踪
+```
+
+**配置示例**:
+```yaml
+tool_resource_limiter:
+  enabled: true
+  timeout_enabled: true
+  default_timeout: 60
+  timeout_overrides:
+    file_read: 30
+    shell_execute: 120
+  rate_limit_enabled: true
+  per_tool_calls_per_minute: 30
+  global_calls_per_minute: 60
+```
+
+**新增/修改文件**:
+```
+nano_agent/tools/resource_limiter.py          # ToolTimeoutWrapper, ToolRateLimiter, _MiniTokenBucket
+nano_agent/config/schema.py                   # ToolResourceLimiterConfig
+nano_agent/agent/types.py                     # AgentEvent.TOOL_RATE_LIMITED
+nano_agent/agent/subsystems.py                # timeout_wrapper/rate_limiter 参数
+nano_agent/core/builder.py                    # 注入 tool_resource_limiter_config
+nano_agent/agent/react.py                     # _act() 集成 + close()
+nano_agent/tools/base.py                      # has_builtin_timeout 属性
+nano_agent/tools/builtin/shell.py             # has_builtin_timeout = True
+nano_agent/tools/builtin/python_executor.py   # has_builtin_timeout = True
+nano_agent/tools/builtin/web_search.py        # has_builtin_timeout = True
+nano_agent/cli/main.py                        # 配置显示 + 默认配置 + /auto 重置
+tests/test_resource_limiter.py                # 40 个测试
+```
 
 ---
 

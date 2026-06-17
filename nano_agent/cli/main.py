@@ -757,6 +757,9 @@ def run_interactive(
                 # Also reset feedback loop
                 if orchestrator.feedback_loop is not None:
                     orchestrator.feedback_loop.reset_all()
+                # Also reset tool rate limiter
+                if agent.tool_rate_limiter:
+                    agent.tool_rate_limiter.reset()
                 continue
 
             if user_input.lower() == "/sessions":
@@ -2408,6 +2411,53 @@ def _show_config(config, agent) -> None:
                 )
             )
 
+    # 工具资源限制
+    if hasattr(config, "tool_resource_limiter") and config.tool_resource_limiter:
+        print("\n## 工具资源限制 (Tool Resource Limiter)")
+        print(format_line("启用:", str(config.tool_resource_limiter.enabled)))
+        if config.tool_resource_limiter.enabled:
+            print(
+                format_line(
+                    "超时保护:", str(config.tool_resource_limiter.timeout_enabled)
+                )
+            )
+            if config.tool_resource_limiter.timeout_enabled:
+                print(
+                    format_line(
+                        "默认超时:",
+                        f"{config.tool_resource_limiter.default_timeout}秒",
+                    )
+                )
+                if config.tool_resource_limiter.timeout_overrides:
+                    for (
+                        tool_name,
+                        timeout,
+                    ) in config.tool_resource_limiter.timeout_overrides.items():
+                        print(
+                            format_line(
+                                f"  {tool_name}:",
+                                f"{timeout}秒",
+                            )
+                        )
+            print(
+                format_line(
+                    "频率限制:", str(config.tool_resource_limiter.rate_limit_enabled)
+                )
+            )
+            if config.tool_resource_limiter.rate_limit_enabled:
+                print(
+                    format_line(
+                        "单工具限制:",
+                        f"{config.tool_resource_limiter.per_tool_calls_per_minute}次/分钟",
+                    )
+                )
+                print(
+                    format_line(
+                        "全局限制:",
+                        f"{config.tool_resource_limiter.global_calls_per_minute}次/分钟",
+                    )
+                )
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -3279,6 +3329,15 @@ def _init_config_file(config, force: bool = False) -> None:
             "deviation_feedback_hint_injection": config.feedback_loop.deviation_feedback_hint_injection,
             "self_correction_enabled": config.feedback_loop.self_correction_enabled,
             "self_correction_max_attempts": config.feedback_loop.self_correction_max_attempts,
+        },
+        "tool_resource_limiter": {
+            "enabled": config.tool_resource_limiter.enabled,
+            "timeout_enabled": config.tool_resource_limiter.timeout_enabled,
+            "default_timeout": config.tool_resource_limiter.default_timeout,
+            "timeout_overrides": config.tool_resource_limiter.timeout_overrides,
+            "rate_limit_enabled": config.tool_resource_limiter.rate_limit_enabled,
+            "per_tool_calls_per_minute": config.tool_resource_limiter.per_tool_calls_per_minute,
+            "global_calls_per_minute": config.tool_resource_limiter.global_calls_per_minute,
         },
     }
 

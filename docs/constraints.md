@@ -764,6 +764,8 @@ semantic_compressor:
   │   │   ├─ 查询路由工具数限制（中等=1次，简单=0次）
   │   │   ├─ 工具缓存命中 → 跳过执行
   │   │   ├─ 确认机制（危险工具需用户确认）
+  │   │   ├─ 工具频率限制（ToolRateLimiter.check → 超限返回失败，非阻塞）
+  │   │   ├─ 框架级工具超时（ToolTimeoutWrapper → has_builtin_timeout=True 跳过）
   │   │
   │   ├─ ⑨ _observe() → 工具输出截断后写入内存
   │   │   ├─ 消息数 > max_messages → 裁剪旧消息
@@ -795,6 +797,8 @@ semantic_compressor:
 - 速率限制和重试是**LLM 调用的两层防护**：速率限制是"预防"（主动控制调用频率），重试是"治疗"（被动恢复失败调用）。调用链为 `rate_limiter.acquire() → with_retry(_chat_impl)`
 - 输入净化是**ReAct 循环前的硬门控**：在 orchestrator 边界执行，拒绝的输入不进入循环。处理顺序（format → PII → injection → length）不可调换，格式检查先于注入检查防止通过编码绕过，PII 脱敏在注入检查前执行确保遮蔽后的文本参与注入检测
 - ResultValidator 是**第四道输出防线**：在 OutputGuard（防信息泄露）、HarmfulContentFilter（防有害内容）之后验证结果正确性。block 动作仅对 high-severity 失败生效，medium/low 失败不会触发拦截
+- ToolRateLimiter 和 LLM RateLimiter 是**两个独立的速率限制器**：LLM RateLimiter 阻塞等待令牌（保护 API 不被 429），ToolRateLimiter 非阻塞立即返回失败（保护 Agent 不被失控工具拖慢）。两者分别控制不同层面的调用频率
+- ToolTimeoutWrapper 是**工具执行的超时保护层**：在确认机制之后、实际执行之前包裹。`has_builtin_timeout=True` 的工具自行管理超时，跳过框架超时避免双重超时
 
 ### 8e. 反馈闭环 (Feedback Loop)
 
@@ -813,6 +817,56 @@ v0.8.9 引入反馈闭环机制，包含偏差信号回流和自纠正循环：
   ```
   即 max_attempts=2 时，token 消耗可达正常 3 倍
 - 终止原因: `SELF_CORRECTION_EXHAUSTED`（耗尽）或 `VALIDATION_FAILED`（自纠正禁用）
+
+### 8f. 工具资源限制 (Tool Resource Limiter)
+
+v0.8.10 引入工具执行资源限制，包含框架级超时和调用频率限制两层保护。
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `tool_resource_limiter.*` |
+| 默认值 | `enabled: True` / `timeout_enabled: True` / `default_timeout: 60` / `rate_limit_enabled: True` / `per_tool_calls_per_minute: 30` / `global_calls_per_minute: 60` |
+| 源码位置 | `nano_agent/config/schema.py` → `ToolResourceLimiterConfig`；`nano_agent/tools/resource_limiter.py` → `ToolTimeoutWrapper` / `ToolRateLimiter` |
+
+**框架级工具超时** (ToolTimeoutWrapper):
+
+为无内置超时的工具提供框架级超时保护。Unix/macOS 使用 `signal.setitimer`（亚秒精度），其他平台使用 `ThreadPoolExecutor` 作为 fallback。`has_builtin_timeout=True` 的工具（shell_execute、python_execute、web_search）跳过框架超时，避免双重超时。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `tool_resource_limiter.enabled` | `True` | 主开关，关闭后超时和速率限制均不生效 |
+| `tool_resource_limiter.timeout_enabled` | `True` | 启用框架级工具超时 |
+| `tool_resource_limiter.default_timeout` | `60` | 默认超时时间（秒），必须 > 0 |
+| `tool_resource_limiter.timeout_overrides` | `{}` | 按工具名覆盖超时（如 `{"file_read": 30}`） |
+
+**工具调用频率限制** (ToolRateLimiter):
+
+基于令牌桶的工具调用频率限制，采用非阻塞设计——频率超限时立即返回失败结果，不阻塞 ReAct 循环。两层令牌桶：全局桶限制总调用频率，单工具桶限制单个工具调用频率（懒创建）。全局桶先获取令牌，单工具桶拒绝时全局桶令牌立即归还。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `tool_resource_limiter.rate_limit_enabled` | `True` | 启用工具调用频率限制 |
+| `tool_resource_limiter.per_tool_calls_per_minute` | `30` | 单工具每分钟最大调用次数，必须 > 0 |
+| `tool_resource_limiter.global_calls_per_minute` | `60` | 全局每分钟最大工具调用次数，必须 > 0 |
+
+**约束验证**: `default_timeout <= 0`、`per_tool_calls_per_minute <= 0` 或 `global_calls_per_minute <= 0` 时，`ToolResourceLimiterConfig.__post_init__()` 抛出 `ValueError`。
+
+**事件**: 频率超限时触发 `AgentEvent.TOOL_RATE_LIMITED` 事件，携带 `tool`、`limit_type`（global/per_tool）、`wait_time` 信息。
+
+**与 LLM RateLimiter 的区别**: LLM RateLimiter 阻塞等待令牌可用（保护 API 不被 429），ToolRateLimiter 非阻塞立即返回失败（保护 Agent 不被失控工具拖慢）。
+
+```yaml
+tool_resource_limiter:
+  enabled: true
+  timeout_enabled: true
+  default_timeout: 60
+  timeout_overrides:
+    file_read: 30
+    python_execute: 120
+  rate_limit_enabled: true
+  per_tool_calls_per_minute: 30
+  global_calls_per_minute: 60
+```
 
 ---
 
@@ -916,6 +970,13 @@ v0.8.9 引入反馈闭环机制，包含偏差信号回流和自纠正循环：
 | `semantic_compressor.min_messages_to_compress` | `8` | 最少消息数触发 | 软限制 |
 | `tool_merge.enabled` | `True` | 工具合并开关 | 软限制 |
 | `tool_merge.max_batch_size` | `3` | 合批最大数量 | 软限制 |
+| `tool_resource_limiter.enabled` | `True` | 工具资源限制主开关 | 硬限制 |
+| `tool_resource_limiter.timeout_enabled` | `True` | 框架级工具超时开关 | 硬限制 |
+| `tool_resource_limiter.default_timeout` | `60` | 默认工具超时时间（秒） | 硬限制 |
+| `tool_resource_limiter.timeout_overrides` | `{}` | 按工具名覆盖超时 | 硬限制 |
+| `tool_resource_limiter.rate_limit_enabled` | `True` | 工具调用频率限制开关 | 硬限制 |
+| `tool_resource_limiter.per_tool_calls_per_minute` | `30` | 单工具每分钟最大调用次数 | 硬限制 |
+| `tool_resource_limiter.global_calls_per_minute` | `60` | 全局每分钟最大工具调用次数 | 硬限制 |
 
 ---
 

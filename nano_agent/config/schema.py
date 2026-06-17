@@ -632,6 +632,31 @@ class FeedbackLoopConfig:
 
 
 @dataclass
+class ToolResourceLimiterConfig:
+    """Configuration for tool resource limiting (timeout + rate limiting)."""
+
+    enabled: bool = True
+    # Timeout
+    timeout_enabled: bool = True
+    default_timeout: int = 60  # Default timeout in seconds
+    timeout_overrides: dict = field(
+        default_factory=dict
+    )  # tool_name -> timeout seconds
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    per_tool_calls_per_minute: int = 30  # Max calls per tool per minute
+    global_calls_per_minute: int = 60  # Max total tool calls per minute
+
+    def __post_init__(self):
+        if self.default_timeout <= 0:
+            raise ValueError("default_timeout must be positive")
+        if self.per_tool_calls_per_minute <= 0:
+            raise ValueError("per_tool_calls_per_minute must be positive")
+        if self.global_calls_per_minute <= 0:
+            raise ValueError("global_calls_per_minute must be positive")
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -675,3 +700,6 @@ class Config:
         default_factory=ResultValidatorConfig
     )
     feedback_loop: FeedbackLoopConfig = field(default_factory=FeedbackLoopConfig)
+    tool_resource_limiter: ToolResourceLimiterConfig = field(
+        default_factory=ToolResourceLimiterConfig
+    )

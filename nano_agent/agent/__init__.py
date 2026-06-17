@@ -63,6 +63,12 @@ from .feedback_loop import (
     DeviationFeedbackResult,
     SelfCorrectionResult,
 )
+from ..tools.resource_limiter import (
+    ToolTimeoutWrapper,
+    ToolRateLimiter,
+    RateLimitResult,
+    RateLimitType,
+)
 
 __all__ = [
     # Base
@@ -146,4 +152,9 @@ __all__ = [
     "FeedbackLoop",
     "DeviationFeedbackResult",
     "SelfCorrectionResult",
+    # Tool resource limiter (v0.8.10)
+    "ToolTimeoutWrapper",
+    "ToolRateLimiter",
+    "RateLimitResult",
+    "RateLimitType",
 ]

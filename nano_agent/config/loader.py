@@ -161,6 +161,8 @@ class ConfigLoader:
         # ResultValidatorConfig: "enabled", "checks", "on_fail", "on_pass", "custom_validators", "result_validator"
         # FeedbackLoopConfig: "deviation_feedback_enabled", "deviation_feedback_threshold", "deviation_feedback_cooldown",
         #   "deviation_feedback_hint_injection", "self_correction_enabled", "self_correction_max_attempts", "feedback_loop"
+        # ToolResourceLimiterConfig: "enabled", "timeout_enabled", "default_timeout", "timeout_overrides",
+        #   "rate_limit_enabled", "per_tool_calls_per_minute", "global_calls_per_minute", "tool_resource_limiter"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -185,6 +187,8 @@ class ConfigLoader:
         # config.harmful_content_filter.enabled, config.harmful_content_filter.categories, config.harmful_content_filter.default_action, config.harmful_content_filter.category_actions, config.harmful_content_filter.replacement_text, config.harmful_content_filter.custom_patterns
         # config.result_validator.enabled, config.result_validator.checks, config.result_validator.on_fail, config.result_validator.on_pass, config.result_validator.custom_validators
         # config.feedback_loop.deviation_feedback_enabled, config.feedback_loop.deviation_feedback_threshold, config.feedback_loop.deviation_feedback_cooldown, config.feedback_loop.deviation_feedback_hint_injection, config.feedback_loop.self_correction_enabled, config.feedback_loop.self_correction_max_attempts
+        # config.tool_resource_limiter.enabled, config.tool_resource_limiter.timeout_enabled, config.tool_resource_limiter.default_timeout, config.tool_resource_limiter.timeout_overrides,
+        #   config.tool_resource_limiter.rate_limit_enabled, config.tool_resource_limiter.per_tool_calls_per_minute, config.tool_resource_limiter.global_calls_per_minute
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

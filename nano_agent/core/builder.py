@@ -250,6 +250,9 @@ class AgentBuilder:
             circuit_breaker_config=getattr(
                 self.config.smart_optimization, "circuit_breaker", None
             ),
+            tool_resource_limiter_config=getattr(
+                self.config, "tool_resource_limiter", None
+            ),
         )
 
         # Create agent

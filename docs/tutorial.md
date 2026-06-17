@@ -264,6 +264,16 @@ feedback_loop:
   deviation_feedback_hint_injection: true  # 注入提示到 LLM 上下文
   self_correction_enabled: true       # 自纠正循环（验证失败时重试）
   self_correction_max_attempts: 2     # 最大纠正尝试次数
+
+# 工具资源限制设置
+tool_resource_limiter:
+  enabled: true                       # 主开关
+  timeout_enabled: true               # 启用框架级工具超时
+  default_timeout: 60                 # 默认超时时间（秒）
+  timeout_overrides: {}               # 按工具名覆盖超时
+  rate_limit_enabled: true            # 启用工具调用频率限制
+  per_tool_calls_per_minute: 30       # 单工具每分钟最大调用次数
+  global_calls_per_minute: 60         # 全局每分钟最大工具调用次数
 ```
 
 ### 3.2 不同 LLM 配置
@@ -872,6 +882,60 @@ result_validator:
 | `block` | 仅 high-severity 失败时拦截整个响应 | 严格环境（生产部署） |
 | `warn` | 响应正常返回，添加 `[Validation Warning: ...]` 前缀 | 宽松环境（开发调试） |
 | `annotate` | 在响应中添加验证标注，标明哪些声明通过/失败 | 默认模式（渐进增强） |
+
+### 9.5 工具资源限制（tool_resource_limiter）
+
+为工具执行提供框架级超时保护和调用频率限制，防止失控工具阻塞 Agent 或工具被过度调用。
+
+**基本配置**（使用默认值）：
+
+```yaml
+tool_resource_limiter:
+  enabled: true                       # 主开关
+  timeout_enabled: true               # 框架级工具超时
+  default_timeout: 60                 # 默认超时 60 秒
+  rate_limit_enabled: true            # 工具调用频率限制
+  per_tool_calls_per_minute: 30       # 单工具每分钟最多 30 次
+  global_calls_per_minute: 60         # 全局每分钟最多 60 次
+```
+
+**自定义超时覆盖**（为大文件读取或长时间计算调整超时）：
+
+```yaml
+tool_resource_limiter:
+  enabled: true
+  timeout_enabled: true
+  default_timeout: 60                 # 默认 60 秒
+  timeout_overrides:
+    file_read: 120                    # 大文件读取允许 120 秒
+    file_search: 90                   # 大项目搜索允许 90 秒
+  rate_limit_enabled: true
+  per_tool_calls_per_minute: 30
+  global_calls_per_minute: 60
+```
+
+**禁用频率限制**（仅保留超时保护）：
+
+```yaml
+tool_resource_limiter:
+  enabled: true
+  timeout_enabled: true               # 保留超时保护
+  default_timeout: 60
+  rate_limit_enabled: false           # 关闭频率限制
+```
+
+**完全关闭**（不推荐，工具可能无限阻塞）：
+
+```yaml
+tool_resource_limiter:
+  enabled: false                      # 关闭所有工具资源限制
+```
+
+**工作原理**：
+
+- **框架级超时**：对无内置超时的工具（file_read、file_write、file_search 等）添加超时保护。已有内置超时的工具（shell_execute、python_execute、web_search）自动跳过，避免双重超时
+- **调用频率限制**：采用两层令牌桶设计——全局桶限制所有工具总调用频率，单工具桶限制单个工具调用频率。频率超限时非阻塞返回失败结果（不等待），Agent 可在下一轮重试
+- **事件通知**：频率超限时触发 `TOOL_RATE_LIMITED` 事件，提示 LLM 更换策略
 
 ---
 

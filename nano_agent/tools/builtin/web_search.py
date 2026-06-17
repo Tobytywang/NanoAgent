@@ -16,6 +16,7 @@ class WebSearchTool(BaseTool):
     description = "Search the web for current information. Use this when you need up-to-date information about news, weather, facts, or any topic that requires real-time data."
     risk_level = RiskLevel.MODERATE  # Makes external network requests
     can_offload = True
+    has_builtin_timeout = True  # Uses subprocess.run(timeout=...)
 
     def __init__(self, timeout: int = 15):
         """

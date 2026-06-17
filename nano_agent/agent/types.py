@@ -107,6 +107,7 @@ class AgentEvent(Enum):
     VALIDATION_FAILED = "validation_failed"
     DEVIATION_FEEDBACK = "deviation_feedback"
     SELF_CORRECTION = "self_correction"
+    TOOL_RATE_LIMITED = "tool_rate_limited"
 
 
 class RiskLevel(Enum):

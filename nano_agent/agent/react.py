@@ -114,6 +114,8 @@ class ReActAgent(BaseAgent):
         self.confirmation = subsystems.confirmation
         self.context_manager = subsystems.context_manager
         self.circuit_breaker = subsystems.circuit_breaker
+        self.timeout_wrapper = subsystems.timeout_wrapper
+        self.tool_rate_limiter = subsystems.rate_limiter
 
         # Config accessors (read by methods outside __init__)
         self.smart_optimization_config = subsystems._smart_optimization_config
@@ -923,9 +925,59 @@ class ReActAgent(BaseAgent):
                     if not confirmed:
                         return self._handle_confirmation_denied(tool_call)
 
-                # Execute the tool
+                if self.tool_rate_limiter:
+                    rate_result = self.tool_rate_limiter.check(tool_call.name)
+                    if not rate_result.allowed:
+                        self.tracker.record_skipped_tool_call(
+                            tool_call.name,
+                            tool_call.arguments,
+                            "rate_limited",
+                        )
+                        self.events.emit(
+                            AgentEvent.TOOL_RATE_LIMITED,
+                            {
+                                "tool": tool_call.name,
+                                "limit_type": rate_result.limit_type.value,
+                                "wait_time": rate_result.wait_time,
+                            },
+                        )
+                        if self.verbose:
+                            print(
+                                f"[Rate Limit] {tool_call.name} "
+                                f"({rate_result.limit_type.value}), "
+                                f"等待 {rate_result.wait_time:.1f}s"
+                            )
+                        result = ToolResult(
+                            success=False,
+                            output="",
+                            error=(
+                                f"工具调用频率超限 ({rate_result.limit_type.value})，"
+                                f"请更换策略"
+                            ),
+                        )
+                        self._tool_call_records.append(
+                            {
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments,
+                                "success": False,
+                                "output_preview": result.error,
+                            }
+                        )
+                        return result
+
                 tool_start = time.perf_counter()
-                result = self._execute_tool_call(tool_call)
+                should_timeout = (
+                    self.timeout_wrapper
+                    and (tool := self.tool_registry.get(tool_call.name))
+                    and self.timeout_wrapper.should_wrap(tool)
+                )
+                if should_timeout:
+                    result = self.timeout_wrapper.execute_with_timeout(
+                        tool_call.name,
+                        lambda: self._execute_tool_call(tool_call),
+                    )
+                else:
+                    result = self._execute_tool_call(tool_call)
                 tool_latency = (time.perf_counter() - tool_start) * 1000
 
                 # Record tool execution with raw data (decoupled API)
@@ -1306,6 +1358,10 @@ class ReActAgent(BaseAgent):
             self.cache.persist_to_disk()
         if self.offload_config and self.offload_config.auto_cleanup:
             self._subsystems.offload_manager.cleanup()
+
+        # v0.8.10: Shutdown timeout wrapper's thread pool
+        if self._subsystems.timeout_wrapper is not None:
+            self._subsystems.timeout_wrapper.close()
 
         return ExecutionResult(
             response=response,

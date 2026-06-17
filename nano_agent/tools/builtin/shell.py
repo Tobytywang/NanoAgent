@@ -17,6 +17,7 @@ class ShellTool(BaseTool):
     description = "Execute shell commands. Automatically adapts to the operating system (Windows/macOS/Linux)."
     risk_level = RiskLevel.DANGEROUS  # Can execute arbitrary commands
     can_offload = True  # Large command output can be offloaded
+    has_builtin_timeout = True  # Uses subprocess.run(timeout=...)
 
     @property
     def parameters_schema(self) -> dict:

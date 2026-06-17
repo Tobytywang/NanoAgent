@@ -808,6 +808,166 @@ if fl.should_retry(validator_result):
 - `attempt_number: int` — 当前尝试编号
 - `remaining_attempts: int` — 剩余尝试次数
 
+### ToolResourceLimiterConfig & ToolTimeoutWrapper & ToolRateLimiter
+
+v0.8.10 工具资源限制。为工具执行提供框架级超时保护和调用频率限制，防止失控工具阻塞 Agent 或工具被过度调用。
+
+```python
+from nano_agent.tools.resource_limiter import (
+    ToolTimeoutWrapper,
+    ToolRateLimiter,
+    RateLimitType,
+    RateLimitResult,
+)
+from nano_agent.config.schema import ToolResourceLimiterConfig
+```
+
+#### ToolResourceLimiterConfig
+
+组合配置，包含超时和速率限制两部分，由 `enabled` 主开关控制。
+
+- `enabled: bool = True` — 主开关，关闭后超时和速率限制均不生效
+- `timeout_enabled: bool = True` — 启用框架级工具超时
+- `default_timeout: int = 60` — 默认超时时间（秒），必须 > 0
+- `timeout_overrides: dict = {}` — 按工具名覆盖超时（如 `{"file_read": 30}`）
+- `rate_limit_enabled: bool = True` — 启用工具调用频率限制
+- `per_tool_calls_per_minute: int = 30` — 单工具每分钟最大调用次数，必须 > 0
+- `global_calls_per_minute: int = 60` — 全局每分钟最大工具调用次数，必须 > 0
+
+**约束验证**: `default_timeout`、`per_tool_calls_per_minute`、`global_calls_per_minute` 任一值 ≤ 0 时，`__post_init__()` 抛出 `ValueError`。
+
+```python
+config = ToolResourceLimiterConfig(
+    enabled=True,
+    timeout_enabled=True,
+    default_timeout=60,
+    timeout_overrides={"file_read": 30, "python_execute": 120},
+    rate_limit_enabled=True,
+    per_tool_calls_per_minute=30,
+    global_calls_per_minute=60,
+)
+```
+
+#### ToolTimeoutWrapper
+
+框架级超时包装器。在 `_act()` 中包裹工具执行，对无内置超时的工具提供超时保护。
+
+- **Unix/macOS**: 使用 `signal.setitimer` 实现亚秒精度超时
+- **Fallback**: 使用 `ThreadPoolExecutor` + `future.result(timeout=)` 实现跨平台超时
+- **Opt-out**: `has_builtin_timeout=True` 的工具（shell_execute、python_execute、web_search）跳过框架超时
+
+```python
+from nano_agent.tools.resource_limiter import ToolTimeoutWrapper
+
+wrapper = ToolTimeoutWrapper(
+    default_timeout=60,
+    timeout_overrides={"file_read": 30},
+)
+
+# 获取工具超时值
+timeout = wrapper.get_timeout("file_read")  # → 30
+
+# 检查工具是否需要框架超时包装
+tool = registry.get("shell_execute")
+wrapper.should_wrap(tool)  # → False (has_builtin_timeout=True)
+
+# 带超时执行工具
+result = wrapper.execute_with_timeout("file_read", lambda: tool.execute(path="/tmp/test.txt"))
+# 若超时 → ToolResult(success=False, error="工具执行超时 (30秒)")
+
+# 清理
+wrapper.close()
+```
+
+**ToolTimeoutWrapper 方法**:
+
+| 方法 | 说明 |
+|------|------|
+| `get_timeout(tool_name)` | 获取工具超时值，优先使用 `timeout_overrides`，否则返回 `default_timeout` |
+| `execute_with_timeout(tool_name, executor)` | 带超时执行工具，超时返回 `ToolResult(success=False)` |
+| `should_wrap(tool)` | 检查工具是否需要框架超时（`has_builtin_timeout=True` 时返回 `False`） |
+| `close()` | 关闭内部 ThreadPoolExecutor（仅 fallback 模式使用） |
+
+#### ToolRateLimiter
+
+基于令牌桶的工具调用频率限制器。与 LLM 的 `RateLimiter`（阻塞等待）不同，采用非阻塞设计——频率超限时立即返回失败结果，不阻塞 ReAct 循环。
+
+**两层令牌桶设计**：
+1. **全局桶** (`global_calls_per_minute`): 限制所有工具的总调用频率
+2. **单工具桶** (`per_tool_calls_per_minute`): 限制单个工具的调用频率（懒创建）
+
+**检查顺序**: 全局桶先获取令牌 → 单工具桶再获取令牌。若单工具桶拒绝，全局桶令牌立即归还（`release()`），避免全局配额被误占。
+
+```python
+from nano_agent.tools.resource_limiter import ToolRateLimiter
+
+limiter = ToolRateLimiter(
+    per_tool_calls_per_minute=30,
+    global_calls_per_minute=60,
+)
+
+# 检查工具调用是否被允许
+result = limiter.check("file_read")
+# result.allowed → True
+# result.limit_type → None
+# result.calls_remaining → 29
+
+# 频率超限时
+result = limiter.check("file_read")
+# result.allowed → False
+# result.limit_type → RateLimitType.PER_TOOL
+# result.wait_time → 2.0 (估计等待秒数)
+
+# 重置（新 run 前调用）
+limiter.reset()
+```
+
+**ToolRateLimiter 方法**:
+
+| 方法 | 说明 |
+|------|------|
+| `check(tool_name)` | 检查工具调用是否被允许，返回 `RateLimitResult` |
+| `reset()` | 重置所有令牌桶（全局 + 单工具），新 run 前调用 |
+
+#### RateLimitResult
+
+速率限制检查结果数据类。
+
+- `allowed: bool` — 是否被允许
+- `tool_name: str` — 工具名称
+- `limit_type: RateLimitType | None` — 限制类型（`None` 表示未被限制）
+- `calls_remaining: int` — 剩余可用调用次数
+- `wait_time: float` — 预计等待秒数（到下一个令牌可用）
+
+#### RateLimitType
+
+速率限制类型枚举。
+
+- `GLOBAL = "global"` — 全局频率限制
+- `PER_TOOL = "per_tool"` — 单工具频率限制
+
+#### _MiniTokenBucket
+
+内部轻量令牌桶实现。非线程安全，设计用于同步单线程 Agent 执行。提供 `try_acquire()`（非阻塞获取）、`release()`（归还令牌）、`wait_time()`（预估等待时间）等方法。
+
+#### BaseTool.has_builtin_timeout
+
+v0.8.10 新增类属性。标记工具是否自行管理超时。
+
+- `has_builtin_timeout: bool = False` — 默认 False，由框架超时包装器管理
+- 设为 `True` 的工具（`shell_execute`、`python_execute`、`web_search`）跳过 `ToolTimeoutWrapper`，避免双重超时
+
+```python
+from nano_agent.tools.base import BaseTool
+
+class MyTool(BaseTool):
+    name = "my_tool"
+    has_builtin_timeout = True  # 工具内部已有超时机制
+    # ...
+```
+
+**_act() 集成**: 速率限制检查在用户确认之后、工具执行之前执行；超时包装包裹实际工具执行。触发时发射 `AgentEvent.TOOL_RATE_LIMITED` 事件。
+
 ### ExecutionMode
 
 v0.8.0 执行模式枚举，由熔断器控制。
@@ -937,6 +1097,7 @@ class AgentEvent(Enum):
     OUTPUT_BLOCKED = "output_blocked"          # v0.8.5
     HARMFUL_CONTENT_DETECTED = "harmful_content_detected"  # v0.8.6
     VALIDATION_FAILED = "validation_failed"              # v0.8.7
+    TOOL_RATE_LIMITED = "tool_rate_limited"              # v0.8.10
 ```
 
 ### TerminationReason 枚举
@@ -1033,6 +1194,16 @@ Rate Limiter (v0.8.1):
 - `result_validator.on_fail: str = "annotate"` — 检查失败时的动作（`"block"` / `"warn"` / `"annotate"`）
 - `result_validator.on_pass: str = "silent"` — 所有检查通过时的动作（`"silent"` / `"annotate"`）
 - `result_validator.custom_validators: list = []` — 自定义验证器函数列表
+
+**Tool Resource Limiter (tool_resource_limiter)**
+
+- `tool_resource_limiter.enabled: bool = True` — 主开关
+- `tool_resource_limiter.timeout_enabled: bool = True` — 启用框架级工具超时
+- `tool_resource_limiter.default_timeout: int = 60` — 默认超时时间（秒），必须 > 0
+- `tool_resource_limiter.timeout_overrides: dict = {}` — 按工具名覆盖超时（如 `{"file_read": 30}`）
+- `tool_resource_limiter.rate_limit_enabled: bool = True` — 启用工具调用频率限制
+- `tool_resource_limiter.per_tool_calls_per_minute: int = 30` — 单工具每分钟最大调用次数，必须 > 0
+- `tool_resource_limiter.global_calls_per_minute: int = 60` — 全局每分钟最大工具调用次数，必须 > 0
 
 
 ---
@@ -1208,6 +1379,7 @@ class MyTool(BaseTool):
     name = "my_tool"
     description = "工具描述"
     can_offload = True  # 允许大结果卸载到文件（默认 False）
+    has_builtin_timeout = False  # 工具是否自行管理超时（默认 False）
 
     @property
     def parameters_schema(self):
@@ -1497,6 +1669,15 @@ result_validator:
   on_fail: annotate                  # 失败时动作：block / warn / annotate
   on_pass: silent                    # 通过时动作：silent / annotate
   custom_validators: []              # 自定义验证器函数列表
+
+tool_resource_limiter:
+  enabled: true                      # 主开关
+  timeout_enabled: true              # 启用框架级工具超时
+  default_timeout: 60                # 默认超时时间（秒）
+  timeout_overrides: {}              # 按工具名覆盖超时
+  rate_limit_enabled: true           # 启用工具调用频率限制
+  per_tool_calls_per_minute: 30      # 单工具每分钟最大调用次数
+  global_calls_per_minute: 60        # 全局每分钟最大工具调用次数
 ```
 
 ### ConfigLoader
@@ -1727,6 +1908,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.10 | 工具资源限制（`ToolResourceLimiterConfig`、`ToolTimeoutWrapper`、`ToolRateLimiter`、`RateLimitType`、`RateLimitResult`、`_MiniTokenBucket`、`BaseTool.has_builtin_timeout`、框架级超时+两层令牌桶频率限制、非阻塞设计） |
 | v0.8.7 | 结果正确性验证（`ResultValidatorConfig`、`ResultValidator`、`ValidationCheck`、`ValidationResult`、`summarize_validation_checks`、file_exists/code_syntax/command_success 三类检查、block/warn/annotate 三级动作） |
 | v0.8.9 | 反馈闭环（`FeedbackLoopConfig`、`FeedbackLoop`、`DeviationFeedbackResult`、`SelfCorrectionResult`、偏差信号回流、自纠正循环、DEVIATION_FEEDBACK/SELF_CORRECTION 事件、SELF_CORRECTION_EXHAUSTED 终止原因） |
 | v0.8.6 | 有害内容过滤（`HarmfulContentFilter`、`HarmfulContentFilterConfig`、`HarmfulMatch`、`HarmfulFilterResult`、`summarize_harmful_matches`、`HarmfulContentMiddleware`、4 类检测、block/warn/replace 三级动作） |

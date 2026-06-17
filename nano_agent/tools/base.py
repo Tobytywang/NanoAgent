@@ -28,6 +28,7 @@ class BaseTool(ABC):
     description: str = ""
     risk_level: "RiskLevel" = None  # Will be set to MODERATE by default
     can_offload: bool = False  # Whether tool output can be offloaded to file
+    has_builtin_timeout: bool = False  # Whether tool manages its own timeout internally
 
     def __init__(self):
         # Import here to avoid circular import
