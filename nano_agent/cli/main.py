@@ -267,8 +267,9 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
 
     # Create memory and set LLM for auto-extraction
     memory = create_memory(config)
-    if config.memory.type == "hybrid" and hasattr(memory, "set_llm"):
+    if isinstance(memory, HybridMemory):
         memory.set_llm(llm)
+        memory.set_memory_gc_config(config.memory_gc)
     builder.with_memory_instance(memory)
 
     # Create tool registry
@@ -1266,6 +1267,15 @@ Config file priority:
                 style="warning",
             )
 
+    if isinstance(agent.memory, HybridMemory):
+        gc_result = agent.memory.run_gc()
+        if gc_result and gc_result.entries_removed > 0:
+            Console.print(
+                f"[MemoryGC] Cleaned {gc_result.entries_removed} decayed entries "
+                f"({gc_result.entries_after} remaining)",
+                style="info",
+            )
+
     # Override model if specified
     if args.model:
         agent.llm.model = args.model
@@ -2218,6 +2228,7 @@ def _show_config(config, agent) -> None:
                     str(config.semantic_compressor.cache_embeddings),
                 )
             )
+            print(format_line("Merge Tag:", config.semantic_compressor.merge_tag))
 
     # Retry 配置 (v0.8.0)
     if hasattr(config, "retry"):
@@ -2457,6 +2468,22 @@ def _show_config(config, agent) -> None:
                         f"{config.tool_resource_limiter.global_calls_per_minute}次/分钟",
                     )
                 )
+
+    # Memory GC config
+    if config.memory_gc:
+        print("\n## 记忆衰减与回收 (Memory GC)")
+        print(format_line("衰减启用:", str(config.memory_gc.decay_enabled)))
+        if config.memory_gc.decay_enabled:
+            print(
+                format_line(
+                    "衰减半衰期:", f"{config.memory_gc.decay_half_life_days} 天"
+                )
+            )
+        print(format_line("去重合并:", str(config.memory_gc.dedup_merge_enabled)))
+        print(format_line("GC 启用:", str(config.memory_gc.gc_enabled)))
+        if config.memory_gc.gc_enabled:
+            print(format_line("GC 阈值:", str(config.memory_gc.gc_threshold)))
+            print(format_line("GC 最小年龄:", f"{config.memory_gc.gc_min_age_days} 天"))
 
     print("\n" + "=" * 50 + "\n")
 
@@ -3338,6 +3365,15 @@ def _init_config_file(config, force: bool = False) -> None:
             "rate_limit_enabled": config.tool_resource_limiter.rate_limit_enabled,
             "per_tool_calls_per_minute": config.tool_resource_limiter.per_tool_calls_per_minute,
             "global_calls_per_minute": config.tool_resource_limiter.global_calls_per_minute,
+        },
+        "memory_gc": {
+            "decay_enabled": config.memory_gc.decay_enabled,
+            "decay_half_life_days": config.memory_gc.decay_half_life_days,
+            "dedup_merge_enabled": config.memory_gc.dedup_merge_enabled,
+            "dedup_merge_tag": config.memory_gc.dedup_merge_tag,
+            "gc_enabled": config.memory_gc.gc_enabled,
+            "gc_threshold": config.memory_gc.gc_threshold,
+            "gc_min_age_days": config.memory_gc.gc_min_age_days,
         },
     }
 

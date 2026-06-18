@@ -3,6 +3,8 @@ Configuration data structures.
 """
 
 from dataclasses import dataclass, field
+
+DEFAULT_MERGE_TAG = "[merged {n} similar]"
 from typing import Any, Literal
 
 # Default context lengths for common models (in tokens)
@@ -330,7 +332,7 @@ class SemanticCompressorConfig:
     base_url: str = "http://localhost:11434"
     api_key: str | None = None
     cache_embeddings: bool = True
-    merge_tag: str = "[merged {n} similar]"
+    merge_tag: str = DEFAULT_MERGE_TAG
 
 
 @dataclass
@@ -657,6 +659,24 @@ class ToolResourceLimiterConfig:
 
 
 @dataclass
+class MemoryGCConfig:
+    """Memory decay, dedup, and garbage collection configuration."""
+
+    # Decay: lazy computation at read time
+    decay_enabled: bool = True
+    decay_half_life_days: float = 30.0  # Half-life for exponential decay
+
+    # Dedup: enhanced merge on add()
+    dedup_merge_enabled: bool = True
+    dedup_merge_tag: str = DEFAULT_MERGE_TAG
+
+    # GC: lightweight cleanup at session start
+    gc_enabled: bool = True
+    gc_threshold: float = 0.05  # Remove entries with effective_weight below this
+    gc_min_age_days: int = 7  # Don't GC entries younger than this
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -703,3 +723,4 @@ class Config:
     tool_resource_limiter: ToolResourceLimiterConfig = field(
         default_factory=ToolResourceLimiterConfig
     )
+    memory_gc: MemoryGCConfig = field(default_factory=MemoryGCConfig)

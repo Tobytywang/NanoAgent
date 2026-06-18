@@ -274,6 +274,16 @@ tool_resource_limiter:
   rate_limit_enabled: true            # 启用工具调用频率限制
   per_tool_calls_per_minute: 30       # 单工具每分钟最大调用次数
   global_calls_per_minute: 60         # 全局每分钟最大工具调用次数
+
+# 记忆衰减与回收设置
+memory_gc:
+  decay_enabled: true                 # 启用衰减权重计算（长期记忆随时间衰减）
+  decay_half_life_days: 30.0          # 衰减半衰期（天），值越大衰减越慢
+  dedup_merge_enabled: true           # 启用去重合并标注
+  dedup_merge_tag: "[merged {n} similar]"  # 合并标注模板
+  gc_enabled: true                    # 启用会话启动 GC（自动清理低权重旧记忆）
+  gc_threshold: 0.05                  # 有效权重低于此值的条目被清理
+  gc_min_age_days: 7                  # 不清理创建不足此天数的条目
 ```
 
 ### 3.2 不同 LLM 配置

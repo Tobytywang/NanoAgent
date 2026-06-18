@@ -868,6 +868,43 @@ tool_resource_limiter:
   global_calls_per_minute: 60
 ```
 
+### 18. 记忆衰减与回收 (MemoryGC)
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `memory_gc.*` |
+| 默认值 | `decay_enabled: True` / `decay_half_life_days: 30.0` / `gc_enabled: True` / `gc_threshold: 0.05` / `gc_min_age_days: 7` |
+| 源码位置 | `nano_agent/config/schema.py` → `MemoryGCConfig` |
+
+三层能力作用于 LongTermMemory：
+
+**衰减**: `compute_decay_weight(entry, half_life_days)` 计算 `importance × e^(-λ × age_days)`，其中 `age_days` 基于 `last_mentioned_at`（被重复提及的条目衰减更慢）。`search()` 传入 `half_life_days` 启用衰减排序。
+
+**去重增强**: `add()` 合并相似条目而非覆盖——`mention_count` 递增、关键词取并集、`importance` 取 max、metadata 新覆盖旧。内容按规则合并标注：同 metadata type 取新内容，否则保留更长的 + merge tag。
+
+**GC**: `MemoryGC.run()` 在会话启动时清理 `effective_weight < gc_threshold` 且 `age > gc_min_age_days` 的条目。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `memory_gc.decay_enabled` | `True` | 启用衰减权重计算 |
+| `memory_gc.decay_half_life_days` | `30.0` | 衰减半衰期（天） |
+| `memory_gc.dedup_merge_enabled` | `True` | 启用去重合并标注 |
+| `memory_gc.dedup_merge_tag` | `"[merged {n} similar]"` | 合并标注模板 |
+| `memory_gc.gc_enabled` | `True` | 启用会话启动 GC |
+| `memory_gc.gc_threshold` | `0.05` | 有效权重低于此值的条目被清理 |
+| `memory_gc.gc_min_age_days` | `7` | 不清理创建不足此天数的条目 |
+
+```yaml
+memory_gc:
+  decay_enabled: true
+  decay_half_life_days: 30.0
+  dedup_merge_enabled: true
+  dedup_merge_tag: "[merged {n} similar]"
+  gc_enabled: true
+  gc_threshold: 0.05
+  gc_min_age_days: 7
+```
+
 ---
 
 ## 配置速查表
@@ -977,6 +1014,13 @@ tool_resource_limiter:
 | `tool_resource_limiter.rate_limit_enabled` | `True` | 工具调用频率限制开关 | 硬限制 |
 | `tool_resource_limiter.per_tool_calls_per_minute` | `30` | 单工具每分钟最大调用次数 | 硬限制 |
 | `tool_resource_limiter.global_calls_per_minute` | `60` | 全局每分钟最大工具调用次数 | 硬限制 |
+| `memory_gc.decay_enabled` | `True` | 衰减权重计算开关 | 软限制 |
+| `memory_gc.decay_half_life_days` | `30.0` | 衰减半衰期（天） | 软限制 |
+| `memory_gc.dedup_merge_enabled` | `True` | 去重合并标注开关 | 软限制 |
+| `memory_gc.dedup_merge_tag` | `"[merged {n} similar]"` | 合并标注模板 | 软限制 |
+| `memory_gc.gc_enabled` | `True` | 会话启动 GC 开关 | 硬限制 |
+| `memory_gc.gc_threshold` | `0.05` | GC 有效权重阈值 | 硬限制 |
+| `memory_gc.gc_min_age_days` | `7` | GC 最小条目年龄（天） | 硬限制 |
 
 ---
 

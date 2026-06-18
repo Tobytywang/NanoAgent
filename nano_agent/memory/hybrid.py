@@ -5,13 +5,16 @@
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .base import BaseMemory
 from .short_term import ShortTermMemory
 from .long_term import LongTermMemory, LongTermEntry
 from .stopwords import ENGLISH_STOP_WORDS, CHINESE_STOP_WORDS
 from .protocols import SessionCapable
+
+if TYPE_CHECKING:
+    from ..config.schema import MemoryGCConfig
 
 
 @dataclass
@@ -28,17 +31,20 @@ class HybridMemory(BaseMemory):
     session_id: str = ""
     auto_extract: bool = True
     _llm: Any = field(default=None, repr=False)
+    _memory_gc_config: "MemoryGCConfig | None" = field(default=None, repr=False)
 
     def __post_init__(self):
         """如未设置则初始化会话 ID。"""
         if not self.session_id:
-            import uuid
-
             self.session_id = f"session_{uuid.uuid4().hex[:8]}"
 
     def set_llm(self, llm) -> None:
         """设置用于自动提取的 LLM。"""
         self._llm = llm
+
+    def set_memory_gc_config(self, config: "MemoryGCConfig") -> None:
+        """设置记忆 GC 配置。"""
+        self._memory_gc_config = config
 
     # === BaseMemory 接口 ===
 
@@ -133,6 +139,13 @@ class HybridMemory(BaseMemory):
         if keywords is None:
             keywords = self._extract_keywords(content)
 
+        merge_tag = None
+        if (
+            self._memory_gc_config is not None
+            and self._memory_gc_config.dedup_merge_enabled
+        ):
+            merge_tag = self._memory_gc_config.dedup_merge_tag
+
         return self.long_term_memory.add(
             content=content,
             category=category,
@@ -140,6 +153,7 @@ class HybridMemory(BaseMemory):
             source_session=self.session_id,
             importance=importance,
             metadata=metadata,
+            merge_tag=merge_tag,
         )
 
     def recall(self, query: str, limit: int = 5) -> list[LongTermEntry]:
@@ -153,7 +167,11 @@ class HybridMemory(BaseMemory):
         返回:
             匹配的记忆条目列表
         """
-        return self.long_term_memory.search(query, limit)
+        half_life_days = None
+        if self._memory_gc_config is not None and self._memory_gc_config.decay_enabled:
+            half_life_days = self._memory_gc_config.decay_half_life_days
+
+        return self.long_term_memory.search(query, limit, half_life_days=half_life_days)
 
     def get_all_long_term(self) -> list[LongTermEntry]:
         """获取所有长期记忆。"""
@@ -166,6 +184,16 @@ class HybridMemory(BaseMemory):
     def clear_long_term(self) -> None:
         """清空所有长期记忆。"""
         self.long_term_memory.clear()
+
+    def run_gc(self):
+        """Run garbage collection on long-term memory."""
+        if self._memory_gc_config is None:
+            return None
+
+        from .gc import MemoryGC
+
+        gc = MemoryGC(self._memory_gc_config)
+        return gc.run(self.long_term_memory)
 
     # === 自动提取 ===
 
@@ -250,9 +278,7 @@ Only output the JSON array, nothing else."""
 
             # 解析响应
             import json
-            import re
 
-            # 从响应中提取 JSON
             json_match = re.search(r"\[[\s\S]*\]", response)
             if not json_match:
                 return []

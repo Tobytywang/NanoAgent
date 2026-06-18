@@ -163,6 +163,10 @@ class ConfigLoader:
         #   "deviation_feedback_hint_injection", "self_correction_enabled", "self_correction_max_attempts", "feedback_loop"
         # ToolResourceLimiterConfig: "enabled", "timeout_enabled", "default_timeout", "timeout_overrides",
         #   "rate_limit_enabled", "per_tool_calls_per_minute", "global_calls_per_minute", "tool_resource_limiter"
+        # MemoryGCConfig: "decay_enabled", "decay_half_life_days", "dedup_merge_enabled", "dedup_merge_tag",
+        #   "gc_enabled", "gc_threshold", "gc_min_age_days", "memory_gc"
+        # SemanticCompressorConfig: "enabled", "similarity_threshold", "min_messages_to_compress", "provider",
+        #   "embedding_model", "base_url", "api_key", "cache_embeddings", "merge_tag", "semantic_compressor"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -189,6 +193,11 @@ class ConfigLoader:
         # config.feedback_loop.deviation_feedback_enabled, config.feedback_loop.deviation_feedback_threshold, config.feedback_loop.deviation_feedback_cooldown, config.feedback_loop.deviation_feedback_hint_injection, config.feedback_loop.self_correction_enabled, config.feedback_loop.self_correction_max_attempts
         # config.tool_resource_limiter.enabled, config.tool_resource_limiter.timeout_enabled, config.tool_resource_limiter.default_timeout, config.tool_resource_limiter.timeout_overrides,
         #   config.tool_resource_limiter.rate_limit_enabled, config.tool_resource_limiter.per_tool_calls_per_minute, config.tool_resource_limiter.global_calls_per_minute
+        # config.memory_gc.decay_enabled, config.memory_gc.decay_half_life_days, config.memory_gc.dedup_merge_enabled, config.memory_gc.dedup_merge_tag,
+        #   config.memory_gc.gc_enabled, config.memory_gc.gc_threshold, config.memory_gc.gc_min_age_days
+        # config.semantic_compressor.enabled, config.semantic_compressor.similarity_threshold, config.semantic_compressor.min_messages_to_compress,
+        #   config.semantic_compressor.provider, config.semantic_compressor.embedding_model, config.semantic_compressor.base_url,
+        #   config.semantic_compressor.api_key, config.semantic_compressor.cache_embeddings, config.semantic_compressor.merge_tag
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

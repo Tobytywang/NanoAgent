@@ -1205,6 +1205,16 @@ Rate Limiter (v0.8.1):
 - `tool_resource_limiter.per_tool_calls_per_minute: int = 30` — 单工具每分钟最大调用次数，必须 > 0
 - `tool_resource_limiter.global_calls_per_minute: int = 60` — 全局每分钟最大工具调用次数，必须 > 0
 
+#### `memory_gc` — 记忆衰减与回收 (v0.8.12)
+
+- `memory_gc.decay_enabled: bool = True` — 启用衰减权重计算
+- `memory_gc.decay_half_life_days: float = 30.0` — 衰减半衰期（天）
+- `memory_gc.dedup_merge_enabled: bool = True` — 启用去重合并标注
+- `memory_gc.dedup_merge_tag: str = "[merged {n} similar]"` — 合并标注模板
+- `memory_gc.gc_enabled: bool = True` — 启用会话启动 GC
+- `memory_gc.gc_threshold: float = 0.05` — 有效权重低于此值的条目被清理
+- `memory_gc.gc_min_age_days: int = 7` — 不清理创建不足此天数的条目
+
 
 ---
 
@@ -1360,6 +1370,28 @@ entries = memory.get_all_long_term()
 
 # 删除
 memory.forget(entry_id)
+
+# 运行 GC（会话启动时自动触发）
+result = memory.run_gc()
+```
+
+#### 衰减与去重 (v0.8.12)
+
+```python
+from nano_agent.memory import compute_decay_weight, compute_age_days, MemoryGC
+from nano_agent.config.schema import MemoryGCConfig
+
+# 计算条目衰减权重
+weight = compute_decay_weight(entry, half_life_days=30.0)
+
+# 计算时间戳距今天数
+age = compute_age_days("2024-01-01T00:00:00")
+
+# 手动运行 GC
+config = MemoryGCConfig(gc_enabled=True, gc_threshold=0.05)
+gc = MemoryGC(config)
+result = gc.run(long_term_memory)
+# result.entries_before, result.entries_removed, result.entries_after
 ```
 
 ---
@@ -1908,6 +1940,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.12 | 记忆衰减与去重（`MemoryGCConfig`、`MemoryGC`、`GCResult`、`compute_decay_weight`、`compute_age_days`、`DEFAULT_MERGE_TAG`、`SECONDS_PER_DAY`、`LongTermEntry.mention_count/last_mentioned_at`、增强合并、衰减搜索、会话启动 GC） |
 | v0.8.10 | 工具资源限制（`ToolResourceLimiterConfig`、`ToolTimeoutWrapper`、`ToolRateLimiter`、`RateLimitType`、`RateLimitResult`、`_MiniTokenBucket`、`BaseTool.has_builtin_timeout`、框架级超时+两层令牌桶频率限制、非阻塞设计） |
 | v0.8.7 | 结果正确性验证（`ResultValidatorConfig`、`ResultValidator`、`ValidationCheck`、`ValidationResult`、`summarize_validation_checks`、file_exists/code_syntax/command_success 三类检查、block/warn/annotate 三级动作） |
 | v0.8.9 | 反馈闭环（`FeedbackLoopConfig`、`FeedbackLoop`、`DeviationFeedbackResult`、`SelfCorrectionResult`、偏差信号回流、自纠正循环、DEVIATION_FEEDBACK/SELF_CORRECTION 事件、SELF_CORRECTION_EXHAUSTED 终止原因） |

@@ -3,6 +3,7 @@
 """
 
 import json
+import math
 import uuid
 import re
 from dataclasses import dataclass, field
@@ -11,6 +12,35 @@ from pathlib import Path
 from typing import Literal
 
 from .stopwords import ENGLISH_STOP_WORDS, CHINESE_STOP_WORDS
+from ..config.schema import DEFAULT_MERGE_TAG
+
+SECONDS_PER_DAY = 86400
+
+
+def compute_age_days(timestamp: str) -> float:
+    """从 ISO 时间戳计算距今天数，解析失败返回 0.0。"""
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        return (datetime.now() - dt).total_seconds() / SECONDS_PER_DAY
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def compute_decay_weight(entry: "LongTermEntry", half_life_days: float) -> float:
+    """
+    计算条目的衰减有效权重 = importance × e^(-λ × age_days)。
+
+    使用 last_mentioned_at 作为衰减基准时间（更近期被提及的条目衰减更少）。
+    """
+    reference_time = entry.last_mentioned_at or entry.created_at
+    age_days = compute_age_days(reference_time)
+
+    if age_days <= 0:
+        return entry.importance
+
+    lam = math.log(2) / half_life_days
+    decay_factor = math.exp(-lam * age_days)
+    return entry.importance * decay_factor
 
 
 @dataclass
@@ -25,6 +55,8 @@ class LongTermEntry:
     created_at: str
     importance: float = 0.5
     metadata: dict = field(default_factory=dict)
+    mention_count: int = 1
+    last_mentioned_at: str = ""
 
     @classmethod
     def create(
@@ -37,15 +69,18 @@ class LongTermEntry:
         metadata: dict | None = None,
     ) -> "LongTermEntry":
         """创建新的长期记忆条目。"""
+        now = datetime.now().isoformat()
         return cls(
             id=f"ltm_{uuid.uuid4().hex[:8]}",
             content=content,
             category=category,
             keywords=keywords or [],
             source_session=source_session,
-            created_at=datetime.now().isoformat(),
+            created_at=now,
             importance=importance,
             metadata=metadata or {},
+            mention_count=1,
+            last_mentioned_at=now,
         )
 
     def to_dict(self) -> dict:
@@ -59,20 +94,25 @@ class LongTermEntry:
             "created_at": self.created_at,
             "importance": self.importance,
             "metadata": self.metadata,
+            "mention_count": self.mention_count,
+            "last_mentioned_at": self.last_mentioned_at,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "LongTermEntry":
         """从字典创建实例。"""
+        created_at = data["created_at"]
         return cls(
             id=data["id"],
             content=data["content"],
             category=data["category"],
             keywords=data.get("keywords", []),
             source_session=data.get("source_session", ""),
-            created_at=data["created_at"],
+            created_at=created_at,
             importance=data.get("importance", 0.5),
             metadata=data.get("metadata", {}),
+            mention_count=data.get("mention_count", 1),
+            last_mentioned_at=data.get("last_mentioned_at", created_at),
         )
 
 
@@ -124,6 +164,7 @@ class LongTermMemory:
         source_session: str = "",
         importance: float = 0.5,
         metadata: dict | None = None,
+        merge_tag: str | None = None,
     ) -> tuple[str, bool]:
         """
         添加或更新长期记忆条目。
@@ -135,21 +176,55 @@ class LongTermMemory:
             source_session: 创建此记忆的会话 ID
             importance: 重要性评分（0-1）
             metadata: 附加元数据
+            merge_tag: 合并标注模板
 
         返回:
             元组 (entry_id, is_new)，is_new 为 True 表示创建了新条目
         """
+        if merge_tag is None:
+            merge_tag = DEFAULT_MERGE_TAG
+
         # 检查是否存在相似条目
         similar_entry = self._find_similar_entry(content, keywords, category, metadata)
 
         if similar_entry:
-            # 更新已有条目
-            similar_entry.content = content
-            similar_entry.keywords = keywords or []
+            now = datetime.now().isoformat()
+
+            similar_entry.mention_count = similar_entry.mention_count + 1
+
+            similar_entry.last_mentioned_at = now
+
+            same_meta_type = (
+                metadata
+                and similar_entry.metadata
+                and metadata.get("type") == similar_entry.metadata.get("type")
+                and metadata.get("type") is not None
+            )
+            if same_meta_type:
+                similar_entry.content = content
+            elif len(content) > len(similar_entry.content):
+                similar_entry.content = (
+                    content + " " + merge_tag.format(n=similar_entry.mention_count)
+                )
+            elif similar_entry.mention_count <= 2:
+                similar_entry.content = (
+                    similar_entry.content
+                    + " "
+                    + merge_tag.format(n=similar_entry.mention_count)
+                )
+            # else: already merged multiple times and new content is not richer — keep existing
+
+            existing_kw = set(k.lower() for k in similar_entry.keywords)
+            new_kw = set(k.lower() for k in (keywords or []))
+            similar_entry.keywords = list(existing_kw | new_kw)
+
+            similar_entry.importance = max(similar_entry.importance, importance)
+
+            if metadata:
+                similar_entry.metadata = {**similar_entry.metadata, **metadata}
+
             similar_entry.source_session = source_session
-            similar_entry.importance = importance
-            similar_entry.metadata = metadata or {}
-            similar_entry.created_at = datetime.now().isoformat()
+
             self._save()
             return (similar_entry.id, False)
 
@@ -168,13 +243,19 @@ class LongTermMemory:
 
         return (entry.id, True)
 
-    def search(self, query: str, limit: int = 5) -> list[LongTermEntry]:
+    def search(
+        self,
+        query: str,
+        limit: int = 5,
+        half_life_days: float | None = None,
+    ) -> list[LongTermEntry]:
         """
-        使用关键字匹配搜索记忆（支持中文）。
+        使用关键字匹配搜索记忆（支持中文），考虑衰减权重。
 
         参数:
             query: 搜索查询
             limit: 最大结果数量
+            half_life_days: 衰减半衰期（None 表示不衰减）
 
         返回:
             匹配的条目列表
@@ -200,8 +281,15 @@ class LongTermMemory:
             score = keyword_matches * 2 + content_matches
 
             if score > 0:
-                # 按重要性加权
-                final_score = score * (0.5 + entry.importance * 0.5)
+                # Use effective_weight with decay
+                if half_life_days is not None:
+                    weight = compute_decay_weight(entry, half_life_days)
+                else:
+                    weight = entry.importance
+
+                # Mention count boost: slight bonus for frequently mentioned (cap 1.5x)
+                mention_boost = 1.0 + 0.1 * min(entry.mention_count - 1, 5)
+                final_score = score * (0.5 + weight * 0.5) * mention_boost
                 scored_entries.append((final_score, entry))
 
         # 按分数降序排序
@@ -331,6 +419,24 @@ class LongTermMemory:
                 self._save()
                 return True
         return False
+
+    def delete_batch(self, entry_ids: list[str]) -> int:
+        """
+        批量删除记忆条目，仅保存一次。
+
+        参数:
+            entry_ids: 要删除的条目 ID 列表
+
+        返回:
+            实际删除的条目数量
+        """
+        ids_to_remove = set(entry_ids)
+        original_count = len(self.entries)
+        self.entries = [e for e in self.entries if e.id not in ids_to_remove]
+        removed = original_count - len(self.entries)
+        if removed > 0:
+            self._save()
+        return removed
 
     def clear(self) -> None:
         """清空所有记忆。"""

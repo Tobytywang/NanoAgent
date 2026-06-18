@@ -263,9 +263,14 @@ class RecallTool(BaseTool):
             # Format results
             results = []
             for i, entry in enumerate(entries, 1):
+                mention_info = (
+                    f", mentioned: {entry.mention_count}x"
+                    if entry.mention_count > 1
+                    else ""
+                )
                 results.append(
                     f"{i}. [{entry.category}] {entry.content}\n"
-                    f"   (importance: {entry.importance:.1f}, stored: {entry.created_at[:10]})"
+                    f"   (importance: {entry.importance:.1f}, stored: {entry.created_at[:10]}{mention_info})"
                 )
 
             return ToolResult(
