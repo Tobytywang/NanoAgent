@@ -660,7 +660,7 @@ class ToolResourceLimiterConfig:
 
 @dataclass
 class MemoryGCConfig:
-    """Memory decay, dedup, and garbage collection configuration."""
+    """Memory decay, dedup, garbage collection, and eviction configuration."""
 
     # Decay: lazy computation at read time
     decay_enabled: bool = True
@@ -674,6 +674,16 @@ class MemoryGCConfig:
     gc_enabled: bool = True
     gc_threshold: float = 0.05  # Remove entries with effective_weight below this
     gc_min_age_days: int = 7  # Don't GC entries younger than this
+
+    # Eviction: capacity-based proactive cleanup
+    eviction_enabled: bool = True
+    eviction_max_entries: int = 500  # Evict when count exceeds this
+    eviction_protected_categories: list[str] = field(
+        default_factory=lambda: ["preference"]
+    )
+    eviction_mention_count_threshold: int = (
+        3  # Entries with mention_count >= this are protected
+    )
 
 
 @dataclass

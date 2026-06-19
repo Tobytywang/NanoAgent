@@ -1,8 +1,10 @@
 """
 Tests for v0.8.12 - Memory Decay and Deduplication.
-
 Covers: LongTermEntry new fields, compute_decay_weight, enhanced dedup in add(),
 search with decay, MemoryGC, and HybridMemory GC integration.
+
+v0.8.13 - Adds eviction tests: capacity-based cleanup, protected categories,
+mention count protection, GCResult eviction fields.
 """
 
 import math
@@ -17,6 +19,23 @@ from nano_agent.memory.long_term import (
 )
 from nano_agent.memory.gc import MemoryGC, GCResult
 from nano_agent.config.schema import MemoryGCConfig
+
+
+def _make_mock_ltm(entries):
+    """Create a mock LongTermMemory with working delete_batch/count/get_all."""
+    ltm = LongTermMemory.__new__(LongTermMemory)
+    ltm.entries = list(entries)
+    ltm._save = MagicMock()
+    ltm.delete_batch = MagicMock(
+        side_effect=lambda ids: (
+            setattr(ltm, "entries", [e for e in ltm.entries if e.id not in set(ids)])
+            or len(ids)
+        )
+    )
+    ltm.count = MagicMock(side_effect=lambda: len(ltm.entries))
+    ltm.get_all = MagicMock(side_effect=lambda: list(ltm.entries))
+    return ltm
+
 
 # ---------------------------------------------------------------------------
 # TestLongTermEntryCompat
@@ -358,22 +377,6 @@ class TestSearchWithDecay:
 class TestMemoryGC:
     """Test MemoryGC cleanup behavior."""
 
-    def _make_mock_ltm(self, entries):
-        ltm = LongTermMemory.__new__(LongTermMemory)
-        ltm.entries = list(entries)
-        ltm._save = MagicMock()
-        ltm.delete_batch = MagicMock(
-            side_effect=lambda ids: (
-                setattr(
-                    ltm, "entries", [e for e in ltm.entries if e.id not in set(ids)]
-                )
-                or len(ids)
-            )
-        )
-        ltm.count = MagicMock(side_effect=lambda: len(ltm.entries))
-        ltm.get_all = MagicMock(return_value=list(ltm.entries))
-        return ltm
-
     def test_gc_disabled_no_cleanup(self):
         """gc_enabled=False should not remove anything."""
         config = MemoryGCConfig(gc_enabled=False)
@@ -388,7 +391,7 @@ class TestMemoryGC:
             importance=0.5,
             last_mentioned_at="2024-01-01T00:00:00",
         )
-        ltm = self._make_mock_ltm([entry])
+        ltm = _make_mock_ltm([entry])
         result = gc.run(ltm)
         assert result.entries_removed == 0
         ltm.delete_batch.assert_not_called()
@@ -417,7 +420,7 @@ class TestMemoryGC:
             last_mentioned_at=(now - timedelta(days=1)).isoformat(),
         )
 
-        ltm = self._make_mock_ltm([old_decayed, fresh])
+        ltm = _make_mock_ltm([old_decayed, fresh])
         config = MemoryGCConfig(gc_enabled=True, gc_threshold=0.05, gc_min_age_days=7)
         gc = MemoryGC(config)
         result = gc.run(ltm)
@@ -440,7 +443,7 @@ class TestMemoryGC:
             last_mentioned_at=(now - timedelta(days=2)).isoformat(),
         )
 
-        ltm = self._make_mock_ltm([young])
+        ltm = _make_mock_ltm([young])
         config = MemoryGCConfig(gc_enabled=True, gc_threshold=0.05, gc_min_age_days=7)
         gc = MemoryGC(config)
         result = gc.run(ltm)
@@ -520,3 +523,308 @@ class TestHybridMemoryGC:
         result = hm.run_gc()
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# TestGCResultEvictionFields (v0.8.13)
+# ---------------------------------------------------------------------------
+
+
+class TestGCResultEvictionFields:
+    """Test GCResult eviction fields default correctly."""
+
+    def test_default_eviction_fields(self):
+        result = GCResult(
+            entries_before=10,
+            entries_removed=2,
+            entries_after=8,
+            removed_ids=["a", "b"],
+        )
+        assert result.evicted_ids == []
+        assert result.entries_evicted == 0
+        assert result.capacity_before is None
+
+    def test_eviction_fields_populated(self):
+        result = GCResult(
+            entries_before=600,
+            entries_removed=5,
+            entries_after=500,
+            removed_ids=["a"],
+            evicted_ids=["c", "d"],
+            entries_evicted=2,
+            capacity_before=600,
+        )
+        assert result.entries_evicted == 2
+        assert "c" in result.evicted_ids
+        assert result.capacity_before == 600
+
+
+# ---------------------------------------------------------------------------
+# TestMemoryGCEviction (v0.8.13)
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryGCEviction:
+    """Test capacity-based eviction in MemoryGC."""
+
+    def _make_entry(
+        self,
+        entry_id: str,
+        category: str = "fact",
+        importance: float = 0.5,
+        days_ago: float = 30,
+        mention_count: int = 1,
+    ) -> LongTermEntry:
+        created = (datetime.now() - timedelta(days=days_ago)).isoformat()
+        return LongTermEntry(
+            id=entry_id,
+            content=f"content-{entry_id}",
+            category=category,
+            keywords=[f"k-{entry_id}"],
+            source_session="s1",
+            created_at=created,
+            importance=importance,
+            mention_count=mention_count,
+            last_mentioned_at=created,
+        )
+
+    def test_eviction_disabled_no_removal(self):
+        """eviction_enabled=False should not evict even when over capacity."""
+        entries = [self._make_entry(f"e{i}", importance=0.3) for i in range(10)]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=False,
+            eviction_max_entries=5,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        assert result.entries_evicted == 0
+
+    def test_eviction_no_op_when_below_capacity(self):
+        """No eviction when count <= max_entries."""
+        entries = [self._make_entry(f"e{i}") for i in range(5)]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=True,
+            eviction_max_entries=10,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        assert result.entries_evicted == 0
+        assert result.capacity_before == 5
+
+    def test_eviction_removes_lowest_weight(self):
+        """When over capacity, lowest effective_weight entries should be evicted."""
+        high_weight = self._make_entry("high", importance=0.9, days_ago=1)
+        low_weight = self._make_entry("low", importance=0.1, days_ago=90)
+        mid_weight = self._make_entry("mid", importance=0.5, days_ago=30)
+        entries = [high_weight, low_weight, mid_weight]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=True,
+            eviction_max_entries=2,
+            decay_half_life_days=30.0,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        assert result.entries_evicted == 1
+        assert "low" in result.evicted_ids
+
+    def test_eviction_protected_category_not_removed(self):
+        """Entries in protected categories should survive eviction."""
+        preference = self._make_entry(
+            "pref", category="preference", importance=0.1, days_ago=90
+        )
+        fact = self._make_entry("fact", category="fact", importance=0.1, days_ago=90)
+        entries = [preference, fact]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=True,
+            eviction_max_entries=1,
+            eviction_protected_categories=["preference"],
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        assert result.entries_evicted == 1
+        assert "pref" not in result.evicted_ids
+        assert "fact" in result.evicted_ids
+
+    def test_eviction_mention_count_protection(self):
+        """Entries with mention_count >= threshold should survive eviction."""
+        mentioned = self._make_entry(
+            "mentioned", importance=0.1, days_ago=90, mention_count=5
+        )
+        unmentioned = self._make_entry(
+            "unmentioned", importance=0.1, days_ago=90, mention_count=1
+        )
+        entries = [mentioned, unmentioned]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=True,
+            eviction_max_entries=1,
+            eviction_mention_count_threshold=3,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        assert result.entries_evicted == 1
+        assert "mentioned" not in result.evicted_ids
+        assert "unmentioned" in result.evicted_ids
+
+    def test_eviction_respects_max_entries(self):
+        """Exactly enough entries should be evicted to reach max_entries."""
+        entries = [self._make_entry(f"e{i}", importance=0.3) for i in range(10)]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=True,
+            eviction_max_entries=7,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        assert result.entries_evicted == 3
+        assert result.entries_after == 7
+
+    def test_eviction_after_decay_cleanup(self):
+        """Eviction should run after decay cleanup, on remaining entries."""
+        now = datetime.now()
+        decayed = LongTermEntry(
+            id="decayed",
+            content="old",
+            category="fact",
+            keywords=[],
+            source_session="s1",
+            created_at=(now - timedelta(days=100)).isoformat(),
+            importance=0.01,
+            last_mentioned_at=(now - timedelta(days=100)).isoformat(),
+        )
+        normal = self._make_entry("normal", importance=0.5, days_ago=30)
+        entries = [decayed, normal]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=True,
+            gc_threshold=0.05,
+            gc_min_age_days=7,
+            eviction_enabled=True,
+            eviction_max_entries=1,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        # Decay removes "decayed", eviction not needed (count already <= 1 after decay)
+        assert "decayed" in result.removed_ids
+        assert result.entries_evicted == 0
+
+    def test_eviction_tiebreak_by_age(self):
+        """Among equal-weight entries, older ones should be evicted first."""
+        old = self._make_entry("old", importance=0.3, days_ago=60)
+        new = self._make_entry("new", importance=0.3, days_ago=5)
+        entries = [old, new]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=True,
+            eviction_max_entries=1,
+            decay_half_life_days=30.0,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        assert result.entries_evicted == 1
+        # old has lower effective weight due to age, should be evicted
+        assert "old" in result.evicted_ids
+
+    def test_eviction_combined_with_decay(self):
+        """Full integration: decay removes some, eviction removes more."""
+        now = datetime.now()
+        decayed = LongTermEntry(
+            id="decayed",
+            content="very old",
+            category="fact",
+            keywords=[],
+            source_session="s1",
+            created_at=(now - timedelta(days=200)).isoformat(),
+            importance=0.01,
+            last_mentioned_at=(now - timedelta(days=200)).isoformat(),
+        )
+        # weight = 0.5 * e^(-ln2*30/30) ≈ 0.25 > gc_threshold(0.05), survives decay
+        low = self._make_entry("low", importance=0.5, days_ago=30)
+        high = self._make_entry("high", importance=0.9, days_ago=1)
+        entries = [decayed, low, high]
+        ltm = _make_mock_ltm(entries)
+        config = MemoryGCConfig(
+            gc_enabled=True,
+            gc_threshold=0.05,
+            gc_min_age_days=7,
+            eviction_enabled=True,
+            eviction_max_entries=1,
+            decay_half_life_days=30.0,
+        )
+        gc = MemoryGC(config)
+        result = gc.run(ltm)
+        # Decay removes "decayed" (weight < 0.05)
+        assert "decayed" in result.removed_ids
+        # "low" survives decay (weight ~0.25 > 0.05) but gets evicted (capacity)
+        assert result.entries_evicted >= 1
+        assert "high" not in result.evicted_ids
+
+
+# ---------------------------------------------------------------------------
+# TestHybridMemoryEviction (v0.8.13)
+# ---------------------------------------------------------------------------
+
+
+class TestHybridMemoryEviction:
+    """Test HybridMemory eviction integration."""
+
+    def test_run_gc_returns_eviction_stats(self):
+        """run_gc should return GCResult with eviction fields."""
+        from nano_agent.memory.hybrid import HybridMemory
+        from nano_agent.memory.short_term import ShortTermMemory
+
+        config = MemoryGCConfig(
+            gc_enabled=False,
+            eviction_enabled=True,
+            eviction_max_entries=1,
+        )
+        stm = ShortTermMemory()
+        ltm = MagicMock()
+        ltm.get_all = MagicMock(return_value=[])
+        ltm.count = MagicMock(return_value=0)
+        ltm.delete_batch = MagicMock(return_value=0)
+
+        hm = HybridMemory(working_memory=stm, long_term_memory=ltm, session_id="test")
+        hm.set_memory_gc_config(config)
+        result = hm.run_gc()
+
+        assert result is not None
+        assert hasattr(result, "entries_evicted")
+        assert hasattr(result, "evicted_ids")
+        assert hasattr(result, "capacity_before")
+
+    def test_eviction_config_propagates(self):
+        """Setting MemoryGCConfig with eviction fields should work through set_memory_gc_config."""
+        from nano_agent.memory.hybrid import HybridMemory
+        from nano_agent.memory.short_term import ShortTermMemory
+
+        config = MemoryGCConfig(
+            eviction_enabled=True,
+            eviction_max_entries=200,
+            eviction_protected_categories=["preference", "experience"],
+            eviction_mention_count_threshold=5,
+        )
+        stm = ShortTermMemory()
+        ltm = MagicMock()
+
+        hm = HybridMemory(working_memory=stm, long_term_memory=ltm, session_id="test")
+        hm.set_memory_gc_config(config)
+
+        assert hm._memory_gc_config.eviction_enabled is True
+        assert hm._memory_gc_config.eviction_max_entries == 200
+        assert hm._memory_gc_config.eviction_protected_categories == [
+            "preference",
+            "experience",
+        ]
+        assert hm._memory_gc_config.eviction_mention_count_threshold == 5

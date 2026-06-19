@@ -1205,7 +1205,7 @@ Rate Limiter (v0.8.1):
 - `tool_resource_limiter.per_tool_calls_per_minute: int = 30` — 单工具每分钟最大调用次数，必须 > 0
 - `tool_resource_limiter.global_calls_per_minute: int = 60` — 全局每分钟最大工具调用次数，必须 > 0
 
-#### `memory_gc` — 记忆衰减与回收 (v0.8.12)
+#### `memory_gc` — 记忆衰减、回收与淘汰 (v0.8.12, v0.8.13)
 
 - `memory_gc.decay_enabled: bool = True` — 启用衰减权重计算
 - `memory_gc.decay_half_life_days: float = 30.0` — 衰减半衰期（天）
@@ -1214,6 +1214,10 @@ Rate Limiter (v0.8.1):
 - `memory_gc.gc_enabled: bool = True` — 启用会话启动 GC
 - `memory_gc.gc_threshold: float = 0.05` — 有效权重低于此值的条目被清理
 - `memory_gc.gc_min_age_days: int = 7` — 不清理创建不足此天数的条目
+- `memory_gc.eviction_enabled: bool = True` — 启用容量淘汰
+- `memory_gc.eviction_max_entries: int = 500` — 条目数上限，超过触发淘汰
+- `memory_gc.eviction_protected_categories: list[str] = ["preference"]` — 不被淘汰的类别
+- `memory_gc.eviction_mention_count_threshold: int = 3` — 提及次数 >= 此值的条目不被淘汰
 
 
 ---
@@ -1941,6 +1945,7 @@ enabled: true
 | 版本 | 主要功能 |
 |------|---------|
 | v0.8.12 | 记忆衰减与去重（`MemoryGCConfig`、`MemoryGC`、`GCResult`、`compute_decay_weight`、`compute_age_days`、`DEFAULT_MERGE_TAG`、`SECONDS_PER_DAY`、`LongTermEntry.mention_count/last_mentioned_at`、增强合并、衰减搜索、会话启动 GC） |
+| v0.8.13 | 长时记忆淘汰（`MemoryGCConfig` 新增 eviction 字段、`GCResult` 新增 eviction 字段、`MemoryGC.run()` Phase 2 容量淘汰、保护类别、提及计数保护） |
 | v0.8.10 | 工具资源限制（`ToolResourceLimiterConfig`、`ToolTimeoutWrapper`、`ToolRateLimiter`、`RateLimitType`、`RateLimitResult`、`_MiniTokenBucket`、`BaseTool.has_builtin_timeout`、框架级超时+两层令牌桶频率限制、非阻塞设计） |
 | v0.8.7 | 结果正确性验证（`ResultValidatorConfig`、`ResultValidator`、`ValidationCheck`、`ValidationResult`、`summarize_validation_checks`、file_exists/code_syntax/command_success 三类检查、block/warn/annotate 三级动作） |
 | v0.8.9 | 反馈闭环（`FeedbackLoopConfig`、`FeedbackLoop`、`DeviationFeedbackResult`、`SelfCorrectionResult`、偏差信号回流、自纠正循环、DEVIATION_FEEDBACK/SELF_CORRECTION 事件、SELF_CORRECTION_EXHAUSTED 终止原因） |

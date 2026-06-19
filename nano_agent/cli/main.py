@@ -1269,10 +1269,9 @@ Config file priority:
 
     if isinstance(agent.memory, HybridMemory):
         gc_result = agent.memory.run_gc()
-        if gc_result and gc_result.entries_removed > 0:
+        if gc_result and gc_result.summary():
             Console.print(
-                f"[MemoryGC] Cleaned {gc_result.entries_removed} decayed entries "
-                f"({gc_result.entries_after} remaining)",
+                f"[MemoryGC] {gc_result.summary()}",
                 style="info",
             )
 
@@ -2484,6 +2483,23 @@ def _show_config(config, agent) -> None:
         if config.memory_gc.gc_enabled:
             print(format_line("GC 阈值:", str(config.memory_gc.gc_threshold)))
             print(format_line("GC 最小年龄:", f"{config.memory_gc.gc_min_age_days} 天"))
+        print(format_line("淘汰启用:", str(config.memory_gc.eviction_enabled)))
+        if config.memory_gc.eviction_enabled:
+            print(
+                format_line("淘汰上限:", f"{config.memory_gc.eviction_max_entries} 条")
+            )
+            print(
+                format_line(
+                    "保护类别:",
+                    ", ".join(config.memory_gc.eviction_protected_categories) or "无",
+                )
+            )
+            print(
+                format_line(
+                    "提及保护阈值:",
+                    f">= {config.memory_gc.eviction_mention_count_threshold} 次",
+                )
+            )
 
     print("\n" + "=" * 50 + "\n")
 
@@ -2527,6 +2543,10 @@ def _show_memory_status(config) -> None:
     if config.memory.type == "hybrid":
         print(format_line("长期记忆路径:", config.memory.long_term_storage_path))
         print(format_line("自动提取:", str(config.memory.auto_extract)))
+        if config.memory_gc.eviction_enabled:
+            print(
+                format_line("淘汰上限:", f"{config.memory_gc.eviction_max_entries} 条")
+            )
 
     print("\n## 记忆模式")
     print("  short_term  - 仅当前上下文（无持久化）")
@@ -3374,6 +3394,10 @@ def _init_config_file(config, force: bool = False) -> None:
             "gc_enabled": config.memory_gc.gc_enabled,
             "gc_threshold": config.memory_gc.gc_threshold,
             "gc_min_age_days": config.memory_gc.gc_min_age_days,
+            "eviction_enabled": config.memory_gc.eviction_enabled,
+            "eviction_max_entries": config.memory_gc.eviction_max_entries,
+            "eviction_protected_categories": config.memory_gc.eviction_protected_categories,
+            "eviction_mention_count_threshold": config.memory_gc.eviction_mention_count_threshold,
         },
     }
 

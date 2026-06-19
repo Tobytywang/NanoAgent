@@ -164,7 +164,9 @@ class ConfigLoader:
         # ToolResourceLimiterConfig: "enabled", "timeout_enabled", "default_timeout", "timeout_overrides",
         #   "rate_limit_enabled", "per_tool_calls_per_minute", "global_calls_per_minute", "tool_resource_limiter"
         # MemoryGCConfig: "decay_enabled", "decay_half_life_days", "dedup_merge_enabled", "dedup_merge_tag",
-        #   "gc_enabled", "gc_threshold", "gc_min_age_days", "memory_gc"
+        #   "gc_enabled", "gc_threshold", "gc_min_age_days",
+        #   "eviction_enabled", "eviction_max_entries", "eviction_protected_categories",
+        #   "eviction_mention_count_threshold", "memory_gc"
         # SemanticCompressorConfig: "enabled", "similarity_threshold", "min_messages_to_compress", "provider",
         #   "embedding_model", "base_url", "api_key", "cache_embeddings", "merge_tag", "semantic_compressor"
 
@@ -194,7 +196,9 @@ class ConfigLoader:
         # config.tool_resource_limiter.enabled, config.tool_resource_limiter.timeout_enabled, config.tool_resource_limiter.default_timeout, config.tool_resource_limiter.timeout_overrides,
         #   config.tool_resource_limiter.rate_limit_enabled, config.tool_resource_limiter.per_tool_calls_per_minute, config.tool_resource_limiter.global_calls_per_minute
         # config.memory_gc.decay_enabled, config.memory_gc.decay_half_life_days, config.memory_gc.dedup_merge_enabled, config.memory_gc.dedup_merge_tag,
-        #   config.memory_gc.gc_enabled, config.memory_gc.gc_threshold, config.memory_gc.gc_min_age_days
+        #   config.memory_gc.gc_enabled, config.memory_gc.gc_threshold, config.memory_gc.gc_min_age_days,
+        #   config.memory_gc.eviction_enabled, config.memory_gc.eviction_max_entries, config.memory_gc.eviction_protected_categories,
+        #   config.memory_gc.eviction_mention_count_threshold
         # config.semantic_compressor.enabled, config.semantic_compressor.similarity_threshold, config.semantic_compressor.min_messages_to_compress,
         #   config.semantic_compressor.provider, config.semantic_compressor.embedding_model, config.semantic_compressor.base_url,
         #   config.semantic_compressor.api_key, config.semantic_compressor.cache_embeddings, config.semantic_compressor.merge_tag

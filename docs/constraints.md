@@ -873,16 +873,18 @@ tool_resource_limiter:
 | 项目 | 值 |
 |------|------|
 | 配置路径 | `memory_gc.*` |
-| 默认值 | `decay_enabled: True` / `decay_half_life_days: 30.0` / `gc_enabled: True` / `gc_threshold: 0.05` / `gc_min_age_days: 7` |
+| 默认值 | `decay_enabled: True` / `decay_half_life_days: 30.0` / `gc_enabled: True` / `gc_threshold: 0.05` / `gc_min_age_days: 7` / `eviction_enabled: True` / `eviction_max_entries: 500` |
 | 源码位置 | `nano_agent/config/schema.py` → `MemoryGCConfig` |
 
-三层能力作用于 LongTermMemory：
+四层能力作用于 LongTermMemory：
 
 **衰减**: `compute_decay_weight(entry, half_life_days)` 计算 `importance × e^(-λ × age_days)`，其中 `age_days` 基于 `last_mentioned_at`（被重复提及的条目衰减更慢）。`search()` 传入 `half_life_days` 启用衰减排序。
 
 **去重增强**: `add()` 合并相似条目而非覆盖——`mention_count` 递增、关键词取并集、`importance` 取 max、metadata 新覆盖旧。内容按规则合并标注：同 metadata type 取新内容，否则保留更长的 + merge tag。
 
-**GC**: `MemoryGC.run()` 在会话启动时清理 `effective_weight < gc_threshold` 且 `age > gc_min_age_days` 的条目。
+**GC**: `MemoryGC.run()` Phase 1 清理 `effective_weight < gc_threshold` 且 `age > gc_min_age_days` 的条目。
+
+**淘汰**: `MemoryGC.run()` Phase 2 当 `count() > eviction_max_entries` 时，按 `effective_weight` 升序淘汰最低权重条目（排除保护类别和高提及计数条目）。
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -893,6 +895,10 @@ tool_resource_limiter:
 | `memory_gc.gc_enabled` | `True` | 启用会话启动 GC |
 | `memory_gc.gc_threshold` | `0.05` | 有效权重低于此值的条目被清理 |
 | `memory_gc.gc_min_age_days` | `7` | 不清理创建不足此天数的条目 |
+| `memory_gc.eviction_enabled` | `True` | 启用容量淘汰 |
+| `memory_gc.eviction_max_entries` | `500` | 条目数上限，超过触发淘汰 |
+| `memory_gc.eviction_protected_categories` | `["preference"]` | 不被淘汰的类别 |
+| `memory_gc.eviction_mention_count_threshold` | `3` | 提及次数 >= 此值的条目不被淘汰 |
 
 ```yaml
 memory_gc:
@@ -903,6 +909,10 @@ memory_gc:
   gc_enabled: true
   gc_threshold: 0.05
   gc_min_age_days: 7
+  eviction_enabled: true
+  eviction_max_entries: 500
+  eviction_protected_categories: ["preference"]
+  eviction_mention_count_threshold: 3
 ```
 
 ---
@@ -1021,6 +1031,10 @@ memory_gc:
 | `memory_gc.gc_enabled` | `True` | 会话启动 GC 开关 | 硬限制 |
 | `memory_gc.gc_threshold` | `0.05` | GC 有效权重阈值 | 硬限制 |
 | `memory_gc.gc_min_age_days` | `7` | GC 最小条目年龄（天） | 硬限制 |
+| `memory_gc.eviction_enabled` | `True` | 容量淘汰开关 | 硬限制 |
+| `memory_gc.eviction_max_entries` | `500` | 条目数上限 | 硬限制 |
+| `memory_gc.eviction_protected_categories` | `["preference"]` | 淘汰保护类别 | 软限制 |
+| `memory_gc.eviction_mention_count_threshold` | `3` | 提及保护阈值 | 软限制 |
 
 ---
 

@@ -398,7 +398,7 @@ graph LR
 |------|---------|--------|----------|
 | **cli** | 3,148 | 6 | `main.py` (2346行) - 交互式CLI入口 |
 | **agent** | 2,143 | 13 | `react.py` (505行), `context.py` (440行), `git_manager.py` (295行) |
-| **memory** | 1,996 | 13 | `sqlite_storage.py` (360行), `long_term.py` (458行), `hybrid.py` (292行), `gc.py` (95行) |
+| **memory** | 1,996 | 13 | `sqlite_storage.py` (360行), `long_term.py` (458行), `hybrid.py` (292行), `gc.py` (138行) |
 | **tools** | 1,972 | 11 | `memory_tools.py` (421行), `plan_tools.py` (355行), `file_ops.py` (318行) |
 | **monitoring** | 819 | 5 | `tracker.py` (239行), `logger.py` (206行), `reporter.py` (205行) |
 | **llm** | 694 | 5 | `openai_compatible.py` (192行), `ollama.py` (152行) |
