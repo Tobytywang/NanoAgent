@@ -34,6 +34,7 @@ graph TB
         RVALIDATOR[ResultValidator<br/>结果验证]
         TTIMEOUT[ToolTimeoutWrapper<br/>工具超时]
         TRATE[ToolRateLimiter<br/>工具频率限制]
+        SNAPMGR[SnapshotManager<br/>状态快照]
     end
 
     subgraph Core["核心组件"]
@@ -72,6 +73,7 @@ graph TB
     REACT --> CB
     REACT --> TTIMEOUT
     REACT --> TRATE
+    ORCH --> SNAPMGR
 
     REACT --> LLM
     REACT --> MEM
@@ -90,7 +92,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator`, `ToolTimeoutWrapper`, `ToolRateLimiter` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator`, `ToolTimeoutWrapper`, `ToolRateLimiter`, `SnapshotManager` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -195,6 +197,43 @@ classDiagram
         +get_all_schemas() list
     }
 
+    class SnapshotManager {
+        +_config: SnapshotConfig
+        +_events: EventEmitter
+        +save(agent, orchestrator, name) SnapshotMetadata
+        +restore(snapshot_id, agent, orchestrator) bool
+        +list_snapshots() list
+        +delete(snapshot_id) bool
+        +maybe_auto_snapshot(agent, orchestrator) None
+    }
+
+    class SnapshotMetadata {
+        +snapshot_id: str
+        +name: str
+        +created_at: str
+        +session_id: str
+        +round_counter: int
+        +message_count: int
+        +total_tokens: int
+        +version: str
+    }
+
+    class Snapshot {
+        +metadata: SnapshotMetadata
+        +orchestrator: dict
+        +execution: dict
+        +undo_stack: dict
+        +tool_call_records: list
+        +memory: dict
+        +token_budget: dict
+        +cache: dict
+        +circuit_breaker: dict
+        +duplicate_detector: dict
+        +stall_detector: dict
+        +feedback_loop: dict
+        +tracker: dict
+    }
+
     BaseAgent <|-- ReActAgent
     BaseLLM <|-- OllamaLLM
     BaseLLM <|-- OpenAICompatibleLLM
@@ -208,6 +247,9 @@ classDiagram
     HybridMemory --> ShortTermMemory
     HybridMemory --> LongTermMemory
     HybridMemory --> MemoryGC
+
+    SnapshotManager --> SnapshotMetadata
+    Snapshot --> SnapshotMetadata
 ```
 
 ### 关键数据结构
@@ -328,6 +370,7 @@ graph LR
         git_manager
         harmful_filter
         result_validator
+        snapshot
     end
 
     subgraph llm[llm]
@@ -731,3 +774,63 @@ base_ratio = 第一次迭代的 prompt_tokens / 总字符长度
 2. 将旧消息压缩为 `[历史摘要]` 格式
 3. 压缩后的摘要以 `role="system"` 添加到消息列表
 4. `/usage` 的"摘要[*]"列专门显示这部分 Token
+
+### 全局状态快照 (Snapshot)
+
+v0.8.14 引入全局状态快照，类似"存档/读档"机制。`SnapshotManager` 捕获 Agent 全量可序列化状态并持久化到 JSON 文件，支持随时恢复到任意存档点。
+
+```
+SnapshotManager 工作流程:
+
+  /snapshot save [name]
+       │
+       ▼
+  _capture(agent, orchestrator, name)
+       │
+       ├── _capture_orchestrator()    → session_id, stats
+       ├── _capture_execution()       → round_counter, total_tokens, ...
+       ├── _capture_undo_stack()      → records, current_round
+       ├── _capture_memory()          → messages, system_prompt, long_term_entries
+       ├── _capture_token_budget()    → remaining, calibration_data
+       ├── _capture_cache()           → entries, access_order
+       ├── _capture_circuit_breaker() → mode, trigger_reason
+       ├── _capture_duplicate_detector() → call_history, warning_issued
+       ├── _capture_stall_detector()  → iteration_signatures, stall_count
+       ├── _capture_feedback_loop()   → deviation_warning_count, correction_attempts
+       ├── _capture_tracker()         → session_total_tokens, ...
+       │
+       ▼
+  _persist(snapshot)                   → 写入 snap_{uuid}.json
+  _enforce_max_snapshots()             → 超出 max_snapshots 时淘汰最旧
+       │
+       ▼
+  emit(SNAPSHOT_SAVED)
+
+  /snapshot restore <id>
+       │
+       ▼
+  _load(snapshot_id)                   → 从 JSON 反序列化 Snapshot
+  _apply(snapshot, agent, orchestrator) → 原位替换各子状态
+       │
+       ├── _apply_orchestrator()
+       ├── _apply_execution()
+       ├── _apply_undo_stack()
+       ├── _apply_memory()             → messages + long_term_entries
+       ├── _apply_token_budget()
+       ├── _apply_cache()
+       ├── _apply_circuit_breaker()
+       ├── _apply_duplicate_detector()
+       ├── _apply_stall_detector()
+       ├── _apply_feedback_loop()
+       ├── _apply_tracker()
+       │
+       ▼
+  _setup_system_prompt()               → 重建系统提示
+       │
+       ▼
+  emit(SNAPSHOT_RESTORED)
+```
+
+**原位恢复设计**: `restore()` 替换 agent/orchestrator 可序列化字段，但保持 LLM 客户端、ToolRegistry、EventEmitter 实例不变——这些是不可序列化的外部资源，恢复时不应被替换。
+
+**自动快照**: `auto_snapshot=True` 时，`maybe_auto_snapshot()` 在每次 `run()` 前自动保存 `name="auto"` 的快照，为高风险操作提供安全网。

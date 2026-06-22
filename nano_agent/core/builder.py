@@ -399,4 +399,16 @@ class AgentBuilder:
             feedback_loop=feedback_loop,
         )
 
+        # Create snapshot manager
+        from ..agent.snapshot import SnapshotManager
+        from ..config.schema import SnapshotConfig
+
+        snapshot_config = _cfg("snapshot", SnapshotConfig)
+        if not isinstance(snapshot_config, SnapshotConfig):
+            snapshot_config = SnapshotConfig()
+        orchestrator.snapshot_manager = SnapshotManager(
+            config=snapshot_config,
+            events=agent.events,
+        )
+
         return orchestrator

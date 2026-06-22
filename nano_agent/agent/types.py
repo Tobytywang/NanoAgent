@@ -108,6 +108,8 @@ class AgentEvent(Enum):
     DEVIATION_FEEDBACK = "deviation_feedback"
     SELF_CORRECTION = "self_correction"
     TOOL_RATE_LIMITED = "tool_rate_limited"
+    SNAPSHOT_SAVED = "snapshot_saved"
+    SNAPSHOT_RESTORED = "snapshot_restored"
 
 
 class RiskLevel(Enum):

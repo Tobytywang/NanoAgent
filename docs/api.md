@@ -968,6 +968,100 @@ class MyTool(BaseTool):
 
 **_act() 集成**: 速率限制检查在用户确认之后、工具执行之前执行；超时包装包裹实际工具执行。触发时发射 `AgentEvent.TOOL_RATE_LIMITED` 事件。
 
+### SnapshotConfig & SnapshotManager & Snapshot & SnapshotMetadata
+
+v0.8.14 全局状态快照。一键保存/恢复 Agent 全量状态，类似"存档/读档"机制。
+
+```python
+from nano_agent.agent.snapshot import SnapshotManager, Snapshot, SnapshotMetadata
+from nano_agent.config.schema import SnapshotConfig
+```
+
+#### SnapshotConfig
+
+- `enabled: bool = True` — 启用快照功能
+- `auto_snapshot: bool = False` — 每次 `run()` 前自动保存快照（默认关闭）
+- `max_snapshots: int = 20` — 最大存储快照数（超出时淘汰最旧）
+- `snapshot_dir: str = ".nano_agent/snapshots"` — 快照存储目录
+
+**约束验证**: `max_snapshots <= 0` 时，`SnapshotConfig.__post_init__()` 抛出 `ValueError`。
+
+```python
+config = SnapshotConfig(
+    enabled=True,
+    auto_snapshot=False,
+    max_snapshots=20,
+    snapshot_dir=".nano_agent/snapshots",
+)
+```
+
+#### SnapshotManager
+
+管理 Agent 状态快照的保存/恢复/列表/删除。
+
+```python
+manager = SnapshotManager(config=config, events=agent.events)
+
+# 保存快照（手动）
+metadata = manager.save(agent, orchestrator, name="before_refactor")
+# metadata.snapshot_id → "snap_a1b2c3d4"
+# metadata.name → "before_refactor"
+
+# 列出所有快照
+snapshots = manager.list_snapshots()
+# → [SnapshotMetadata(snapshot_id="snap_...", name="before_refactor", ...)]
+
+# 恢复快照（原地替换 agent/orchestrator 字段，LLM/ToolRegistry/EventEmitter 不受影响）
+success = manager.restore("snap_a1b2c3d4", agent, orchestrator)
+# → True
+
+# 删除快照
+deleted = manager.delete("snap_a1b2c3d4")
+
+# 自动快照（在 run() 前调用）
+manager.maybe_auto_snapshot(agent, orchestrator)
+```
+
+**SnapshotManager 核心方法**：
+- `save(agent, orchestrator, name="")` → `SnapshotMetadata` — 保存当前状态到 JSON 文件
+- `restore(snapshot_id, agent, orchestrator)` → `bool` — 从 JSON 文件加载并原地替换状态
+- `list_snapshots()` → `list[SnapshotMetadata]` — 列出所有快照元数据（按时间倒序）
+- `delete(snapshot_id)` → `bool` — 删除指定快照文件
+- `maybe_auto_snapshot(agent, orchestrator)` → `None` — 仅在 `auto_snapshot=True` 时自动保存
+
+**原位恢复设计**: `restore()` 替换 agent/orchestrator 的可序列化字段（execution、undo_stack、memory、token_budget、cache、circuit_breaker、duplicate_detector、stall_detector、feedback_loop、tracker），但保持 LLM/ToolRegistry/EventEmitter 实例不变（这些是不可序列化的外部资源）。
+
+#### SnapshotMetadata
+
+快照元数据（轻量索引，不含完整 payload）。
+
+- `snapshot_id: str` — 快照唯一 ID（格式 `snap_{uuid[:8]}`）
+- `name: str` — 用户指定的快照名称（空字符串表示未命名）
+- `created_at: str` — 创建时间（ISO 格式）
+- `session_id: str` — 所属会话 ID
+- `round_counter: int` — 保存时的对话轮次
+- `message_count: int` — 保存时的消息总数
+- `total_tokens: int` — 保存时的累计 token 消耗
+- `version: str` — NanoAgent 版本号
+
+#### Snapshot
+
+完整可序列化 Agent 状态。
+
+- `metadata: SnapshotMetadata` — 快照元数据
+- `orchestrator: dict` — 编排器状态（session_id、stats）
+- `execution: dict` — 执行状态（round_counter、session_id、total_tokens 等）
+- `undo_stack: dict` — 撤销栈状态（records、current_round）
+- `tool_call_records: list` — 工具调用记录
+- `memory: dict` — 记忆状态（messages、system_prompt、long_term_entries）
+- `token_budget: dict` — Token 预算状态（remaining、calibration_data 等）
+- `cache: dict` — 工具缓存状态（entries、access_order）
+- `circuit_breaker: dict` — 熔断器状态（mode、trigger_reason）
+- `duplicate_detector: dict` — 重复检测器状态（call_history、warning_issued）
+- `stall_detector: dict` — 停滞检测器状态（iteration_signatures、stall_count）
+- `feedback_loop: dict` — 反馈闭环状态（deviation_warning_count 等）
+- `tracker: dict` — 追踪器状态（session_total_tokens 等）
+
 ### ExecutionMode
 
 v0.8.0 执行模式枚举，由熔断器控制。
@@ -1098,6 +1192,8 @@ class AgentEvent(Enum):
     HARMFUL_CONTENT_DETECTED = "harmful_content_detected"  # v0.8.6
     VALIDATION_FAILED = "validation_failed"              # v0.8.7
     TOOL_RATE_LIMITED = "tool_rate_limited"              # v0.8.10
+    SNAPSHOT_SAVED = "snapshot_saved"                    # v0.8.14
+    SNAPSHOT_RESTORED = "snapshot_restored"              # v0.8.14
 ```
 
 ### TerminationReason 枚举
@@ -1218,6 +1314,13 @@ Rate Limiter (v0.8.1):
 - `memory_gc.eviction_max_entries: int = 500` — 条目数上限，超过触发淘汰
 - `memory_gc.eviction_protected_categories: list[str] = ["preference"]` — 不被淘汰的类别
 - `memory_gc.eviction_mention_count_threshold: int = 3` — 提及次数 >= 此值的条目不被淘汰
+
+#### `snapshot` — 全局状态快照 (v0.8.14)
+
+- `snapshot.enabled: bool = True` — 启用快照功能
+- `snapshot.auto_snapshot: bool = False` — 每次 `run()` 前自动保存快照（默认关闭）
+- `snapshot.max_snapshots: int = 20` — 最大存储快照数，超出时淘汰最旧，必须 > 0
+- `snapshot.snapshot_dir: str = ".nano_agent/snapshots"` — 快照 JSON 文件存储目录
 
 
 ---
@@ -1714,6 +1817,12 @@ tool_resource_limiter:
   rate_limit_enabled: true           # 启用工具调用频率限制
   per_tool_calls_per_minute: 30      # 单工具每分钟最大调用次数
   global_calls_per_minute: 60        # 全局每分钟最大工具调用次数
+
+snapshot:
+  enabled: true                      # 启用快照功能
+  auto_snapshot: false               # 每次 run() 前自动保存快照
+  max_snapshots: 20                  # 最大存储快照数
+  snapshot_dir: .nano_agent/snapshots  # 快照存储目录
 ```
 
 ### ConfigLoader
@@ -1785,6 +1894,10 @@ nano-agent [选项]
 | `/skills` | 查看技能列表 |
 | `/sessions` | 查看会话列表 |
 | `/auto` | 熔断器恢复 AUTO 模式 |
+| `/snapshot save [name]` | 保存快照 |
+| `/snapshot list` | 列出所有快照 |
+| `/snapshot restore <id>` | 恢复快照 |
+| `/snapshot delete <id>` | 删除快照 |
 
 **项目管理**
 
@@ -1944,6 +2057,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.14 | 全局状态快照（`SnapshotConfig`、`SnapshotManager`、`Snapshot`、`SnapshotMetadata`、`SNAPSHOT_SAVED`/`SNAPSHOT_RESTORED` 事件、CLI `/snapshot` 命令、原位恢复、auto_snapshot） |
 | v0.8.12 | 记忆衰减与去重（`MemoryGCConfig`、`MemoryGC`、`GCResult`、`compute_decay_weight`、`compute_age_days`、`DEFAULT_MERGE_TAG`、`SECONDS_PER_DAY`、`LongTermEntry.mention_count/last_mentioned_at`、增强合并、衰减搜索、会话启动 GC） |
 | v0.8.13 | 长时记忆淘汰（`MemoryGCConfig` 新增 eviction 字段、`GCResult` 新增 eviction 字段、`MemoryGC.run()` Phase 2 容量淘汰、保护类别、提及计数保护） |
 | v0.8.10 | 工具资源限制（`ToolResourceLimiterConfig`、`ToolTimeoutWrapper`、`ToolRateLimiter`、`RateLimitType`、`RateLimitResult`、`_MiniTokenBucket`、`BaseTool.has_builtin_timeout`、框架级超时+两层令牌桶频率限制、非阻塞设计） |

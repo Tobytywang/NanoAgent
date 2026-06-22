@@ -719,6 +719,39 @@ semantic_compressor:
 
 少于 3 条消息的会话视为"低价值"，可在 `--clean-sessions` 时自动删除。不影响正在进行的对话。
 
+### 20. 快照存储容量
+
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `snapshot.*` |
+| 默认值 | `enabled: True` / `auto_snapshot: False` / `max_snapshots: 20` / `snapshot_dir: ".nano_agent/snapshots"` |
+| 源码位置 | `nano_agent/config/schema.py` → `SnapshotConfig`；`nano_agent/agent/snapshot.py` → `SnapshotManager` |
+
+v0.8.14 全局状态快照。将 Agent 全量状态序列化为 JSON 文件，支持一键保存/恢复（类似"存档/读档"）。存储数量超过 `max_snapshots` 时自动淘汰最旧的快照。
+
+**原位恢复**: `restore()` 替换 agent/orchestrator 可序列化字段（execution、undo_stack、memory、token_budget、cache、circuit_breaker、duplicate_detector、stall_detector、feedback_loop、tracker），保持 LLM/ToolRegistry/EventEmitter 实例不变。
+
+**自动快照**: `auto_snapshot=True` 时，每次 `run()` 前自动保存一个 `name="auto"` 的快照。关闭时仅通过 `/snapshot save` 手动保存。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `snapshot.enabled` | `True` | 启用快照功能 |
+| `snapshot.auto_snapshot` | `False` | 每次 `run()` 前自动保存快照 |
+| `snapshot.max_snapshots` | `20` | 最大存储快照数，超出时淘汰最旧，必须 > 0 |
+| `snapshot.snapshot_dir` | `".nano_agent/snapshots"` | 快照 JSON 文件存储目录 |
+
+**约束验证**: `max_snapshots <= 0` 时，`SnapshotConfig.__post_init__()` 抛出 `ValueError`。
+
+**事件**: 保存时触发 `AgentEvent.SNAPSHOT_SAVED`，恢复时触发 `AgentEvent.SNAPSHOT_RESTORED`。
+
+```yaml
+snapshot:
+  enabled: true
+  auto_snapshot: false          # 关闭自动快照，仅手动 /snapshot save
+  max_snapshots: 20
+  snapshot_dir: .nano_agent/snapshots
+```
+
 ---
 
 ## 约束交互关系
@@ -799,6 +832,7 @@ semantic_compressor:
 - ResultValidator 是**第四道输出防线**：在 OutputGuard（防信息泄露）、HarmfulContentFilter（防有害内容）之后验证结果正确性。block 动作仅对 high-severity 失败生效，medium/low 失败不会触发拦截
 - ToolRateLimiter 和 LLM RateLimiter 是**两个独立的速率限制器**：LLM RateLimiter 阻塞等待令牌（保护 API 不被 429），ToolRateLimiter 非阻塞立即返回失败（保护 Agent 不被失控工具拖慢）。两者分别控制不同层面的调用频率
 - ToolTimeoutWrapper 是**工具执行的超时保护层**：在确认机制之后、实际执行之前包裹。`has_builtin_timeout=True` 的工具自行管理超时，跳过框架超时避免双重超时
+- SnapshotManager 是**独立于 ReAct 循环的状态存档机制**：在循环外运行，不影响循环内执行。恢复快照时原位替换各子状态，LLM/ToolRegistry/EventEmitter 实例保持不变
 
 ### 8e. 反馈闭环 (Feedback Loop)
 
@@ -1035,6 +1069,10 @@ memory_gc:
 | `memory_gc.eviction_max_entries` | `500` | 条目数上限 | 硬限制 |
 | `memory_gc.eviction_protected_categories` | `["preference"]` | 淘汰保护类别 | 软限制 |
 | `memory_gc.eviction_mention_count_threshold` | `3` | 提及保护阈值 | 软限制 |
+| `snapshot.enabled` | `True` | 快照功能开关 | 软限制 |
+| `snapshot.auto_snapshot` | `False` | run() 前自动保存快照 | 软限制 |
+| `snapshot.max_snapshots` | `20` | 最大存储快照数 | 硬限制 |
+| `snapshot.snapshot_dir` | `".nano_agent/snapshots"` | 快照存储目录 | 软限制 |
 
 ---
 

@@ -82,6 +82,7 @@ class AgentOrchestrator:
         self.last_output_guard_result = None
         self.last_harmful_filter_result = None
         self.last_validator_result = None
+        self.snapshot_manager = None  # Set by AgentBuilder
 
     # Property proxies for backward compatibility with CLI
     @property
@@ -123,6 +124,10 @@ class AgentOrchestrator:
         self.events.emit(
             AgentEvent.RUN_START, {"input": user_input, "session_id": self.session_id}
         )
+
+        # Auto-snapshot before run
+        if self.snapshot_manager is not None:
+            self.snapshot_manager.maybe_auto_snapshot(self.agent, self)
 
         # Reset feedback loop for new user query
         if self.feedback_loop is not None:

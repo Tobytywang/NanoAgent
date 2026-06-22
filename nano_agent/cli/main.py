@@ -781,6 +781,15 @@ def run_interactive(
                     )
                 continue
 
+            # Snapshot commands
+            if user_input.lower().startswith(CommandPrefix.SNAPSHOT):
+                _handle_snapshot_command(
+                    orchestrator,
+                    config,
+                    user_input[len(CommandPrefix.SNAPSHOT) :].strip(),
+                )
+                continue
+
             # Skill commands
             if user_input.lower() == "/skills":
                 if hasattr(agent, "skill_loader"):
@@ -1689,6 +1698,85 @@ def _save_whitelist_to_config(tool_name: str, config) -> None:
     ConfigLoader.save(config, config_file)
 
 
+def _handle_snapshot_command(orchestrator, config, command: str) -> None:
+    """处理 /snapshot 子命令
+
+    子命令:
+        save [name]    - 保存当前状态快照
+        list           - 列出所有快照
+        restore <id>   - 恢复到指定快照
+        delete <id>    - 删除指定快照
+    """
+    parts = command.strip().split()
+    if not parts:
+        Console.print(
+            "Usage: /snapshot <save [name]|list|restore <id>|delete <id>>",
+            style="info",
+        )
+        return
+
+    snapshot_manager = getattr(orchestrator, "snapshot_manager", None)
+    if snapshot_manager is None:
+        Console.print("Snapshot manager not available.", style="warning")
+        return
+
+    subcommand = parts[0].lower()
+
+    if subcommand == "save":
+        name = parts[1] if len(parts) > 1 else ""
+        metadata = snapshot_manager.save(orchestrator.agent, orchestrator, name=name)
+        name_str = f" ({metadata.name})" if metadata.name else ""
+        Console.print(
+            f"Snapshot saved: {metadata.snapshot_id}{name_str} "
+            f"(round={metadata.round_counter}, tokens={metadata.total_tokens})",
+            style="success",
+        )
+
+    elif subcommand == "list":
+        snapshots = snapshot_manager.list_snapshots()
+        if not snapshots:
+            Console.print("No snapshots found.", style="info")
+        else:
+            Console.print(f"Snapshots ({len(snapshots)}):", style="info")
+            for snap in snapshots:
+                time_str = (
+                    snap.created_at[11:16]
+                    if len(snap.created_at) > 16
+                    else snap.created_at
+                )
+                name_str = f" ({snap.name})" if snap.name else ""
+                print(
+                    f"  {snap.snapshot_id} [{time_str}] "
+                    f"round={snap.round_counter} tokens={snap.total_tokens}{name_str}"
+                )
+
+    elif subcommand == "restore":
+        if len(parts) < 2:
+            Console.print("Usage: /snapshot restore <id>", style="info")
+            return
+        snapshot_id = parts[1]
+        if snapshot_manager.restore(snapshot_id, orchestrator.agent, orchestrator):
+            Console.print(f"Restored to snapshot: {snapshot_id}", style="success")
+        else:
+            Console.print(f"Snapshot not found: {snapshot_id}", style="error")
+
+    elif subcommand == "delete":
+        if len(parts) < 2:
+            Console.print("Usage: /snapshot delete <id>", style="info")
+            return
+        snapshot_id = parts[1]
+        if snapshot_manager.delete(snapshot_id):
+            Console.print(f"Snapshot deleted: {snapshot_id}", style="success")
+        else:
+            Console.print(f"Snapshot not found: {snapshot_id}", style="error")
+
+    else:
+        Console.print(f"Unknown subcommand: {subcommand}", style="error")
+        Console.print(
+            "Available: save [name], list, restore <id>, delete <id>", style="info"
+        )
+
+
 def _handle_undo(agent, config=None, name_update_state: dict | None = None) -> dict:
     """Handle /undo command to revert all operations in current round.
 
@@ -2501,6 +2589,14 @@ def _show_config(config, agent) -> None:
                 )
             )
 
+    # Snapshot config
+    if config.snapshot:
+        print("\n## 全局状态快照 (Snapshot)")
+        print(format_line("启用:", str(config.snapshot.enabled)))
+        print(format_line("自动存档:", str(config.snapshot.auto_snapshot)))
+        print(format_line("最大存档数:", str(config.snapshot.max_snapshots)))
+        print(format_line("存档目录:", config.snapshot.snapshot_dir))
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -3206,6 +3302,12 @@ def _show_help() -> None:
     print("\n## 导出")
     print("  /report           导出监控报告")
 
+    print("\n## 快照管理")
+    print("  /snapshot save [name]  保存当前状态快照")
+    print("  /snapshot list         列出所有快照")
+    print("  /snapshot restore <id> 恢复到指定快照")
+    print("  /snapshot delete <id>  删除指定快照")
+
     print("\n" + "=" * 50 + "\n")
 
 
@@ -3398,6 +3500,12 @@ def _init_config_file(config, force: bool = False) -> None:
             "eviction_max_entries": config.memory_gc.eviction_max_entries,
             "eviction_protected_categories": config.memory_gc.eviction_protected_categories,
             "eviction_mention_count_threshold": config.memory_gc.eviction_mention_count_threshold,
+        },
+        "snapshot": {
+            "enabled": config.snapshot.enabled,
+            "auto_snapshot": config.snapshot.auto_snapshot,
+            "max_snapshots": config.snapshot.max_snapshots,
+            "snapshot_dir": config.snapshot.snapshot_dir,
         },
     }
 

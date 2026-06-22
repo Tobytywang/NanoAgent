@@ -687,6 +687,16 @@ class MemoryGCConfig:
 
 
 @dataclass
+class SnapshotConfig:
+    """Global state snapshot configuration."""
+
+    enabled: bool = True
+    auto_snapshot: bool = False  # Auto-save before each run()
+    max_snapshots: int = 20  # Max stored snapshots (oldest evicted)
+    snapshot_dir: str = ".nano_agent/snapshots"
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -734,3 +744,4 @@ class Config:
         default_factory=ToolResourceLimiterConfig
     )
     memory_gc: MemoryGCConfig = field(default_factory=MemoryGCConfig)
+    snapshot: SnapshotConfig = field(default_factory=SnapshotConfig)

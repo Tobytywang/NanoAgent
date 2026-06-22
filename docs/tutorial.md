@@ -13,7 +13,8 @@
 7. [个性化设置](#7-个性化设置)
 8. [运行监控](#8-运行监控)
 9. [安全防护](#9-安全防护)
-10. [高级用法](#10-高级用法)
+10. [状态快照](#10-状态快照)
+11. [高级用法](#11-高级用法)
 
 ---
 
@@ -949,7 +950,77 @@ tool_resource_limiter:
 
 ---
 
-## 10. 高级用法
+## 10. 状态快照
+
+v0.8.14 引入全局状态快照功能，类似"存档/读档"机制：一键保存 Agent 当前全量状态，随时恢复到任意存档点。
+
+### 10.1 基本用法
+
+在交互模式中使用 `/snapshot` 命令：
+
+```
+> /snapshot save before_refactor
+
+[快照] 已保存: before_refactor (snap_a1b2c3d4)
+       轮次: 5 | 消息: 12 | Token: 8500
+
+> /snapshot list
+
+==================================================
+📊 状态快照
+==================================================
+
+## 已保存快照 (2)
+  ID                名称               时间               轮次  消息  Token
+  -------------------------------------------------------------------
+  snap_a1b2c3d4    before_refactor    2026-06-21T10:30   5     12    8500
+  snap_e5f6g7h8    auto              2026-06-21T10:25   3     7     4200
+
+==================================================
+
+> /snapshot restore snap_a1b2c3d4
+
+[快照] 已恢复: snap_a1b2c3d4 (before_refactor)
+       轮次: 5 | 消息: 12 | Token: 8500
+
+> /snapshot delete snap_e5f6g7h8
+
+[快照] 已删除: snap_e5f6g7h8
+```
+
+**命令一览**：
+
+| 命令 | 说明 |
+|------|------|
+| `/snapshot save [name]` | 保存当前状态快照，name 可选 |
+| `/snapshot list` | 列出所有已保存快照 |
+| `/snapshot restore <id>` | 恢复到指定快照状态 |
+| `/snapshot delete <id>` | 删除指定快照 |
+
+### 10.2 自动快照
+
+启用 `auto_snapshot` 后，每次 `run()` 前自动保存快照（名称为 `auto`），适合高风险操作场景：
+
+```yaml
+snapshot:
+  enabled: true
+  auto_snapshot: true        # 每次 run() 前自动保存
+  max_snapshots: 20         # 超出时自动淘汰最旧快照
+  snapshot_dir: .nano_agent/snapshots
+```
+
+### 10.3 恢复机制说明
+
+恢复快照时，`SnapshotManager.restore()` 执行**原位替换**：
+
+- **替换的字段**: 执行状态（round_counter、session_id、total_tokens 等）、撤销栈、工具调用记录、记忆（messages + long_term）、Token 预算、缓存、熔断器状态、重复检测器、停滞检测器、反馈闭环、追踪器
+- **保持不变的字段**: LLM 客户端实例、ToolRegistry 实例、EventEmitter 实例
+
+这意味着恢复快照后，Agent 继续使用当前的 LLM 和工具集，但对话历史、预算、缓存等状态完全回滚到快照保存时的状态。
+
+---
+
+## 11. 高级用法
 
 ### 10.1 自定义 Agent 行为
 

@@ -63,6 +63,7 @@ from .feedback_loop import (
     DeviationFeedbackResult,
     SelfCorrectionResult,
 )
+from .snapshot import SnapshotManager, Snapshot, SnapshotMetadata
 from ..tools.resource_limiter import (
     ToolTimeoutWrapper,
     ToolRateLimiter,

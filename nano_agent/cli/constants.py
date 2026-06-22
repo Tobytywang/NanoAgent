@@ -63,3 +63,4 @@ class CommandPrefix:
     SETNAME = "/setname"
     PLAN = "/plan "
     HISTORY = "/history"
+    SNAPSHOT = "/snapshot"
