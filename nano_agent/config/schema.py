@@ -694,6 +694,13 @@ class SnapshotConfig:
     auto_snapshot: bool = False  # Auto-save before each run()
     max_snapshots: int = 20  # Max stored snapshots (oldest evicted)
     snapshot_dir: str = ".nano_agent/snapshots"
+    # v0.8.15: Audit & rollback
+    audit_log_enabled: bool = True  # Persist audit log to disk
+    audit_log_dir: str = ".nano_agent/snapshots"  # audit_log.jsonl location
+    max_audit_entries: int = 500  # Max audit entries (oldest evicted)
+    auto_rollback_enabled: bool = False  # Auto-rollback on consecutive failures
+    auto_rollback_threshold: int = 3  # Consecutive failure count to trigger
+    auto_rollback_on_failure: Literal["error", "retry"] = "error"
 
 
 @dataclass

@@ -1702,15 +1702,18 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
     """处理 /snapshot 子命令
 
     子命令:
-        save [name]    - 保存当前状态快照
-        list           - 列出所有快照
-        restore <id>   - 恢复到指定快照
-        delete <id>    - 删除指定快照
+        save [name]          - 保存当前状态快照
+        list                 - 列出所有快照
+        restore <id>         - 恢复到指定快照
+        delete <id>          - 删除指定快照
+        audit                - 查看审计日志
+        rollback <audit_id>  - 从审计条目回滚
     """
     parts = command.strip().split()
     if not parts:
         Console.print(
-            "Usage: /snapshot <save [name]|list|restore <id>|delete <id>>",
+            "Usage: /snapshot <save [name]|list|restore <id>|delete <id>"
+            "|audit|rollback <audit_id>>",
             style="info",
         )
         return
@@ -1770,10 +1773,46 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
         else:
             Console.print(f"Snapshot not found: {snapshot_id}", style="error")
 
+    elif subcommand == "audit":
+        entries = snapshot_manager.list_audit_entries()
+        if not entries:
+            Console.print("No audit entries found.", style="info")
+        else:
+            Console.print(f"Audit Log ({len(entries)} entries):", style="info")
+            for entry in entries:
+                time_str = (
+                    entry.timestamp[11:16]
+                    if len(entry.timestamp) > 16
+                    else entry.timestamp
+                )
+                print(
+                    f"  {entry.audit_id} [{time_str}] {entry.operation} "
+                    f"snap={entry.snapshot_id} "
+                    f"trigger={entry.trigger} outcome={entry.outcome}"
+                )
+                if entry.reason:
+                    print(f"    reason: {entry.reason}")
+
+    elif subcommand == "rollback":
+        if len(parts) < 2:
+            Console.print("Usage: /snapshot rollback <audit_id>", style="info")
+            return
+        audit_id = parts[1]
+        if snapshot_manager.rollback_from_audit(
+            audit_id, orchestrator.agent, orchestrator
+        ):
+            Console.print(f"Rolled back from audit entry: {audit_id}", style="success")
+        else:
+            Console.print(
+                f"Audit entry not found or rollback failed: {audit_id}", style="error"
+            )
+
     else:
         Console.print(f"Unknown subcommand: {subcommand}", style="error")
         Console.print(
-            "Available: save [name], list, restore <id>, delete <id>", style="info"
+            "Available: save [name], list, restore <id>, delete <id>, "
+            "audit, rollback <audit_id>",
+            style="info",
         )
 
 
@@ -2596,6 +2635,11 @@ def _show_config(config, agent) -> None:
         print(format_line("自动存档:", str(config.snapshot.auto_snapshot)))
         print(format_line("最大存档数:", str(config.snapshot.max_snapshots)))
         print(format_line("存档目录:", config.snapshot.snapshot_dir))
+        print(format_line("审计日志:", str(config.snapshot.audit_log_enabled)))
+        print(format_line("最大审计条数:", str(config.snapshot.max_audit_entries)))
+        print(format_line("自动回滚:", str(config.snapshot.auto_rollback_enabled)))
+        print(format_line("回滚阈值:", str(config.snapshot.auto_rollback_threshold)))
+        print(format_line("回滚后行为:", config.snapshot.auto_rollback_on_failure))
 
     print("\n" + "=" * 50 + "\n")
 
@@ -3303,10 +3347,12 @@ def _show_help() -> None:
     print("  /report           导出监控报告")
 
     print("\n## 快照管理")
-    print("  /snapshot save [name]  保存当前状态快照")
-    print("  /snapshot list         列出所有快照")
-    print("  /snapshot restore <id> 恢复到指定快照")
-    print("  /snapshot delete <id>  删除指定快照")
+    print("  /snapshot save [name]          保存当前状态快照")
+    print("  /snapshot list                 列出所有快照")
+    print("  /snapshot restore <id>         恢复到指定快照")
+    print("  /snapshot delete <id>          删除指定快照")
+    print("  /snapshot audit                查看审计日志")
+    print("  /snapshot rollback <audit_id>  从审计条目回滚")
 
     print("\n" + "=" * 50 + "\n")
 
@@ -3506,6 +3552,12 @@ def _init_config_file(config, force: bool = False) -> None:
             "auto_snapshot": config.snapshot.auto_snapshot,
             "max_snapshots": config.snapshot.max_snapshots,
             "snapshot_dir": config.snapshot.snapshot_dir,
+            "audit_log_enabled": config.snapshot.audit_log_enabled,
+            "audit_log_dir": config.snapshot.audit_log_dir,
+            "max_audit_entries": config.snapshot.max_audit_entries,
+            "auto_rollback_enabled": config.snapshot.auto_rollback_enabled,
+            "auto_rollback_threshold": config.snapshot.auto_rollback_threshold,
+            "auto_rollback_on_failure": config.snapshot.auto_rollback_on_failure,
         },
     }
 

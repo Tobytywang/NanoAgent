@@ -1,5 +1,5 @@
 """
-Tests for global state snapshot (v0.8.14).
+Tests for global state snapshot (v0.8.14) and audit/rollback (v0.8.15).
 """
 
 import json
@@ -9,7 +9,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from nano_agent.agent.snapshot import Snapshot, SnapshotMetadata, SnapshotManager
+from nano_agent.agent.snapshot import (
+    Snapshot,
+    SnapshotMetadata,
+    SnapshotManager,
+    AuditLogEntry,
+)
 from nano_agent.agent.events import EventEmitter
 from nano_agent.agent.types import AgentEvent
 from nano_agent.config.schema import SnapshotConfig
@@ -33,6 +38,7 @@ def snapshot_config(snapshot_dir):
         auto_snapshot=False,
         max_snapshots=5,
         snapshot_dir=str(snapshot_dir),
+        audit_log_dir=str(snapshot_dir),
     )
 
 
@@ -118,7 +124,7 @@ class TestSnapshotMetadata:
         assert m2.name == m.name
         assert m2.round_counter == m.round_counter
         assert m2.total_tokens == m.total_tokens
-        assert m2.version == "0.8.14"
+        assert m2.version == "0.8.15"
 
     def test_from_dict_missing_optional_fields(self):
         d = {
@@ -468,6 +474,11 @@ class TestSnapshotConfig:
         assert config.auto_snapshot is False
         assert config.max_snapshots == 20
         assert config.snapshot_dir == ".nano_agent/snapshots"
+        assert config.audit_log_enabled is True
+        assert config.max_audit_entries == 500
+        assert config.auto_rollback_enabled is False
+        assert config.auto_rollback_threshold == 3
+        assert config.auto_rollback_on_failure == "error"
 
     def test_snapshot_config_in_main_config(self):
         from nano_agent.config.schema import Config
@@ -475,3 +486,366 @@ class TestSnapshotConfig:
         config = Config()
         assert hasattr(config, "snapshot")
         assert isinstance(config.snapshot, SnapshotConfig)
+
+
+# === AuditLogEntry tests (v0.8.15) ===
+
+
+class TestAuditLogEntry:
+    def test_to_dict_from_dict_roundtrip(self):
+        entry = AuditLogEntry(
+            audit_id="audit_abc12345",
+            operation="save",
+            snapshot_id="snap_xyz",
+            timestamp="2026-06-22T10:30:00",
+            session_id="sess_1",
+            trigger="manual",
+            outcome="success",
+            reason="User /snapshot save",
+            round_counter=3,
+            message_count=10,
+        )
+        d = entry.to_dict()
+        e2 = AuditLogEntry.from_dict(d)
+        assert e2.audit_id == entry.audit_id
+        assert e2.operation == entry.operation
+        assert e2.snapshot_id == entry.snapshot_id
+        assert e2.trigger == entry.trigger
+        assert e2.outcome == entry.outcome
+        assert e2.reason == entry.reason
+        assert e2.round_counter == entry.round_counter
+
+    def test_from_dict_missing_optional_fields(self):
+        d = {
+            "audit_id": "audit_x",
+            "operation": "restore",
+            "timestamp": "2026-01-01",
+        }
+        e = AuditLogEntry.from_dict(d)
+        assert e.snapshot_id == ""
+        assert e.trigger == "manual"
+        assert e.outcome == "success"
+        assert e.reason == ""
+
+
+# === Audit log tests (v0.8.15) ===
+
+
+class TestSnapshotManagerAudit:
+    def test_save_records_audit(self, snapshot_manager, snapshot_dir):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch, name="test")
+
+        entries = snapshot_manager.list_audit_entries()
+        assert len(entries) >= 1
+        save_entry = [e for e in entries if e.operation == "save"][0]
+        assert save_entry.snapshot_id == meta.snapshot_id
+        assert save_entry.trigger == "manual"
+        assert save_entry.outcome == "success"
+
+    def test_restore_records_audit(self, snapshot_manager):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch)
+
+        agent._round_counter = 99
+        snapshot_manager.restore(meta.snapshot_id, agent, orch)
+
+        entries = snapshot_manager.list_audit_entries()
+        restore_entries = [e for e in entries if e.operation == "restore"]
+        assert len(restore_entries) >= 1
+
+    def test_delete_records_audit(self, snapshot_manager):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch)
+        snapshot_manager.delete(meta.snapshot_id)
+
+        entries = snapshot_manager.list_audit_entries()
+        delete_entries = [e for e in entries if e.operation == "delete"]
+        assert len(delete_entries) >= 1
+
+    def test_audit_log_disabled(self, snapshot_dir):
+        config = SnapshotConfig(
+            enabled=True,
+            audit_log_enabled=False,
+            snapshot_dir=str(snapshot_dir),
+        )
+        manager = SnapshotManager(config=config)
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        manager.save(agent, orch)
+
+        audit_path = snapshot_dir / "audit_log.jsonl"
+        assert not audit_path.exists()
+
+    def test_list_audit_entries_sorted_by_time(self, snapshot_manager):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        snapshot_manager.save(agent, orch, name="first")
+        snapshot_manager.save(agent, orch, name="second")
+
+        entries = snapshot_manager.list_audit_entries()
+        # Newest first
+        assert entries[0].timestamp >= entries[1].timestamp
+
+    def test_list_audit_entries_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            config = SnapshotConfig(
+                enabled=True,
+                audit_log_enabled=True,
+                snapshot_dir=d,
+                audit_log_dir=d,
+            )
+            manager = SnapshotManager(config=config)
+            assert manager.list_audit_entries() == []
+
+    def test_save_emits_audit_event(self, snapshot_manager):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        emitted = []
+        snapshot_manager._events.on(
+            AgentEvent.AUDIT_LOG_ENTRY, lambda e, d: emitted.append(d)
+        )
+        snapshot_manager.save(agent, orch)
+        assert len(emitted) >= 1
+        assert emitted[0]["operation"] == "save"
+
+    def test_delete_emits_snapshot_deleted_event(self, snapshot_manager):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch)
+
+        emitted = []
+        snapshot_manager._events.on(
+            AgentEvent.SNAPSHOT_DELETED, lambda e, d: emitted.append(d)
+        )
+        snapshot_manager.delete(meta.snapshot_id)
+        assert len(emitted) == 1
+        assert emitted[0]["snapshot_id"] == meta.snapshot_id
+
+
+# === Rollback from audit tests (v0.8.15) ===
+
+
+class TestSnapshotManagerRollbackFromAudit:
+    def test_rollback_from_save_audit(self, snapshot_manager):
+        agent = _make_agent(round_counter=5)
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch)
+
+        # Find the save audit entry
+        entries = snapshot_manager.list_audit_entries()
+        save_entry = [e for e in entries if e.operation == "save"][0]
+
+        # Modify state
+        agent._round_counter = 99
+
+        # Rollback from audit
+        assert snapshot_manager.rollback_from_audit(save_entry.audit_id, agent, orch)
+        assert agent._round_counter == 5
+
+    def test_rollback_from_nonexistent_audit(self, snapshot_manager):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        assert not snapshot_manager.rollback_from_audit(
+            "audit_nonexistent", agent, orch
+        )
+
+    def test_rollback_from_delete_audit_fails(self, snapshot_manager):
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch)
+        snapshot_manager.delete(meta.snapshot_id)
+
+        entries = snapshot_manager.list_audit_entries()
+        delete_entry = [e for e in entries if e.operation == "delete"][0]
+
+        assert not snapshot_manager.rollback_from_audit(
+            delete_entry.audit_id, agent, orch
+        )
+
+
+# === Auto-rollback tests (v0.8.15) ===
+
+
+from nano_agent.agent.consecutive_failure_detector import (
+    ConsecutiveFailureResult,
+)
+
+
+class TestSnapshotManagerAutoRollback:
+    def test_auto_rollback_restores_latest_snapshot(self, snapshot_dir):
+        config = SnapshotConfig(
+            enabled=True,
+            auto_rollback_enabled=True,
+            snapshot_dir=str(snapshot_dir),
+        )
+        manager = SnapshotManager(config=config, events=EventEmitter())
+        agent = _make_agent(round_counter=5)
+        orch = _make_orchestrator(agent)
+        meta = manager.save(agent, orch)
+
+        # Modify state
+        agent._round_counter = 99
+
+        failure_result = ConsecutiveFailureResult(
+            triggered=True,
+            consecutive_failures=3,
+            last_tool_name="tool_a",
+            last_error="error",
+        )
+        assert manager.attempt_auto_rollback(agent, orch, failure_result)
+        assert agent._round_counter == 5
+
+    def test_auto_rollback_no_snapshots(self, snapshot_dir):
+        config = SnapshotConfig(
+            enabled=True,
+            auto_rollback_enabled=True,
+            snapshot_dir=str(snapshot_dir),
+        )
+        manager = SnapshotManager(config=config, events=EventEmitter())
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+
+        failure_result = ConsecutiveFailureResult(
+            triggered=True,
+            consecutive_failures=3,
+            last_tool_name="tool_a",
+            last_error="error",
+        )
+        assert not manager.attempt_auto_rollback(agent, orch, failure_result)
+
+    def test_auto_rollback_disabled(self, snapshot_dir):
+        config = SnapshotConfig(
+            enabled=True,
+            auto_rollback_enabled=False,
+            snapshot_dir=str(snapshot_dir),
+        )
+        manager = SnapshotManager(config=config, events=EventEmitter())
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        manager.save(agent, orch)
+
+        failure_result = ConsecutiveFailureResult(
+            triggered=True,
+            consecutive_failures=3,
+            last_tool_name="tool_a",
+            last_error="error",
+        )
+        assert not manager.attempt_auto_rollback(agent, orch, failure_result)
+
+    def test_auto_rollback_emits_events(self, snapshot_dir):
+        config = SnapshotConfig(
+            enabled=True,
+            auto_rollback_enabled=True,
+            snapshot_dir=str(snapshot_dir),
+        )
+        events = EventEmitter()
+        manager = SnapshotManager(config=config, events=events)
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        manager.save(agent, orch)
+
+        completed_events = []
+        events.on(
+            AgentEvent.AUTO_ROLLBACK_COMPLETED,
+            lambda e, d: completed_events.append(d),
+        )
+
+        failure_result = ConsecutiveFailureResult(
+            triggered=True,
+            consecutive_failures=3,
+            last_tool_name="tool_a",
+            last_error="error",
+        )
+        manager.attempt_auto_rollback(agent, orch, failure_result)
+
+        assert len(completed_events) == 1
+        assert completed_events[0]["success"] is True
+
+    def test_auto_rollback_records_audit(self, snapshot_dir):
+        config = SnapshotConfig(
+            enabled=True,
+            auto_rollback_enabled=True,
+            snapshot_dir=str(snapshot_dir),
+        )
+        manager = SnapshotManager(config=config, events=EventEmitter())
+        agent = _make_agent()
+        orch = _make_orchestrator(agent)
+        manager.save(agent, orch)
+
+        failure_result = ConsecutiveFailureResult(
+            triggered=True,
+            consecutive_failures=3,
+            last_tool_name="tool_a",
+            last_error="error",
+        )
+        manager.attempt_auto_rollback(agent, orch, failure_result)
+
+        entries = manager.list_audit_entries()
+        auto_entries = [e for e in entries if e.operation == "auto_rollback"]
+        assert len(auto_entries) >= 1
+        assert auto_entries[0].trigger == "auto_rollback"
+
+
+# === Snapshot with CFD state tests (v0.8.15) ===
+
+
+class TestSnapshotWithConsecutiveFailure:
+    def test_snapshot_captures_cfd_state(self, snapshot_manager, snapshot_dir):
+        agent = _make_agent()
+        agent._subsystems.consecutive_failure_detector.record_tool_result(
+            "tool_a", False, "err"
+        )
+        agent._subsystems.consecutive_failure_detector.record_tool_result(
+            "tool_b", False, "err2"
+        )
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch)
+
+        path = snapshot_dir / f"{meta.snapshot_id}.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        cfd = data["consecutive_failure_detector"]
+        assert cfd["consecutive_failures"] == 2
+        assert cfd["last_failed_tool"] == "tool_b"
+
+    def test_restore_applies_cfd_state(self, snapshot_manager):
+        agent = _make_agent()
+        agent._subsystems.consecutive_failure_detector.record_tool_result(
+            "tool_a", False, "err"
+        )
+        orch = _make_orchestrator(agent)
+        meta = snapshot_manager.save(agent, orch)
+
+        # Reset CFD state
+        agent._subsystems.consecutive_failure_detector.reset()
+        assert agent._subsystems.consecutive_failure_detector._consecutive_failures == 0
+
+        # Restore
+        snapshot_manager.restore(meta.snapshot_id, agent, orch)
+        assert agent._subsystems.consecutive_failure_detector._consecutive_failures == 1
+
+    def test_from_dict_backward_compat_no_cfd(self):
+        """v0.8.14 snapshots without CFD field should load with defaults."""
+        d = {
+            "metadata": {
+                "snapshot_id": "snap_old",
+                "created_at": "2026-01-01",
+            },
+            "orchestrator": {},
+            "execution": {},
+            "undo_stack": {},
+            "tool_call_records": [],
+            "memory": {},
+            "token_budget": {},
+            "cache": {},
+            "circuit_breaker": {},
+            "duplicate_detector": {},
+            "stall_detector": {},
+            "feedback_loop": {},
+            "tracker": {},
+        }
+        s = Snapshot.from_dict(d)
+        assert s.consecutive_failure_detector["consecutive_failures"] == 0

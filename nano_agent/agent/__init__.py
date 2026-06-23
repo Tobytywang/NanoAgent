@@ -63,7 +63,12 @@ from .feedback_loop import (
     DeviationFeedbackResult,
     SelfCorrectionResult,
 )
-from .snapshot import SnapshotManager, Snapshot, SnapshotMetadata
+from .snapshot import SnapshotManager, Snapshot, SnapshotMetadata, AuditLogEntry
+from .consecutive_failure_detector import (
+    ConsecutiveFailureDetector,
+    ConsecutiveFailureConfig,
+    ConsecutiveFailureResult,
+)
 from ..tools.resource_limiter import (
     ToolTimeoutWrapper,
     ToolRateLimiter,
@@ -158,4 +163,13 @@ __all__ = [
     "ToolRateLimiter",
     "RateLimitResult",
     "RateLimitType",
+    # Snapshot (v0.8.14)
+    "SnapshotManager",
+    "Snapshot",
+    "SnapshotMetadata",
+    "AuditLogEntry",
+    # Consecutive failure detector (v0.8.15)
+    "ConsecutiveFailureDetector",
+    "ConsecutiveFailureConfig",
+    "ConsecutiveFailureResult",
 ]

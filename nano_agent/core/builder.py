@@ -401,6 +401,10 @@ class AgentBuilder:
 
         # Create snapshot manager
         from ..agent.snapshot import SnapshotManager
+        from ..agent.consecutive_failure_detector import (
+            ConsecutiveFailureDetector,
+            ConsecutiveFailureConfig,
+        )
         from ..config.schema import SnapshotConfig
 
         snapshot_config = _cfg("snapshot", SnapshotConfig)
@@ -409,6 +413,15 @@ class AgentBuilder:
         orchestrator.snapshot_manager = SnapshotManager(
             config=snapshot_config,
             events=agent.events,
+        )
+
+        # Configure consecutive failure detector from snapshot config (v0.8.15)
+        cf_config = ConsecutiveFailureConfig(
+            enabled=snapshot_config.auto_rollback_enabled,
+            threshold=snapshot_config.auto_rollback_threshold,
+        )
+        agent._subsystems.consecutive_failure_detector = ConsecutiveFailureDetector(
+            cf_config
         )
 
         return orchestrator

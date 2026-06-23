@@ -528,6 +528,24 @@ class ReActAgent(BaseAgent):
                 self._observe(tool_call, result)
                 tool_calls_in_round += 1
 
+            # Consecutive failure check (v0.8.15)
+            if self._subsystems.consecutive_failure_detector.config.enabled:
+                failure_result = self._subsystems.consecutive_failure_detector.check()
+                if failure_result.triggered:
+                    self.events.emit(
+                        AgentEvent.AUTO_ROLLBACK_TRIGGERED,
+                        {
+                            "consecutive_failures": failure_result.consecutive_failures,
+                            "last_tool": failure_result.last_tool_name,
+                        },
+                    )
+                    return self._build_result(
+                        response="Auto-rollback triggered: consecutive tool failures.",
+                        iterations=iteration,
+                        success=False,
+                        termination_reason=TerminationReason.AUTO_ROLLBACK.value,
+                    )
+
             # Update token budget once per iteration (not per tool call)
             if self.token_budget is not None:
                 self.token_budget.consume(think.usage.total_tokens)
@@ -601,6 +619,9 @@ class ReActAgent(BaseAgent):
 
         # Reset stall detection state (v0.7.16)
         self._subsystems.stall_detector.reset()
+
+        # Reset consecutive failure detection state (v0.8.15)
+        self._subsystems.consecutive_failure_detector.reset()
 
         # Reset circuit breaker state (v0.8.0)
         if self.circuit_breaker:
@@ -999,6 +1020,11 @@ class ReActAgent(BaseAgent):
             }
         )
 
+        # Record for consecutive failure detection (v0.8.15)
+        self._subsystems.consecutive_failure_detector.record_tool_result(
+            tool_call.name, result.success, result.error
+        )
+
         # Emit tool result event
         self.events.emit(
             AgentEvent.TOOL_RESULT, {"tool": tool_call.name, "result": result}
@@ -1326,6 +1352,10 @@ class ReActAgent(BaseAgent):
             return tool_summary
 
         return "由于 Token 预算耗尽，无法完成任务。请尝试简化请求或增加预算。"
+
+    def get_failure_result(self):
+        """Get current consecutive failure state (for orchestrator rollback)."""
+        return self._subsystems.consecutive_failure_detector.check()
 
     def _build_result(
         self,

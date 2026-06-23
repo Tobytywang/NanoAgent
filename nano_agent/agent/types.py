@@ -28,6 +28,7 @@ class TerminationReason(str, Enum):
     HARMFUL_CONTENT_BLOCKED = "harmful_content_blocked"
     VALIDATION_FAILED = "validation_failed"
     SELF_CORRECTION_EXHAUSTED = "self_correction_exhausted"
+    AUTO_ROLLBACK = "auto_rollback"
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,10 @@ class AgentEvent(Enum):
     TOOL_RATE_LIMITED = "tool_rate_limited"
     SNAPSHOT_SAVED = "snapshot_saved"
     SNAPSHOT_RESTORED = "snapshot_restored"
+    SNAPSHOT_DELETED = "snapshot_deleted"
+    AUDIT_LOG_ENTRY = "audit_log_entry"
+    AUTO_ROLLBACK_TRIGGERED = "auto_rollback_triggered"
+    AUTO_ROLLBACK_COMPLETED = "auto_rollback_completed"
 
 
 class RiskLevel(Enum):

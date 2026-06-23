@@ -35,6 +35,7 @@ graph TB
         TTIMEOUT[ToolTimeoutWrapper<br/>工具超时]
         TRATE[ToolRateLimiter<br/>工具频率限制]
         SNAPMGR[SnapshotManager<br/>状态快照]
+        CFD[ConsecutiveFailureDetector<br/>连续失败检测]
     end
 
     subgraph Core["核心组件"]
@@ -74,6 +75,7 @@ graph TB
     REACT --> TTIMEOUT
     REACT --> TRATE
     ORCH --> SNAPMGR
+    ORCH --> CFD
 
     REACT --> LLM
     REACT --> MEM
@@ -92,7 +94,7 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator`, `ToolTimeoutWrapper`, `ToolRateLimiter`, `SnapshotManager` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator`, `ToolTimeoutWrapper`, `ToolRateLimiter`, `SnapshotManager`, `ConsecutiveFailureDetector` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
@@ -205,6 +207,9 @@ classDiagram
         +list_snapshots() list
         +delete(snapshot_id) bool
         +maybe_auto_snapshot(agent, orchestrator) None
+        +list_audit_entries(limit) list
+        +rollback_from_audit(audit_id, agent, orchestrator) bool
+        +attempt_auto_rollback(agent, orchestrator, failure_result) bool
     }
 
     class SnapshotMetadata {
@@ -216,6 +221,42 @@ classDiagram
         +message_count: int
         +total_tokens: int
         +version: str
+    }
+
+    class AuditLogEntry {
+        +audit_id: str
+        +operation: str
+        +snapshot_id: str
+        +timestamp: str
+        +session_id: str
+        +trigger: str
+        +outcome: str
+        +reason: str
+        +round_counter: int
+        +message_count: int
+        +to_dict() dict
+        +from_dict(data) AuditLogEntry
+    }
+
+    class ConsecutiveFailureDetector {
+        +config: ConsecutiveFailureConfig
+        +record_tool_result(tool_name, success, error) None
+        +check() ConsecutiveFailureResult
+        +reset() None
+        +get_state() dict
+        +set_state(state) None
+    }
+
+    class ConsecutiveFailureConfig {
+        +enabled: bool
+        +threshold: int
+    }
+
+    class ConsecutiveFailureResult {
+        +triggered: bool
+        +consecutive_failures: int
+        +last_tool_name: str
+        +last_error: str
     }
 
     class Snapshot {
@@ -232,6 +273,7 @@ classDiagram
         +stall_detector: dict
         +feedback_loop: dict
         +tracker: dict
+        +consecutive_failure_detector: dict
     }
 
     BaseAgent <|-- ReActAgent
@@ -249,7 +291,10 @@ classDiagram
     HybridMemory --> MemoryGC
 
     SnapshotManager --> SnapshotMetadata
+    SnapshotManager --> AuditLogEntry
     Snapshot --> SnapshotMetadata
+    ConsecutiveFailureDetector --> ConsecutiveFailureConfig
+    ConsecutiveFailureDetector --> ConsecutiveFailureResult
 ```
 
 ### 关键数据结构
@@ -371,6 +416,7 @@ graph LR
         harmful_filter
         result_validator
         snapshot
+        consecutive_failure_detector
     end
 
     subgraph llm[llm]
@@ -834,3 +880,86 @@ SnapshotManager 工作流程:
 **原位恢复设计**: `restore()` 替换 agent/orchestrator 可序列化字段，但保持 LLM 客户端、ToolRegistry、EventEmitter 实例不变——这些是不可序列化的外部资源，恢复时不应被替换。
 
 **自动快照**: `auto_snapshot=True` 时，`maybe_auto_snapshot()` 在每次 `run()` 前自动保存 `name="auto"` 的快照，为高风险操作提供安全网。
+
+### 审计日志与自动回滚 (Audit Log & Auto-Rollback)
+
+v0.8.15 在快照机制基础上增加 append-only 审计日志和连续失败自动回滚，提供操作可追溯性和级联故障自动恢复。
+
+```
+审计日志工作流程:
+
+  SnapshotManager.save/restore/delete
+       │
+       ▼
+  _record_audit()
+       │
+       ├── 构建 AuditLogEntry(audit_id, operation, snapshot_id, ...)
+       │
+       ├── 追加到 audit_log.jsonl (append-only)
+       │
+       ├── emit(AUDIT_LOG_ENTRY)
+       │
+       └── _enforce_max_audit_entries()  → 超出 max_audit_entries 时淘汰最旧
+
+
+自动回滚工作流程:
+
+  ReAct 循环 _observe() 阶段:
+       │
+       ▼
+  ConsecutiveFailureDetector.record_tool_result(tool_name, success, error)
+       │
+       ├── success=True  → 重置计数器
+       │
+       └── success=False → 计数器递增
+               │
+               ▼
+  ConsecutiveFailureDetector.check()
+       │
+       ├── triggered=False → 继续 ReAct 循环
+       │
+       └── triggered=True (consecutive_failures >= threshold)
+               │
+               ▼
+  AgentOrchestrator 检测到连续失败
+       │
+       ├── emit(AUTO_ROLLBACK_TRIGGERED)
+       │
+       ▼
+  SnapshotManager.attempt_auto_rollback(agent, orchestrator, failure_result)
+       │
+       ├── list_snapshots() → 取最近快照
+       │
+       ├── restore(snapshot_id, trigger="auto_rollback")
+       │     └── 原位替换 agent/orchestrator 状态
+       │
+       ├── _record_audit(operation="auto_rollback", ...)
+       │
+       ├── emit(AUTO_ROLLBACK_COMPLETED)
+       │
+       └── auto_rollback_on_failure?
+              ├── "error" → 返回 ExecutionResult(termination_reason=AUTO_ROLLBACK)
+              └── "retry" → 重新执行当前查询
+```
+
+**审计日志设计原则**：
+- **Append-only**: 审计条目只追加不修改，保证操作历史的完整性
+- **JSONL 格式**: 每行一条 JSON 记录，便于追加写入和逐行读取
+- **条目淘汰**: 超过 `max_audit_entries` 时保留最近记录，防止日志无限增长
+- **操作关联**: 每条审计记录通过 `snapshot_id` 关联到具体快照，支持从审计条目回滚
+
+**连续失败检测设计原则**：
+- **简单计数器**: 成功重置、失败递增，无复杂状态管理
+- **可配置阈值**: `auto_rollback_threshold` 控制触发灵敏度，默认 3 次连续失败
+- **快照状态可序列化**: `ConsecutiveFailureDetector` 的状态通过 `get_state()`/`set_state()` 参与快照保存/恢复，回滚后计数器状态也回滚
+
+**从审计条目回滚** (`/snapshot rollback <audit_id>`):
+1. 读取审计日志，查找 `audit_id` 对应条目
+2. 仅允许从 `save`/`restore`/`auto_rollback` 操作的条目回滚（`delete` 操作的快照已不存在）
+3. 调用 `restore(snapshot_id, trigger="audit_rollback")` 恢复到该快照
+4. 写入一条 `trigger="audit_rollback"` 的审计记录
+
+**与现有机制的关系**：
+- **与 StallDetector 的区别**: StallDetector 检测"原地打转"（不同工具但结果相似），注入转向提示；ConsecutiveFailureDetector 检测"级联失败"（工具明确返回错误），触发自动回滚
+- **与 CircuitBreaker 的区别**: CircuitBreaker 检测异常 LLM 行为后降级为 SUPERVISED 模式；ConsecutiveFailureDetector 检测工具执行失败后直接回滚状态
+- **与 DuplicateDetector 的区别**: DuplicateDetector 检测完全相同的重复调用并跳过；ConsecutiveFailureDetector 不关心重复性，只关心连续失败

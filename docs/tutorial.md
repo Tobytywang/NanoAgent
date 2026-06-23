@@ -996,6 +996,8 @@ v0.8.14 引入全局状态快照功能，类似"存档/读档"机制：一键保
 | `/snapshot list` | 列出所有已保存快照 |
 | `/snapshot restore <id>` | 恢复到指定快照状态 |
 | `/snapshot delete <id>` | 删除指定快照 |
+| `/snapshot audit` | 查看审计日志 |
+| `/snapshot rollback <audit_id>` | 从审计条目回滚 |
 
 ### 10.2 自动快照
 
@@ -1007,16 +1009,102 @@ snapshot:
   auto_snapshot: true        # 每次 run() 前自动保存
   max_snapshots: 20         # 超出时自动淘汰最旧快照
   snapshot_dir: .nano_agent/snapshots
+  audit_log_enabled: true   # 启用审计日志
+  audit_log_dir: .nano_agent/snapshots
+  max_audit_entries: 500    # 最大审计条目数
+  auto_rollback_enabled: false  # 连续失败时自动回滚
+  auto_rollback_threshold: 3    # 触发自动回滚的连续失败次数
+  auto_rollback_on_failure: error  # 回滚后行为：error / retry
 ```
 
 ### 10.3 恢复机制说明
 
 恢复快照时，`SnapshotManager.restore()` 执行**原位替换**：
 
-- **替换的字段**: 执行状态（round_counter、session_id、total_tokens 等）、撤销栈、工具调用记录、记忆（messages + long_term）、Token 预算、缓存、熔断器状态、重复检测器、停滞检测器、反馈闭环、追踪器
+- **替换的字段**: 执行状态（round_counter、session_id、total_tokens 等）、撤销栈、工具调用记录、记忆（messages + long_term）、Token 预算、缓存、熔断器状态、重复检测器、停滞检测器、反馈闭环、追踪器、连续失败检测器
 - **保持不变的字段**: LLM 客户端实例、ToolRegistry 实例、EventEmitter 实例
 
 这意味着恢复快照后，Agent 继续使用当前的 LLM 和工具集，但对话历史、预算、缓存等状态完全回滚到快照保存时的状态。
+
+### 10.4 审计日志
+
+v0.8.15 引入审计日志功能。每次快照操作（保存、恢复、删除、自动回滚）都会自动记录一条审计条目到 `audit_log.jsonl` 文件，提供 append-only 的操作历史追踪。
+
+使用 `/snapshot audit` 查看审计日志：
+
+```
+> /snapshot audit
+
+Audit Log (5 entries):
+  audit_a1b2c3 [10:30] save snap_x1y2z3 trigger=manual outcome=success
+    reason: Snapshot saved: before_refactor
+  audit_d4e5f6 [10:31] save snap_m7n8o9 trigger=auto outcome=success
+    reason: Snapshot saved: auto
+  audit_g7h8i9 [10:35] restore snap_x1y2z3 trigger=manual outcome=success
+    reason: Restored to snapshot: snap_x1y2z3
+  audit_j0k1l2 [10:40] delete snap_m7n8o9 trigger=manual outcome=success
+    reason: Snapshot deleted: snap_m7n8o9
+  audit_p3q4r5 [10:45] auto_rollback snap_x1y2z3 trigger=auto_rollback outcome=success
+    reason: Consecutive failures: 3, last tool: shell_execute
+```
+
+**审计条目字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `audit_id` | 审计条目唯一 ID（格式 `audit_{uuid[:8]}`） |
+| `operation` | 操作类型：`save` / `restore` / `delete` / `auto_rollback` |
+| `snap=` | 关联的快照 ID |
+| `trigger` | 触发来源：`manual` / `auto` / `auto_rollback` / `audit_rollback` |
+| `outcome` | 操作结果：`success` / `failure` |
+| `reason` | 操作原因或备注 |
+
+### 10.5 从审计条目回滚
+
+审计日志中的 `save`、`restore`、`auto_rollback` 操作都关联了快照 ID，可以据此回滚到该快照状态：
+
+```
+> /snapshot rollback audit_a1b2c3
+
+Rolled back from audit entry: audit_a1b2c3
+```
+
+**使用场景**：
+
+1. 查看审计日志发现某次 `auto_rollback` 回滚到了错误的状态，用 `/snapshot rollback` 回到更早的快照
+2. 查看审计日志发现某次手动 `restore` 后状态不对，用 `/snapshot rollback` 回到 restore 之前的快照
+3. 审计日志提供了完整的操作历史，便于排查问题
+
+**注意**: `delete` 操作的审计条目不支持回滚（快照已被删除）。
+
+### 10.6 自动回滚
+
+v0.8.15 引入连续失败自动回滚。当工具连续执行失败达到阈值时，自动恢复到最近的快照状态，防止级联故障。
+
+```yaml
+snapshot:
+  enabled: true
+  auto_snapshot: true           # 建议开启，确保有快照可回滚
+  auto_rollback_enabled: true   # 启用连续失败自动回滚
+  auto_rollback_threshold: 3    # 连续 3 次工具失败触发
+  auto_rollback_on_failure: error  # 回滚后行为：error / retry
+```
+
+**工作流程**：
+
+1. Agent 执行工具，工具返回失败（`success=False`）
+2. `ConsecutiveFailureDetector` 记录失败，计数器递增
+3. 连续失败次数达到 `auto_rollback_threshold`（默认 3）
+4. `SnapshotManager.attempt_auto_rollback()` 恢复到最近快照
+5. 根据 `auto_rollback_on_failure` 决定后续行为：
+   - `"error"`（默认）：返回错误，终止当前查询
+   - `"retry"`：重新执行当前查询
+
+**配置建议**：
+
+- 开启 `auto_snapshot` 确保每次 `run()` 前有快照可回滚
+- `auto_rollback_threshold` 设为 3-5 较合适：太小容易误触发，太大失去保护意义
+- 生产环境建议 `auto_rollback_on_failure: error`，避免无限重试循环
 
 ---
 

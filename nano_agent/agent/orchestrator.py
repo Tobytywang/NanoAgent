@@ -154,6 +154,24 @@ class AgentOrchestrator:
         # Delegate to execution layer
         result = self.agent.run(user_input, dry_run=dry_run, session_id=self.session_id)
 
+        # Auto-rollback on consecutive failures (v0.8.15)
+        if (
+            result.termination_reason == TerminationReason.AUTO_ROLLBACK.value
+            and self.snapshot_manager is not None
+        ):
+            failure_result = self.agent.get_failure_result()
+            rolled_back = self.snapshot_manager.attempt_auto_rollback(
+                self.agent, self, failure_result
+            )
+            if rolled_back:
+                snapshot_cfg = getattr(self.config, "snapshot", None)
+                on_failure = getattr(snapshot_cfg, "auto_rollback_on_failure", "error")
+                if on_failure == "retry":
+                    # Re-run with restored state (only once)
+                    result = self.agent.run(
+                        user_input, dry_run=dry_run, session_id=self.session_id
+                    )
+
         # Guard output for sensitive information
         if self.output_guard and self.output_guard.enabled:
             guard_result = self.output_guard.guard(result.response)

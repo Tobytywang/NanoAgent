@@ -3,6 +3,9 @@ Global state snapshot for one-click save/restore of agent state (v0.8.14).
 
 Provides a "save/load game" mechanism: capture all serializable agent state
 into a JSON file, and restore to any saved point on demand.
+
+v0.8.15: Audit log + auto-rollback — audit log links operations to snapshots,
+enabling rollback from audit entries; auto-rollback on consecutive failures.
 """
 
 import json
@@ -63,6 +66,51 @@ class SnapshotMetadata:
 
 
 @dataclass
+class AuditLogEntry:
+    """Append-only audit log entry for snapshot operations (v0.8.15)."""
+
+    audit_id: str
+    operation: str  # "save" | "restore" | "delete" | "auto_rollback"
+    snapshot_id: str
+    timestamp: str
+    session_id: str
+    trigger: str  # "manual" | "auto" | "auto_rollback" | "audit_rollback"
+    outcome: str  # "success" | "failure"
+    reason: str = ""
+    round_counter: int = 0
+    message_count: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "audit_id": self.audit_id,
+            "operation": self.operation,
+            "snapshot_id": self.snapshot_id,
+            "timestamp": self.timestamp,
+            "session_id": self.session_id,
+            "trigger": self.trigger,
+            "outcome": self.outcome,
+            "reason": self.reason,
+            "round_counter": self.round_counter,
+            "message_count": self.message_count,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AuditLogEntry":
+        return cls(
+            audit_id=data["audit_id"],
+            operation=data["operation"],
+            snapshot_id=data.get("snapshot_id", ""),
+            timestamp=data["timestamp"],
+            session_id=data.get("session_id", ""),
+            trigger=data.get("trigger", "manual"),
+            outcome=data.get("outcome", "success"),
+            reason=data.get("reason", ""),
+            round_counter=data.get("round_counter", 0),
+            message_count=data.get("message_count", 0),
+        )
+
+
+@dataclass
 class Snapshot:
     """Complete serializable agent state."""
 
@@ -79,6 +127,7 @@ class Snapshot:
     stall_detector: dict
     feedback_loop: dict
     tracker: dict
+    consecutive_failure_detector: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -95,6 +144,7 @@ class Snapshot:
             "stall_detector": self.stall_detector,
             "feedback_loop": self.feedback_loop,
             "tracker": self.tracker,
+            "consecutive_failure_detector": self.consecutive_failure_detector,
         }
 
     @classmethod
@@ -113,6 +163,14 @@ class Snapshot:
             stall_detector=data["stall_detector"],
             feedback_loop=data.get("feedback_loop", {}),
             tracker=data["tracker"],
+            consecutive_failure_detector=data.get(
+                "consecutive_failure_detector",
+                {
+                    "consecutive_failures": 0,
+                    "last_failed_tool": None,
+                    "last_error": None,
+                },
+            ),
         )
 
 
@@ -135,6 +193,7 @@ class SnapshotManager:
         agent: "ReActAgent",
         orchestrator: "AgentOrchestrator",
         name: str = "",
+        trigger: str = "manual",
     ) -> SnapshotMetadata:
         """Capture current agent state and persist to disk."""
         snapshot = self._capture(agent, orchestrator, name)
@@ -151,6 +210,17 @@ class SnapshotManager:
                 },
             )
 
+        self._record_audit(
+            operation="save",
+            snapshot_id=snapshot.metadata.snapshot_id,
+            session_id=orchestrator.session_id,
+            trigger=trigger,
+            outcome="success",
+            reason=f"Snapshot saved: {name}" if name else "Snapshot saved",
+            round_counter=agent._round_counter,
+            message_count=len(agent.memory.get_all()),
+        )
+
         return snapshot.metadata
 
     def restore(
@@ -158,6 +228,7 @@ class SnapshotManager:
         snapshot_id: str,
         agent: "ReActAgent",
         orchestrator: "AgentOrchestrator",
+        trigger: str = "manual",
     ) -> bool:
         """Load snapshot from disk and apply to agent/orchestrator in-place."""
         snapshot = self._load(snapshot_id)
@@ -170,6 +241,16 @@ class SnapshotManager:
             logging.getLogger(__name__).warning(
                 "Failed to apply snapshot %s: %s", snapshot_id, e
             )
+            self._record_audit(
+                operation="restore",
+                snapshot_id=snapshot_id,
+                session_id=orchestrator.session_id,
+                trigger=trigger,
+                outcome="failure",
+                reason=f"Restore failed: {e}",
+                round_counter=agent._round_counter,
+                message_count=len(agent.memory.get_all()),
+            )
             return False
 
         if self._events:
@@ -180,6 +261,17 @@ class SnapshotManager:
                     "round_counter": snapshot.metadata.round_counter,
                 },
             )
+
+        self._record_audit(
+            operation="restore",
+            snapshot_id=snapshot_id,
+            session_id=orchestrator.session_id,
+            trigger=trigger,
+            outcome="success",
+            reason=f"Restored to snapshot: {snapshot_id}",
+            round_counter=agent._round_counter,
+            message_count=len(agent.memory.get_all()),
+        )
 
         return True
 
@@ -205,6 +297,19 @@ class SnapshotManager:
         path = self._snapshot_path(snapshot_id)
         if path.exists():
             path.unlink()
+            if self._events:
+                self._events.emit(
+                    AgentEvent.SNAPSHOT_DELETED,
+                    {"snapshot_id": snapshot_id},
+                )
+            self._record_audit(
+                operation="delete",
+                snapshot_id=snapshot_id,
+                session_id="",
+                trigger="manual",
+                outcome="success",
+                reason=f"Snapshot deleted: {snapshot_id}",
+            )
             return True
         return False
 
@@ -213,7 +318,7 @@ class SnapshotManager:
     ) -> None:
         """Auto-save before each run() if configured."""
         if self._config.enabled and self._config.auto_snapshot:
-            self.save(agent, orchestrator, name="auto")
+            self.save(agent, orchestrator, name="auto", trigger="auto")
 
     # --- Capture helpers ---
 
@@ -252,6 +357,9 @@ class SnapshotManager:
             stall_detector=self._capture_stall_detector(agent),
             feedback_loop=self._capture_feedback_loop(agent),
             tracker=self._capture_tracker(agent),
+            consecutive_failure_detector=self._capture_consecutive_failure_detector(
+                agent
+            ),
         )
 
     def _capture_orchestrator(self, orchestrator: "AgentOrchestrator") -> dict:
@@ -412,6 +520,10 @@ class SnapshotManager:
             "run_counter": tracker._run_counter,
         }
 
+    def _capture_consecutive_failure_detector(self, agent: "ReActAgent") -> dict:
+        cfd = agent._subsystems.consecutive_failure_detector
+        return cfd.get_state()
+
     # --- Restore helpers ---
 
     def _apply(
@@ -432,6 +544,9 @@ class SnapshotManager:
         self._apply_stall_detector(snapshot.stall_detector, agent)
         self._apply_feedback_loop(snapshot.feedback_loop, agent)
         self._apply_tracker(snapshot.tracker, agent)
+        self._apply_consecutive_failure_detector(
+            snapshot.consecutive_failure_detector, agent
+        )
 
         agent._setup_system_prompt()
 
@@ -581,6 +696,183 @@ class SnapshotManager:
         )
         tracker._session_failed_tool_calls = data.get("session_failed_tool_calls", 0)
         tracker._run_counter = data.get("run_counter", 0)
+
+    def _apply_consecutive_failure_detector(
+        self, data: dict, agent: "ReActAgent"
+    ) -> None:
+        if data:
+            agent._subsystems.consecutive_failure_detector.set_state(data)
+
+    # --- Audit & Rollback (v0.8.15) ---
+
+    def _enforce_max_audit_entries(self) -> None:
+        """Trim audit log if it exceeds max_audit_entries."""
+        max_entries = self._config.max_audit_entries
+        if max_entries <= 0:
+            return
+
+        path = self._audit_path()
+        if not path.exists():
+            return
+
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        if len(lines) <= max_entries:
+            return
+
+        # Keep the most recent entries
+        kept = lines[-max_entries:]
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(kept)
+
+    def _record_audit(
+        self,
+        operation: str,
+        snapshot_id: str,
+        session_id: str,
+        trigger: str,
+        outcome: str,
+        reason: str = "",
+        round_counter: int = 0,
+        message_count: int = 0,
+    ) -> None:
+        """Append an audit log entry to JSONL file."""
+        if not self._config.audit_log_enabled:
+            return
+
+        entry = AuditLogEntry(
+            audit_id=f"audit_{uuid.uuid4().hex[:8]}",
+            operation=operation,
+            snapshot_id=snapshot_id,
+            timestamp=datetime.now().isoformat(),
+            session_id=session_id,
+            trigger=trigger,
+            outcome=outcome,
+            reason=reason,
+            round_counter=round_counter,
+            message_count=message_count,
+        )
+
+        audit_path = self._audit_path()
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        entry_dict = entry.to_dict()
+        with open(audit_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry_dict, ensure_ascii=False) + "\n")
+
+        if self._events:
+            self._events.emit(AgentEvent.AUDIT_LOG_ENTRY, entry_dict)
+
+        self._enforce_max_audit_entries()
+
+    def _audit_path(self) -> Path:
+        return Path(self._config.audit_log_dir) / "audit_log.jsonl"
+
+    def list_audit_entries(self, limit: int = 50) -> list[AuditLogEntry]:
+        """Read audit log from disk, return most recent entries.
+
+        Reads from the end of the JSONL file for efficiency, since entries
+        are naturally appended in chronological order.
+        """
+        path = self._audit_path()
+        if not path.exists():
+            return []
+
+        entries: list[AuditLogEntry] = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        entries.append(AuditLogEntry.from_dict(json.loads(line)))
+                    except Exception:
+                        continue
+
+        # Entries are naturally in chronological order (oldest first);
+        # reverse to get newest first, then trim.
+        entries.reverse()
+        return entries[:limit]
+
+    def rollback_from_audit(
+        self,
+        audit_id: str,
+        agent: "ReActAgent",
+        orchestrator: "AgentOrchestrator",
+    ) -> bool:
+        """Find audit entry and restore the referenced snapshot."""
+        entries = self.list_audit_entries(limit=200)
+        target = None
+        for entry in entries:
+            if entry.audit_id == audit_id:
+                target = entry
+                break
+
+        if target is None or not target.snapshot_id:
+            return False
+
+        # Only allow rollback from save/restore/auto_rollback entries
+        if target.operation not in ("save", "restore", "auto_rollback"):
+            return False
+
+        success = self.restore(
+            target.snapshot_id, agent, orchestrator, trigger="audit_rollback"
+        )
+
+        if success:
+            self._record_audit(
+                operation="restore",
+                snapshot_id=target.snapshot_id,
+                session_id=orchestrator.session_id,
+                trigger="audit_rollback",
+                outcome="success",
+                reason=f"Rollback from audit entry: {audit_id}",
+                round_counter=agent._round_counter,
+                message_count=len(agent.memory.get_all()),
+            )
+
+        return success
+
+    def attempt_auto_rollback(
+        self,
+        agent: "ReActAgent",
+        orchestrator: "AgentOrchestrator",
+        failure_result: Any,
+    ) -> bool:
+        """Auto-rollback to most recent snapshot on consecutive failures."""
+        if not self._config.auto_rollback_enabled:
+            return False
+
+        snapshots = self.list_snapshots()
+        if not snapshots:
+            return False
+
+        target = snapshots[0]  # Already sorted newest-first
+
+        success = self.restore(
+            target.snapshot_id, agent, orchestrator, trigger="auto_rollback"
+        )
+
+        self._record_audit(
+            operation="auto_rollback",
+            snapshot_id=target.snapshot_id,
+            session_id=orchestrator.session_id,
+            trigger="auto_rollback",
+            outcome="success" if success else "failure",
+            reason=(
+                f"Consecutive failures: {failure_result.consecutive_failures}, "
+                f"last tool: {failure_result.last_tool_name}"
+            ),
+            round_counter=agent._round_counter,
+            message_count=len(agent.memory.get_all()),
+        )
+
+        if self._events:
+            self._events.emit(
+                AgentEvent.AUTO_ROLLBACK_COMPLETED,
+                {"snapshot_id": target.snapshot_id, "success": success},
+            )
+
+        return success
 
     # --- Storage helpers ---
 

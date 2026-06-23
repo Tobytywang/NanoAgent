@@ -23,6 +23,7 @@ from .confirmation import ConfirmationManager, ConfirmationConfig
 from .circuit_breaker import CircuitBreaker
 from .result_validator import ResultValidator
 from .feedback_loop import FeedbackLoop
+from .consecutive_failure_detector import ConsecutiveFailureDetector
 from ..tools.resource_limiter import ToolTimeoutWrapper, ToolRateLimiter
 from ..config.schema import (
     SmartOptimizationConfig,
@@ -57,6 +58,7 @@ class AgentSubsystems:
         feedback_loop: FeedbackLoop | None = None,
         timeout_wrapper: ToolTimeoutWrapper | None = None,
         rate_limiter: ToolRateLimiter | None = None,
+        consecutive_failure_detector: ConsecutiveFailureDetector | None = None,
         # Config references (for ReActAgent convenience accessors)
         smart_optimization_config=None,
         output_style_config=None,
@@ -84,6 +86,9 @@ class AgentSubsystems:
         self.feedback_loop = feedback_loop
         self.timeout_wrapper = timeout_wrapper
         self.rate_limiter = rate_limiter
+        self.consecutive_failure_detector = (
+            consecutive_failure_detector or ConsecutiveFailureDetector()
+        )
         # Store config references for ReActAgent
         self._smart_optimization_config = smart_optimization_config
         self._output_style_config = output_style_config
@@ -285,6 +290,7 @@ class AgentSubsystems:
             feedback_loop=feedback_loop,
             timeout_wrapper=timeout_wrapper,
             rate_limiter=rate_limiter,
+            consecutive_failure_detector=ConsecutiveFailureDetector(),
             # Config references
             smart_optimization_config=smart_optimization,
             output_style_config=output_style,

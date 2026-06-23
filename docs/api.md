@@ -968,12 +968,14 @@ class MyTool(BaseTool):
 
 **_act() 集成**: 速率限制检查在用户确认之后、工具执行之前执行；超时包装包裹实际工具执行。触发时发射 `AgentEvent.TOOL_RATE_LIMITED` 事件。
 
-### SnapshotConfig & SnapshotManager & Snapshot & SnapshotMetadata
+### SnapshotConfig & SnapshotManager & Snapshot & SnapshotMetadata & AuditLogEntry
 
 v0.8.14 全局状态快照。一键保存/恢复 Agent 全量状态，类似"存档/读档"机制。
 
+v0.8.15 审计日志与自动回滚。为快照操作提供 append-only 审计追踪，支持从审计条目回滚；连续工具执行失败时自动恢复到最近快照。
+
 ```python
-from nano_agent.agent.snapshot import SnapshotManager, Snapshot, SnapshotMetadata
+from nano_agent.agent.snapshot import SnapshotManager, Snapshot, SnapshotMetadata, AuditLogEntry
 from nano_agent.config.schema import SnapshotConfig
 ```
 
@@ -983,6 +985,12 @@ from nano_agent.config.schema import SnapshotConfig
 - `auto_snapshot: bool = False` — 每次 `run()` 前自动保存快照（默认关闭）
 - `max_snapshots: int = 20` — 最大存储快照数（超出时淘汰最旧）
 - `snapshot_dir: str = ".nano_agent/snapshots"` — 快照存储目录
+- `audit_log_enabled: bool = True` — 启用审计日志（默认开启）
+- `audit_log_dir: str = ".nano_agent/snapshots"` — 审计日志文件目录（`audit_log.jsonl` 位置）
+- `max_audit_entries: int = 500` — 最大审计条目数（超出时淘汰最旧）
+- `auto_rollback_enabled: bool = False` — 连续工具失败时自动回滚（默认关闭）
+- `auto_rollback_threshold: int = 3` — 触发自动回滚的连续失败次数
+- `auto_rollback_on_failure: Literal["error", "retry"] = "error"` — 自动回滚后行为：`"error"` 返回错误终止，`"retry"` 重新执行当前查询
 
 **约束验证**: `max_snapshots <= 0` 时，`SnapshotConfig.__post_init__()` 抛出 `ValueError`。
 
@@ -992,12 +1000,18 @@ config = SnapshotConfig(
     auto_snapshot=False,
     max_snapshots=20,
     snapshot_dir=".nano_agent/snapshots",
+    audit_log_enabled=True,
+    audit_log_dir=".nano_agent/snapshots",
+    max_audit_entries=500,
+    auto_rollback_enabled=False,
+    auto_rollback_threshold=3,
+    auto_rollback_on_failure="error",
 )
 ```
 
 #### SnapshotManager
 
-管理 Agent 状态快照的保存/恢复/列表/删除。
+管理 Agent 状态快照的保存/恢复/列表/删除，以及审计日志和自动回滚。
 
 ```python
 manager = SnapshotManager(config=config, events=agent.events)
@@ -1020,16 +1034,132 @@ deleted = manager.delete("snap_a1b2c3d4")
 
 # 自动快照（在 run() 前调用）
 manager.maybe_auto_snapshot(agent, orchestrator)
+
+# 查看审计日志（v0.8.15）
+entries = manager.list_audit_entries(limit=20)
+
+# 从审计条目回滚（v0.8.15）
+success = manager.rollback_from_audit("audit_x1y2z3", agent, orchestrator)
+
+# 自动回滚（v0.8.15，由 orchestrator 在连续失败时调用）
+success = manager.attempt_auto_rollback(agent, orchestrator, failure_result)
 ```
 
 **SnapshotManager 核心方法**：
-- `save(agent, orchestrator, name="")` → `SnapshotMetadata` — 保存当前状态到 JSON 文件
-- `restore(snapshot_id, agent, orchestrator)` → `bool` — 从 JSON 文件加载并原地替换状态
+- `save(agent, orchestrator, name="", trigger="manual")` → `SnapshotMetadata` — 保存当前状态到 JSON 文件，同时写入审计日志
+- `restore(snapshot_id, agent, orchestrator, trigger="manual")` → `bool` — 从 JSON 文件加载并原地替换状态，同时写入审计日志
 - `list_snapshots()` → `list[SnapshotMetadata]` — 列出所有快照元数据（按时间倒序）
-- `delete(snapshot_id)` → `bool` — 删除指定快照文件
+- `delete(snapshot_id)` → `bool` — 删除指定快照文件，触发 `SNAPSHOT_DELETED` 事件
 - `maybe_auto_snapshot(agent, orchestrator)` → `None` — 仅在 `auto_snapshot=True` 时自动保存
+- `list_audit_entries(limit=50)` → `list[AuditLogEntry]` — 列出审计日志条目（按时间倒序，默认最近 50 条）
+- `rollback_from_audit(audit_id, agent, orchestrator)` → `bool` — 从审计条目恢复到对应快照
+- `attempt_auto_rollback(agent, orchestrator, failure_result)` → `bool` — 连续失败时自动恢复到最近快照
 
-**原位恢复设计**: `restore()` 替换 agent/orchestrator 的可序列化字段（execution、undo_stack、memory、token_budget、cache、circuit_breaker、duplicate_detector、stall_detector、feedback_loop、tracker），但保持 LLM/ToolRegistry/EventEmitter 实例不变（这些是不可序列化的外部资源）。
+**原位恢复设计**: `restore()` 替换 agent/orchestrator 的可序列化字段（execution、undo_stack、memory、token_budget、cache、circuit_breaker、duplicate_detector、stall_detector、feedback_loop、tracker、consecutive_failure_detector），但保持 LLM/ToolRegistry/EventEmitter 实例不变（这些是不可序列化的外部资源）。
+
+#### AuditLogEntry
+
+v0.8.15 append-only 审计日志条目。每次快照操作（save/restore/delete/auto_rollback）自动生成一条审计记录，追加到 `audit_log.jsonl` 文件。
+
+- `audit_id: str` — 审计条目唯一 ID（格式 `audit_{uuid[:8]}`）
+- `operation: str` — 操作类型：`"save"` / `"restore"` / `"delete"` / `"auto_rollback"`
+- `snapshot_id: str` — 关联的快照 ID
+- `timestamp: str` — 操作时间（ISO 格式）
+- `session_id: str` — 所属会话 ID
+- `trigger: str` — 触发来源：`"manual"` / `"auto"` / `"auto_rollback"` / `"audit_rollback"`
+- `outcome: str` — 操作结果：`"success"` / `"failure"`
+- `reason: str = ""` — 操作原因或备注
+- `round_counter: int = 0` — 操作时的对话轮次
+- `message_count: int = 0` — 操作时的消息总数
+
+```python
+from nano_agent.agent.snapshot import AuditLogEntry
+
+entry = AuditLogEntry(
+    audit_id="audit_x1y2z3",
+    operation="save",
+    snapshot_id="snap_a1b2c3d4",
+    timestamp="2026-06-23T10:30:00",
+    session_id="session_abc",
+    trigger="manual",
+    outcome="success",
+    reason="Snapshot saved: before_refactor",
+    round_counter=5,
+    message_count=12,
+)
+
+# 序列化
+d = entry.to_dict()
+
+# 反序列化
+entry2 = AuditLogEntry.from_dict(d)
+```
+
+#### ConsecutiveFailureDetector, ConsecutiveFailureConfig, ConsecutiveFailureResult
+
+v0.8.15 连续失败检测器。在 ReAct 循环的 `_observe()` 阶段记录工具执行结果，当连续失败次数达到阈值时触发自动回滚。
+
+```python
+from nano_agent.agent import ConsecutiveFailureDetector, ConsecutiveFailureConfig, ConsecutiveFailureResult
+```
+
+##### ConsecutiveFailureConfig
+
+- `enabled: bool = True` — 启用连续失败检测
+- `threshold: int = 3` — 连续失败次数阈值
+
+```python
+config = ConsecutiveFailureConfig(enabled=True, threshold=3)
+```
+
+##### ConsecutiveFailureDetector
+
+```python
+detector = ConsecutiveFailureDetector(config)
+
+# 记录工具执行结果（成功时重置计数器，失败时递增）
+detector.record_tool_result("file_read", success=False, error="File not found")
+detector.record_tool_result("shell_execute", success=False, error="Command failed")
+
+# 检查是否达到阈值
+result = detector.check()
+# result.triggered → True/False
+# result.consecutive_failures → 2
+# result.last_tool_name → "shell_execute"
+# result.last_error → "Command failed"
+
+# 重置（每次 run() 前调用）
+detector.reset()
+
+# 快照状态序列化/反序列化
+state = detector.get_state()
+detector.set_state(state)
+```
+
+**ConsecutiveFailureDetector 方法**：
+
+| 方法 | 说明 |
+|------|------|
+| `record_tool_result(tool_name, success, error=None)` | 记录工具执行结果，成功时重置计数器，失败时递增 |
+| `check()` | 检查连续失败是否达到阈值，返回 `ConsecutiveFailureResult` |
+| `reset()` | 重置失败跟踪状态（每次 `run()` 前调用） |
+| `get_state()` | 获取状态字典（用于快照捕获） |
+| `set_state(state)` | 从快照恢复状态 |
+
+##### ConsecutiveFailureResult
+
+- `triggered: bool` — 是否达到连续失败阈值
+- `consecutive_failures: int` — 当前连续失败次数
+- `last_tool_name: str | None` — 最近失败的工具名
+- `last_error: str | None` — 最近失败的错误信息
+
+##### ReActAgent.get_failure_result()
+
+```python
+# 获取当前连续失败检测状态（供 orchestrator 判断是否触发自动回滚）
+result = agent.get_failure_result()
+# → ConsecutiveFailureResult
+```
 
 #### SnapshotMetadata
 
@@ -1061,6 +1191,7 @@ manager.maybe_auto_snapshot(agent, orchestrator)
 - `stall_detector: dict` — 停滞检测器状态（iteration_signatures、stall_count）
 - `feedback_loop: dict` — 反馈闭环状态（deviation_warning_count 等）
 - `tracker: dict` — 追踪器状态（session_total_tokens 等）
+- `consecutive_failure_detector: dict` — 连续失败检测器状态（consecutive_failures、last_failed_tool、last_error）
 
 ### ExecutionMode
 
@@ -1194,6 +1325,10 @@ class AgentEvent(Enum):
     TOOL_RATE_LIMITED = "tool_rate_limited"              # v0.8.10
     SNAPSHOT_SAVED = "snapshot_saved"                    # v0.8.14
     SNAPSHOT_RESTORED = "snapshot_restored"              # v0.8.14
+    SNAPSHOT_DELETED = "snapshot_deleted"                # v0.8.15
+    AUDIT_LOG_ENTRY = "audit_log_entry"                  # v0.8.15
+    AUTO_ROLLBACK_TRIGGERED = "auto_rollback_triggered"  # v0.8.15
+    AUTO_ROLLBACK_COMPLETED = "auto_rollback_completed"  # v0.8.15
 ```
 
 ### TerminationReason 枚举
@@ -1216,6 +1351,8 @@ class TerminationReason(str, Enum):
     OUTPUT_BLOCKED = "output_blocked"              # v0.8.5
     HARMFUL_CONTENT_BLOCKED = "harmful_content_blocked"  # v0.8.6
     VALIDATION_FAILED = "validation_failed"              # v0.8.7
+    SELF_CORRECTION_EXHAUSTED = "self_correction_exhausted"  # v0.8.9
+    AUTO_ROLLBACK = "auto_rollback"                      # v0.8.15
 ```
 
 **配置** (SmartOptimizationConfig):
@@ -1321,6 +1458,15 @@ Rate Limiter (v0.8.1):
 - `snapshot.auto_snapshot: bool = False` — 每次 `run()` 前自动保存快照（默认关闭）
 - `snapshot.max_snapshots: int = 20` — 最大存储快照数，超出时淘汰最旧，必须 > 0
 - `snapshot.snapshot_dir: str = ".nano_agent/snapshots"` — 快照 JSON 文件存储目录
+
+#### `snapshot` — 审计日志与自动回滚 (v0.8.15)
+
+- `snapshot.audit_log_enabled: bool = True` — 启用审计日志（默认开启）
+- `snapshot.audit_log_dir: str = ".nano_agent/snapshots"` — 审计日志文件目录（`audit_log.jsonl` 位置）
+- `snapshot.max_audit_entries: int = 500` — 最大审计条目数，超出时淘汰最旧
+- `snapshot.auto_rollback_enabled: bool = False` — 连续工具失败时自动回滚（默认关闭）
+- `snapshot.auto_rollback_threshold: int = 3` — 触发自动回滚的连续失败次数
+- `snapshot.auto_rollback_on_failure: Literal["error", "retry"] = "error"` — 自动回滚后行为：`"error"` 返回错误终止，`"retry"` 重新执行当前查询
 
 
 ---
@@ -1823,6 +1969,12 @@ snapshot:
   auto_snapshot: false               # 每次 run() 前自动保存快照
   max_snapshots: 20                  # 最大存储快照数
   snapshot_dir: .nano_agent/snapshots  # 快照存储目录
+  audit_log_enabled: true            # 启用审计日志
+  audit_log_dir: .nano_agent/snapshots  # 审计日志目录
+  max_audit_entries: 500             # 最大审计条目数
+  auto_rollback_enabled: false       # 连续失败时自动回滚
+  auto_rollback_threshold: 3         # 触发自动回滚的连续失败次数
+  auto_rollback_on_failure: error    # 回滚后行为：error / retry
 ```
 
 ### ConfigLoader
@@ -1898,6 +2050,8 @@ nano-agent [选项]
 | `/snapshot list` | 列出所有快照 |
 | `/snapshot restore <id>` | 恢复快照 |
 | `/snapshot delete <id>` | 删除快照 |
+| `/snapshot audit` | 查看审计日志 |
+| `/snapshot rollback <audit_id>` | 从审计条目回滚 |
 
 **项目管理**
 
@@ -2057,6 +2211,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.8.15 | 审计日志与自动回滚（`AuditLogEntry`、`ConsecutiveFailureDetector`、`ConsecutiveFailureConfig`、`ConsecutiveFailureResult`、`SnapshotConfig` 新增审计/回滚字段、`SnapshotManager.list_audit_entries`/`rollback_from_audit`/`attempt_auto_rollback`、`ReActAgent.get_failure_result`、`SNAPSHOT_DELETED`/`AUDIT_LOG_ENTRY`/`AUTO_ROLLBACK_TRIGGERED`/`AUTO_ROLLBACK_COMPLETED` 事件、`TerminationReason.AUTO_ROLLBACK`、CLI `/snapshot audit`/`/snapshot rollback <audit_id>`） |
 | v0.8.14 | 全局状态快照（`SnapshotConfig`、`SnapshotManager`、`Snapshot`、`SnapshotMetadata`、`SNAPSHOT_SAVED`/`SNAPSHOT_RESTORED` 事件、CLI `/snapshot` 命令、原位恢复、auto_snapshot） |
 | v0.8.12 | 记忆衰减与去重（`MemoryGCConfig`、`MemoryGC`、`GCResult`、`compute_decay_weight`、`compute_age_days`、`DEFAULT_MERGE_TAG`、`SECONDS_PER_DAY`、`LongTermEntry.mention_count/last_mentioned_at`、增强合并、衰减搜索、会话启动 GC） |
 | v0.8.13 | 长时记忆淘汰（`MemoryGCConfig` 新增 eviction 字段、`GCResult` 新增 eviction 字段、`MemoryGC.run()` Phase 2 容量淘汰、保护类别、提及计数保护） |

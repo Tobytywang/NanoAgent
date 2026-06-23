@@ -2,4 +2,4 @@
 NanoAgent - A lightweight AI Agent framework implementing ReAct pattern.
 """
 
-__version__ = "0.8.14"
+__version__ = "0.8.15"

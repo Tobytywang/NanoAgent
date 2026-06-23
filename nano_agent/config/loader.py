@@ -202,8 +202,8 @@ class ConfigLoader:
         # config.semantic_compressor.enabled, config.semantic_compressor.similarity_threshold, config.semantic_compressor.min_messages_to_compress,
         #   config.semantic_compressor.provider, config.semantic_compressor.embedding_model, config.semantic_compressor.base_url,
         #   config.semantic_compressor.api_key, config.semantic_compressor.cache_embeddings, config.semantic_compressor.merge_tag
-        # SnapshotConfig: "enabled", "auto_snapshot", "max_snapshots", "snapshot_dir", "snapshot"
-        # config.snapshot.enabled, config.snapshot.auto_snapshot, config.snapshot.max_snapshots, config.snapshot.snapshot_dir
+        # SnapshotConfig: "enabled", "auto_snapshot", "max_snapshots", "snapshot_dir", "audit_log_enabled", "audit_log_dir", "auto_rollback_enabled", "auto_rollback_threshold", "auto_rollback_on_failure", "snapshot"
+        # config.snapshot.enabled, config.snapshot.auto_snapshot, config.snapshot.max_snapshots, config.snapshot.snapshot_dir, config.snapshot.audit_log_enabled, config.snapshot.audit_log_dir, config.snapshot.auto_rollback_enabled, config.snapshot.auto_rollback_threshold, config.snapshot.auto_rollback_on_failure
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(
