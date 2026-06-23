@@ -2768,8 +2768,8 @@ snapshot:
 **架构归属**: Runtime 层 - Rollback&Audit 回溯兜底 (P3)
 
 **任务列表**:
-- [ ] #22 审计-回滚关联 (`nano_agent/agent/snapshot.py`) — 从审计日志直接触发回滚操作
-- [ ] #23 条件触发自动回滚 (`nano_agent/agent/snapshot.py`) — 连续失败 N 次自动回滚到上一检查点
+- [x] #22 审计-回滚关联 (`nano_agent/agent/snapshot.py`) — 从审计日志直接触发回滚操作
+- [x] #23 条件触发自动回滚 (`nano_agent/agent/snapshot.py`) — 连续失败 N 次自动回滚到上一检查点
 
 ---
 
