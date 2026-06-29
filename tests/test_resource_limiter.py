@@ -333,16 +333,16 @@ class TestSubsystemsIntegration:
         subs = AgentSubsystems.from_configs(
             smart_optimization=SmartOptimizationConfig(),
             output_style=OutputStyleConfig(),
-            cache_config=CacheConfig(),
-            compressor_config=CompressorConfig(),
-            semantic_compressor_config=SemanticCompressorConfig(),
-            tool_merge_config=ToolMergeConfig(),
-            confirmation_config=ConfirmationConfig(),
-            offload_config=ToolOffloadConfig(),
+            cache=CacheConfig(),
+            compressor=CompressorConfig(),
+            semantic_compressor=SemanticCompressorConfig(),
+            tool_merge=ToolMergeConfig(),
+            confirmation=ConfirmationConfig(),
+            offload=ToolOffloadConfig(),
             aggressive_output=AggressiveOutputConfig(),
             standardized_output=StandardizedOutputConfig(),
-            prompt_config=PromptConfig(),
-            tool_resource_limiter_config=config,
+            prompt=PromptConfig(),
+            tool_resource_limiter=config,
         )
         assert subs.timeout_wrapper is not None
         assert subs.rate_limiter is None
@@ -369,16 +369,16 @@ class TestSubsystemsIntegration:
         subs = AgentSubsystems.from_configs(
             smart_optimization=SmartOptimizationConfig(),
             output_style=OutputStyleConfig(),
-            cache_config=CacheConfig(),
-            compressor_config=CompressorConfig(),
-            semantic_compressor_config=SemanticCompressorConfig(),
-            tool_merge_config=ToolMergeConfig(),
-            confirmation_config=ConfirmationConfig(),
-            offload_config=ToolOffloadConfig(),
+            cache=CacheConfig(),
+            compressor=CompressorConfig(),
+            semantic_compressor=SemanticCompressorConfig(),
+            tool_merge=ToolMergeConfig(),
+            confirmation=ConfirmationConfig(),
+            offload=ToolOffloadConfig(),
             aggressive_output=AggressiveOutputConfig(),
             standardized_output=StandardizedOutputConfig(),
-            prompt_config=PromptConfig(),
-            tool_resource_limiter_config=config,
+            prompt=PromptConfig(),
+            tool_resource_limiter=config,
         )
         assert subs.timeout_wrapper is None
         assert subs.rate_limiter is not None
@@ -403,16 +403,16 @@ class TestSubsystemsIntegration:
         subs = AgentSubsystems.from_configs(
             smart_optimization=SmartOptimizationConfig(),
             output_style=OutputStyleConfig(),
-            cache_config=CacheConfig(),
-            compressor_config=CompressorConfig(),
-            semantic_compressor_config=SemanticCompressorConfig(),
-            tool_merge_config=ToolMergeConfig(),
-            confirmation_config=ConfirmationConfig(),
-            offload_config=ToolOffloadConfig(),
+            cache=CacheConfig(),
+            compressor=CompressorConfig(),
+            semantic_compressor=SemanticCompressorConfig(),
+            tool_merge=ToolMergeConfig(),
+            confirmation=ConfirmationConfig(),
+            offload=ToolOffloadConfig(),
             aggressive_output=AggressiveOutputConfig(),
             standardized_output=StandardizedOutputConfig(),
-            prompt_config=PromptConfig(),
-            tool_resource_limiter_config=config,
+            prompt=PromptConfig(),
+            tool_resource_limiter=config,
         )
         assert subs.timeout_wrapper is not None
         assert subs.rate_limiter is not None
@@ -437,16 +437,16 @@ class TestSubsystemsIntegration:
         subs = AgentSubsystems.from_configs(
             smart_optimization=SmartOptimizationConfig(),
             output_style=OutputStyleConfig(),
-            cache_config=CacheConfig(),
-            compressor_config=CompressorConfig(),
-            semantic_compressor_config=SemanticCompressorConfig(),
-            tool_merge_config=ToolMergeConfig(),
-            confirmation_config=ConfirmationConfig(),
-            offload_config=ToolOffloadConfig(),
+            cache=CacheConfig(),
+            compressor=CompressorConfig(),
+            semantic_compressor=SemanticCompressorConfig(),
+            tool_merge=ToolMergeConfig(),
+            confirmation=ConfirmationConfig(),
+            offload=ToolOffloadConfig(),
             aggressive_output=AggressiveOutputConfig(),
             standardized_output=StandardizedOutputConfig(),
-            prompt_config=PromptConfig(),
-            tool_resource_limiter_config=config,
+            prompt=PromptConfig(),
+            tool_resource_limiter=config,
         )
         assert subs.timeout_wrapper is None
         assert subs.rate_limiter is None

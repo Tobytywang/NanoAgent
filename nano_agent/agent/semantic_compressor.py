@@ -2,25 +2,10 @@
 
 import hashlib
 import math
-from dataclasses import dataclass
 
 from ..llm.embedding import EmbeddingConfig, create_embedding_client
 from ..monitoring.logger import get_logger
-
-
-@dataclass
-class SemanticCompressorConfig:
-    """Configuration for semantic compression."""
-
-    enabled: bool = False
-    similarity_threshold: float = 0.85
-    min_messages_to_compress: int = 8
-    provider: str = "ollama"
-    embedding_model: str = "nomic-embed-text"
-    base_url: str = "http://localhost:11434"
-    api_key: str | None = None
-    cache_embeddings: bool = True
-    merge_tag: str = "[merged {n} similar]"
+from ..config.schema import SemanticCompressorConfig
 
 
 def _msg_role(m) -> str | None:

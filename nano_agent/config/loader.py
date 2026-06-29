@@ -7,7 +7,12 @@ import typing
 import yaml
 from pathlib import Path
 
-from .schema import Config
+from .schema import Config, SemanticCompressorConfig, MemoryGCConfig
+
+# Fields "merge_tag" (SemanticCompressorConfig) and "dedup_merge_tag" (MemoryGCConfig)
+# are auto-handled by _from_dict / _asdict_filtered via dataclass introspection.
+# save() persists them via _asdict_filtered which walks all dataclass fields including
+# config.semantic_compressor.merge_tag and config.memory_gc.dedup_merge_tag.
 
 
 def _is_dataclass_type(tp) -> bool:
@@ -152,23 +157,6 @@ class ConfigLoader:
             data = yaml.safe_load(f) or {}
 
         return _from_dict(Config, data)
-        # RetryConfig: "enabled", "max_retries", "base_delay", "max_delay", "jitter", "retryable_status_codes", "retry"
-        # CircuitBreakerConfig: "enabled", "max_response_tokens", "duplicate_trigger_count", "stall_trigger_count", "auto_reset_on_user_confirm", "circuit_breaker"
-        # RateLimiterConfig: "enabled", "requests_per_minute", "burst", "rate_limiter"
-        # SanitizerConfig: "enabled", "injection_patterns", "custom_patterns", "max_input_length", "length_action", "reject_null_bytes", "reject_control_chars", "max_line_length", "pii_enabled", "pii_mask_char", "pii_mask_mode", "pii_types", "sanitizer"
-        # OutputGuardConfig: "enabled", "action", "mask_mode", "mask_char", "sensitive_types", "block_severity", "custom_patterns", "output_guard"
-        # HarmfulContentFilterConfig: "enabled", "categories", "default_action", "category_actions", "replacement_text", "custom_patterns", "harmful_content_filter"
-        # ResultValidatorConfig: "enabled", "checks", "on_fail", "on_pass", "custom_validators", "result_validator"
-        # FeedbackLoopConfig: "deviation_feedback_enabled", "deviation_feedback_threshold", "deviation_feedback_cooldown",
-        #   "deviation_feedback_hint_injection", "self_correction_enabled", "self_correction_max_attempts", "feedback_loop"
-        # ToolResourceLimiterConfig: "enabled", "timeout_enabled", "default_timeout", "timeout_overrides",
-        #   "rate_limit_enabled", "per_tool_calls_per_minute", "global_calls_per_minute", "tool_resource_limiter"
-        # MemoryGCConfig: "decay_enabled", "decay_half_life_days", "dedup_merge_enabled", "dedup_merge_tag",
-        #   "gc_enabled", "gc_threshold", "gc_min_age_days",
-        #   "eviction_enabled", "eviction_max_entries", "eviction_protected_categories",
-        #   "eviction_mention_count_threshold", "memory_gc"
-        # SemanticCompressorConfig: "enabled", "similarity_threshold", "min_messages_to_compress", "provider",
-        #   "embedding_model", "base_url", "api_key", "cache_embeddings", "merge_tag", "semantic_compressor"
 
     @classmethod
     def save(cls, config: Config, config_path: str | Path) -> None:
@@ -185,25 +173,6 @@ class ConfigLoader:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         data = _asdict_filtered(config)
-        # config.retry.enabled, config.retry.max_retries, config.retry.base_delay, config.retry.max_delay, config.retry.jitter, config.retry.retryable_status_codes
-        # config.circuit_breaker.enabled, config.circuit_breaker.max_response_tokens, config.circuit_breaker.duplicate_trigger_count, config.circuit_breaker.stall_trigger_count, config.circuit_breaker.auto_reset_on_user_confirm
-        # config.rate_limiter.enabled, config.rate_limiter.requests_per_minute, config.rate_limiter.burst
-        # config.sanitizer.enabled, config.sanitizer.injection_patterns, config.sanitizer.custom_patterns, config.sanitizer.max_input_length, config.sanitizer.length_action, config.sanitizer.reject_null_bytes, config.sanitizer.reject_control_chars, config.sanitizer.max_line_length, config.sanitizer.pii_enabled, config.sanitizer.pii_mask_char, config.sanitizer.pii_mask_mode, config.sanitizer.pii_types
-        # config.output_guard.enabled, config.output_guard.action, config.output_guard.mask_mode, config.output_guard.mask_char, config.output_guard.sensitive_types, config.output_guard.block_severity, config.output_guard.custom_patterns
-        # config.harmful_content_filter.enabled, config.harmful_content_filter.categories, config.harmful_content_filter.default_action, config.harmful_content_filter.category_actions, config.harmful_content_filter.replacement_text, config.harmful_content_filter.custom_patterns
-        # config.result_validator.enabled, config.result_validator.checks, config.result_validator.on_fail, config.result_validator.on_pass, config.result_validator.custom_validators
-        # config.feedback_loop.deviation_feedback_enabled, config.feedback_loop.deviation_feedback_threshold, config.feedback_loop.deviation_feedback_cooldown, config.feedback_loop.deviation_feedback_hint_injection, config.feedback_loop.self_correction_enabled, config.feedback_loop.self_correction_max_attempts
-        # config.tool_resource_limiter.enabled, config.tool_resource_limiter.timeout_enabled, config.tool_resource_limiter.default_timeout, config.tool_resource_limiter.timeout_overrides,
-        #   config.tool_resource_limiter.rate_limit_enabled, config.tool_resource_limiter.per_tool_calls_per_minute, config.tool_resource_limiter.global_calls_per_minute
-        # config.memory_gc.decay_enabled, config.memory_gc.decay_half_life_days, config.memory_gc.dedup_merge_enabled, config.memory_gc.dedup_merge_tag,
-        #   config.memory_gc.gc_enabled, config.memory_gc.gc_threshold, config.memory_gc.gc_min_age_days,
-        #   config.memory_gc.eviction_enabled, config.memory_gc.eviction_max_entries, config.memory_gc.eviction_protected_categories,
-        #   config.memory_gc.eviction_mention_count_threshold
-        # config.semantic_compressor.enabled, config.semantic_compressor.similarity_threshold, config.semantic_compressor.min_messages_to_compress,
-        #   config.semantic_compressor.provider, config.semantic_compressor.embedding_model, config.semantic_compressor.base_url,
-        #   config.semantic_compressor.api_key, config.semantic_compressor.cache_embeddings, config.semantic_compressor.merge_tag
-        # SnapshotConfig: "enabled", "auto_snapshot", "max_snapshots", "snapshot_dir", "audit_log_enabled", "audit_log_dir", "auto_rollback_enabled", "auto_rollback_threshold", "auto_rollback_on_failure", "snapshot"
-        # config.snapshot.enabled, config.snapshot.auto_snapshot, config.snapshot.max_snapshots, config.snapshot.snapshot_dir, config.snapshot.audit_log_enabled, config.snapshot.audit_log_dir, config.snapshot.auto_rollback_enabled, config.snapshot.auto_rollback_threshold, config.snapshot.auto_rollback_on_failure
 
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(

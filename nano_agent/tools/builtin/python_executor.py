@@ -7,7 +7,7 @@ import sys
 import tempfile
 from ..base import BaseTool, ToolResult
 from ..standard_output import StandardToolOutput, OutputFormat
-from ...agent.types import RiskLevel
+from ...core.types import RiskLevel
 
 
 class PythonExecutorTool(BaseTool):

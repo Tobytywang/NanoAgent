@@ -433,6 +433,274 @@ def _condense_project_file(content: str) -> str:
     return result
 
 
+def _handle_setname_command(
+    user_input: str, agent, config, user_display: str, agent_display: str
+) -> tuple[str, str]:
+    """Handle /setname command. Returns updated (user_display, agent_display)."""
+    args = user_input[8:].strip().split()
+    if len(args) == 0:
+        Console.print(
+            f"当前设置: 用户名={user_display}, Agent名={agent_display}",
+            style="info",
+        )
+    elif len(args) == 1:
+        user_display = args[0]
+        config.agent.user_name = args[0]
+        if hasattr(agent.memory, "memorize"):
+            agent.memory.memorize(
+                content=f"用户的名字是{args[0]}",
+                category="preference",
+                metadata={"type": "user_name", "value": args[0]},
+            )
+        Console.print(f"用户名已更新: {args[0]}", style="success")
+    elif len(args) >= 2:
+        if args[0].lower() in ["user", "agent"]:
+            if args[0].lower() == "user":
+                user_display = args[1]
+                config.agent.user_name = args[1]
+                if hasattr(agent.memory, "memorize"):
+                    agent.memory.memorize(
+                        content=f"用户的名字是{args[1]}",
+                        category="preference",
+                        metadata={"type": "user_name", "value": args[1]},
+                    )
+                Console.print(f"用户名已更新: {args[1]}", style="success")
+            else:
+                agent_display = args[1]
+                config.agent.agent_name = args[1]
+                if hasattr(agent.memory, "memorize"):
+                    agent.memory.memorize(
+                        content=f"Agent的名字是{args[1]}",
+                        category="preference",
+                        metadata={"type": "agent_name", "value": args[1]},
+                    )
+                Console.print(f"Agent名已更新: {args[1]}", style="success")
+        else:
+            user_display, agent_display = args[0], args[1]
+            config.agent.user_name = args[0]
+            config.agent.agent_name = args[1]
+            if hasattr(agent.memory, "memorize"):
+                agent.memory.memorize(
+                    content=f"用户的名字是{args[0]}",
+                    category="preference",
+                    metadata={"type": "user_name", "value": args[0]},
+                )
+                agent.memory.memorize(
+                    content=f"Agent的名字是{args[1]}",
+                    category="preference",
+                    metadata={"type": "agent_name", "value": args[1]},
+                )
+            Console.print(
+                f"名字已更新: 用户={args[0]}, Agent={args[1]}",
+                style="success",
+            )
+
+    # Save config
+    config_file, _ = _find_config_file()
+    if config_file:
+        ConfigLoader.save(config, config_file)
+    return user_display, agent_display
+
+
+def _handle_auto_command(orchestrator, agent) -> None:
+    """Handle /auto command — reset circuit breaker, feedback loop, rate limiter."""
+    if agent.circuit_breaker:
+        agent.circuit_breaker.reset()
+        Console.print("[熔断器] 已恢复 AUTO 模式", style="info")
+    else:
+        Console.print("[熔断器] 未启用", style="warning")
+    if orchestrator.feedback_loop is not None:
+        orchestrator.feedback_loop.reset_all()
+    if agent.tool_rate_limiter:
+        agent.tool_rate_limiter.reset()
+
+
+def _handle_undo_command(
+    agent, config, git_manager, name_update_state
+) -> tuple[str, str]:
+    """Handle /undo command. Returns updated (user_display, agent_display)."""
+    user_display = config.agent.user_name
+    agent_display = config.agent.agent_name
+
+    if git_manager and git_manager.is_enabled():
+        history = git_manager.get_history(limit=5)
+        if history:
+            print("\n可回退的操作：")
+            for i, commit in enumerate(history):
+                time_str = commit.time.strftime("%m-%d %H:%M")
+                print(f"  {i+1}. {commit.hash} [{time_str}] {commit.message}")
+
+            choice = input("\n选择要回退的步骤 (1-5)，或按回车使用普通撤销: ").strip()
+            if choice.isdigit() and 1 <= int(choice) <= 5:
+                steps = int(choice)
+                if git_manager.undo(steps):
+                    Console.print(f"已回退 {steps} 步", style="success")
+                else:
+                    Console.print("回退失败", style="error")
+                return user_display, agent_display
+
+    # Fallback to original undo
+    restored = _handle_undo(agent, config, name_update_state)
+    if "user_name" in restored:
+        user_display = restored["user_name"]
+    if "agent_name" in restored:
+        agent_display = restored["agent_name"]
+    return user_display, agent_display
+
+
+def _handle_run_result(
+    result, orchestrator, agent, config, name_update_state, user_display, agent_display
+) -> tuple[str, str] | None:
+    """Process run result. Returns updated (user_display, agent_display) or None to continue loop."""
+    # Handle input rejection from sanitizer
+    if result.termination_reason == TerminationReason.INPUT_REJECTED.value:
+        print(f"⚠ 输入被拒绝: {result.response}")
+        return None
+
+    # Handle output blocking from output guard
+    if result.termination_reason == TerminationReason.OUTPUT_BLOCKED.value:
+        print(f"⚠ 输出被拦截: {result.response}")
+        return None
+
+    # Handle harmful content blocking
+    if result.termination_reason == TerminationReason.HARMFUL_CONTENT_BLOCKED.value:
+        print(f"⚠ 输出被拦截: 有害内容 ({result.response})")
+        return None
+
+    # Handle validation failure blocking
+    if result.termination_reason == TerminationReason.VALIDATION_FAILED.value:
+        print(f"⚠ 输出被拦截: 验证失败 ({result.response})")
+        return None
+
+    # Handle self-correction exhaustion
+    if result.termination_reason == TerminationReason.SELF_CORRECTION_EXHAUSTED.value:
+        print(f"⚠ 自纠正失败: 验证未通过 ({result.response})")
+        return None
+
+    # Show PII desensitization notice
+    if (
+        orchestrator.last_sanitizer_result is not None
+        and orchestrator.last_sanitizer_result.pii_matches
+    ):
+        from nano_agent.agent.sanitizer import summarize_pii_matches
+
+        summary = summarize_pii_matches(orchestrator.last_sanitizer_result.pii_matches)
+        print(f"[PII] 已脱敏 ({summary})")
+
+    # Show output guard masking notice
+    if (
+        orchestrator.last_output_guard_result is not None
+        and orchestrator.last_output_guard_result.matches
+    ):
+        from nano_agent.agent.output_guard import summarize_sensitive_matches
+
+        summary = summarize_sensitive_matches(
+            orchestrator.last_output_guard_result.matches
+        )
+        print(f"[Guard] 输出已遮蔽 ({summary})")
+
+    # Show harmful content filter notice
+    if (
+        orchestrator.last_harmful_filter_result is not None
+        and orchestrator.last_harmful_filter_result.matches
+    ):
+        from nano_agent.agent.harmful_filter import summarize_harmful_matches
+
+        summary = summarize_harmful_matches(
+            orchestrator.last_harmful_filter_result.matches
+        )
+        if orchestrator.last_harmful_filter_result.warned:
+            print(f"[HarmfulFilter] 内容警告 ({summary})")
+        else:
+            print(f"[HarmfulFilter] 内容已替换 ({summary})")
+
+    # Show result validator notice
+    if (
+        orchestrator.last_validator_result is not None
+        and orchestrator.last_validator_result.failed_checks
+    ):
+        from nano_agent.agent.result_validator import summarize_validation_checks
+
+        summary = summarize_validation_checks(
+            orchestrator.last_validator_result.failed_checks
+        )
+        action = (
+            orchestrator.last_validator_result.actions_taken[0]
+            if orchestrator.last_validator_result.actions_taken
+            else ""
+        )
+        if "validation_blocked" in action:
+            print(f"[Validator] 输出被拦截 ({summary})")
+        elif "validation_warning" in action:
+            print(f"[Validator] 验证警告 ({summary})")
+        else:
+            print(f"[Validator] 验证标注 ({summary})")
+
+    # Show self-correction notice
+    if (
+        orchestrator.feedback_loop is not None
+        and orchestrator.feedback_loop.correction_attempts_used > 0
+    ):
+        print(
+            f"[Self-Correction] "
+            f"{orchestrator.feedback_loop.correction_attempts_used} "
+            f"attempt(s) made to correct validation failures"
+        )
+
+    # Sanitize response for printing
+    response = result.response
+    try:
+        response = response.encode("utf-8", errors="replace").decode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        pass
+    print(f"> {response}")
+
+    # Check for pending name updates from memorize tool (may be multiple)
+    if name_update_state["pending_updates"]:
+        name_update_state["prev_values"] = {}
+
+        for name_type, name_value in name_update_state["pending_updates"]:
+            try:
+                name_value = name_value.encode("utf-8", errors="replace").decode(
+                    "utf-8"
+                )
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                name_value = "User" if name_type == "user_name" else "Agent"
+
+            if name_type not in name_update_state["prev_values"]:
+                if name_type == "user_name":
+                    name_update_state["prev_values"][name_type] = config.agent.user_name
+                elif name_type == "agent_name":
+                    name_update_state["prev_values"][
+                        name_type
+                    ] = config.agent.agent_name
+
+            if name_type == "user_name":
+                user_display = name_value
+                config.agent.user_name = name_value
+            elif name_type == "agent_name":
+                agent_display = name_value
+                config.agent.agent_name = name_value
+            Console.print(
+                f"名字已更新: {name_type.replace('_', ' ')} = {name_value}",
+                style="success",
+            )
+
+        config_file, _ = _find_config_file()
+        if config_file:
+            ConfigLoader.save(config, config_file)
+        name_update_state["pending_updates"] = []
+
+    # Show monitoring stats after each run
+    _show_run_stats(agent, config)
+
+    # Show undo hint if there are undoable operations
+    if hasattr(agent, "has_undoable_operations") and agent.has_undoable_operations():
+        Console.print("💡 输入 /undo 可撤销本轮操作", style="info")
+
+    return user_display, agent_display
+
+
 def run_interactive(
     orchestrator: AgentOrchestrator,
     config,
@@ -649,35 +917,9 @@ def run_interactive(
                 continue
 
             if user_input.lower() == "/undo":
-                # Prefer Git undo if available
-                if git_manager and git_manager.is_enabled():
-                    history = git_manager.get_history(limit=5)
-                    if history:
-                        print("\n可回退的操作：")
-                        for i, commit in enumerate(history):
-                            time_str = commit.time.strftime("%m-%d %H:%M")
-                            print(
-                                f"  {i+1}. {commit.hash} [{time_str}] {commit.message}"
-                            )
-
-                        choice = input(
-                            "\n选择要回退的步骤 (1-5)，或按回车使用普通撤销: "
-                        ).strip()
-                        if choice.isdigit() and 1 <= int(choice) <= 5:
-                            steps = int(choice)
-                            if git_manager.undo(steps):
-                                Console.print(f"已回退 {steps} 步", style="success")
-                            else:
-                                Console.print("回退失败", style="error")
-                            continue
-
-                # Fallback to original undo
-                restored = _handle_undo(agent, config, name_update_state)
-                # Update local display variables
-                if "user_name" in restored:
-                    user_display = restored["user_name"]
-                if "agent_name" in restored:
-                    agent_display = restored["agent_name"]
+                user_display, agent_display = _handle_undo_command(
+                    agent, config, git_manager, name_update_state
+                )
                 continue
 
             if user_input.lower() == Commands.HISTORY:
@@ -750,17 +992,7 @@ def run_interactive(
                 continue
 
             if user_input.lower() == Commands.AUTO:
-                if agent.circuit_breaker:
-                    agent.circuit_breaker.reset()
-                    Console.print("[熔断器] 已恢复 AUTO 模式", style="info")
-                else:
-                    Console.print("[熔断器] 未启用", style="warning")
-                # Also reset feedback loop
-                if orchestrator.feedback_loop is not None:
-                    orchestrator.feedback_loop.reset_all()
-                # Also reset tool rate limiter
-                if agent.tool_rate_limiter:
-                    agent.tool_rate_limiter.reset()
+                _handle_auto_command(orchestrator, agent)
                 continue
 
             if user_input.lower() == "/sessions":
@@ -811,73 +1043,9 @@ def run_interactive(
 
             # /setname command - set user/agent display names
             if user_input.lower().startswith("/setname"):
-                args = user_input[8:].strip().split()
-                if len(args) == 0:
-                    # Show current names
-                    Console.print(
-                        f"当前设置: 用户名={user_display}, Agent名={agent_display}",
-                        style="info",
-                    )
-                elif len(args) == 1:
-                    # Set user name only
-                    user_display = args[0]
-                    config.agent.user_name = args[0]
-                    # Store in long-term memory
-                    if hasattr(agent.memory, "memorize"):
-                        agent.memory.memorize(
-                            content=f"用户的名字是{args[0]}",
-                            category="preference",
-                            metadata={"type": "user_name", "value": args[0]},
-                        )
-                    Console.print(f"用户名已更新: {args[0]}", style="success")
-                elif len(args) >= 2:
-                    if args[0].lower() in ["user", "agent"]:
-                        # Explicit type: /setname user 天宇 or /setname agent Nano
-                        if args[0].lower() == "user":
-                            user_display = args[1]
-                            config.agent.user_name = args[1]
-                            if hasattr(agent.memory, "memorize"):
-                                agent.memory.memorize(
-                                    content=f"用户的名字是{args[1]}",
-                                    category="preference",
-                                    metadata={"type": "user_name", "value": args[1]},
-                                )
-                            Console.print(f"用户名已更新: {args[1]}", style="success")
-                        else:
-                            agent_display = args[1]
-                            config.agent.agent_name = args[1]
-                            if hasattr(agent.memory, "memorize"):
-                                agent.memory.memorize(
-                                    content=f"Agent的名字是{args[1]}",
-                                    category="preference",
-                                    metadata={"type": "agent_name", "value": args[1]},
-                                )
-                            Console.print(f"Agent名已更新: {args[1]}", style="success")
-                    else:
-                        # Set both: /setname 天宇 Nano
-                        user_display, agent_display = args[0], args[1]
-                        config.agent.user_name = args[0]
-                        config.agent.agent_name = args[1]
-                        if hasattr(agent.memory, "memorize"):
-                            agent.memory.memorize(
-                                content=f"用户的名字是{args[0]}",
-                                category="preference",
-                                metadata={"type": "user_name", "value": args[0]},
-                            )
-                            agent.memory.memorize(
-                                content=f"Agent的名字是{args[1]}",
-                                category="preference",
-                                metadata={"type": "agent_name", "value": args[1]},
-                            )
-                        Console.print(
-                            f"名字已更新: 用户={args[0]}, Agent={args[1]}",
-                            style="success",
-                        )
-
-                # Save config
-                config_file, _ = _find_config_file()
-                if config_file:
-                    ConfigLoader.save(config, config_file)
+                user_display, agent_display = _handle_setname_command(
+                    user_input, agent, config, user_display, agent_display
+                )
                 continue
 
             # 重置 Ctrl+C 计数
@@ -887,170 +1055,19 @@ def run_interactive(
             print(f"\n[{agent_display}]:")
             result = orchestrator.run(user_input)
 
-            # Handle input rejection from sanitizer
-            if result.termination_reason == TerminationReason.INPUT_REJECTED.value:
-                print(f"⚠ 输入被拒绝: {result.response}")
+            # Process run result
+            updated = _handle_run_result(
+                result,
+                orchestrator,
+                agent,
+                config,
+                name_update_state,
+                user_display,
+                agent_display,
+            )
+            if updated is None:
                 continue
-
-            # Handle output blocking from output guard
-            if result.termination_reason == TerminationReason.OUTPUT_BLOCKED.value:
-                print(f"⚠ 输出被拦截: {result.response}")
-                continue
-
-            # Handle harmful content blocking
-            if (
-                result.termination_reason
-                == TerminationReason.HARMFUL_CONTENT_BLOCKED.value
-            ):
-                print(f"⚠ 输出被拦截: 有害内容 ({result.response})")
-                continue
-
-            # Handle validation failure blocking
-            if result.termination_reason == TerminationReason.VALIDATION_FAILED.value:
-                print(f"⚠ 输出被拦截: 验证失败 ({result.response})")
-                continue
-
-            # Handle self-correction exhaustion
-            if (
-                result.termination_reason
-                == TerminationReason.SELF_CORRECTION_EXHAUSTED.value
-            ):
-                print(f"⚠ 自纠正失败: 验证未通过 ({result.response})")
-                continue
-
-            # Show PII desensitization notice
-            if (
-                orchestrator.last_sanitizer_result is not None
-                and orchestrator.last_sanitizer_result.pii_matches
-            ):
-                from nano_agent.agent.sanitizer import summarize_pii_matches
-
-                summary = summarize_pii_matches(
-                    orchestrator.last_sanitizer_result.pii_matches
-                )
-                print(f"[PII] 已脱敏 ({summary})")
-
-            # Show output guard masking notice
-            if (
-                orchestrator.last_output_guard_result is not None
-                and orchestrator.last_output_guard_result.matches
-            ):
-                from nano_agent.agent.output_guard import summarize_sensitive_matches
-
-                summary = summarize_sensitive_matches(
-                    orchestrator.last_output_guard_result.matches
-                )
-                print(f"[Guard] 输出已遮蔽 ({summary})")
-
-            # Show harmful content filter notice
-            if (
-                orchestrator.last_harmful_filter_result is not None
-                and orchestrator.last_harmful_filter_result.matches
-            ):
-                from nano_agent.agent.harmful_filter import summarize_harmful_matches
-
-                summary = summarize_harmful_matches(
-                    orchestrator.last_harmful_filter_result.matches
-                )
-                if orchestrator.last_harmful_filter_result.warned:
-                    print(f"[HarmfulFilter] 内容警告 ({summary})")
-                else:
-                    print(f"[HarmfulFilter] 内容已替换 ({summary})")
-
-            # Show result validator notice
-            if (
-                orchestrator.last_validator_result is not None
-                and orchestrator.last_validator_result.failed_checks
-            ):
-                from nano_agent.agent.result_validator import (
-                    summarize_validation_checks,
-                )
-
-                summary = summarize_validation_checks(
-                    orchestrator.last_validator_result.failed_checks
-                )
-                action = (
-                    orchestrator.last_validator_result.actions_taken[0]
-                    if orchestrator.last_validator_result.actions_taken
-                    else ""
-                )
-                if "validation_blocked" in action:
-                    print(f"[Validator] 输出被拦截 ({summary})")
-                elif "validation_warning" in action:
-                    print(f"[Validator] 验证警告 ({summary})")
-                else:
-                    print(f"[Validator] 验证标注 ({summary})")
-
-            # Show self-correction notice
-            if (
-                orchestrator.feedback_loop is not None
-                and orchestrator.feedback_loop.correction_attempts_used > 0
-            ):
-                print(
-                    f"[Self-Correction] "
-                    f"{orchestrator.feedback_loop.correction_attempts_used} "
-                    f"attempt(s) made to correct validation failures"
-                )
-
-            # Sanitize response for printing
-            response = result.response
-            try:
-                response = response.encode("utf-8", errors="replace").decode("utf-8")
-            except (UnicodeDecodeError, UnicodeEncodeError):
-                pass
-            print(f"> {response}")
-
-            # Check for pending name updates from memorize tool (may be multiple)
-            if name_update_state["pending_updates"]:
-                # Clear previous name values at the start of each round
-                name_update_state["prev_values"] = {}
-
-                for name_type, name_value in name_update_state["pending_updates"]:
-                    # Sanitize name_value to remove invalid Unicode characters
-                    try:
-                        name_value = name_value.encode(
-                            "utf-8", errors="replace"
-                        ).decode("utf-8")
-                    except (UnicodeDecodeError, UnicodeEncodeError):
-                        name_value = "User" if name_type == "user_name" else "Agent"
-
-                    # Save previous value for undo (only save the original value, not overwrite)
-                    if name_type not in name_update_state["prev_values"]:
-                        if name_type == "user_name":
-                            name_update_state["prev_values"][
-                                name_type
-                            ] = config.agent.user_name
-                        elif name_type == "agent_name":
-                            name_update_state["prev_values"][
-                                name_type
-                            ] = config.agent.agent_name
-
-                    if name_type == "user_name":
-                        user_display = name_value
-                        config.agent.user_name = name_value
-                    elif name_type == "agent_name":
-                        agent_display = name_value
-                        config.agent.agent_name = name_value
-                    Console.print(
-                        f"名字已更新: {name_type.replace('_', ' ')} = {name_value}",
-                        style="success",
-                    )
-
-                # Save config once after all updates
-                config_file, _ = _find_config_file()
-                if config_file:
-                    ConfigLoader.save(config, config_file)
-                name_update_state["pending_updates"] = []
-
-            # Show monitoring stats after each run
-            _show_run_stats(agent, config)
-
-            # Show undo hint if there are undoable operations
-            if (
-                hasattr(agent, "has_undoable_operations")
-                and agent.has_undoable_operations()
-            ):
-                Console.print("💡 输入 /undo 可撤销本轮操作", style="info")
+            user_display, agent_display = updated
 
         except KeyboardInterrupt:
             # 被 signal handler 处理，继续循环
@@ -2151,497 +2168,12 @@ def _export_report(
 def _show_config(config, agent) -> None:
     """显示当前配置信息
 
-    Args:
-        config: 配置对象
-        agent: Agent 实例
+    所有字段（含 config.semantic_compressor.merge_tag, config.memory_gc.dedup_merge_tag 等）
+    由 config_display.py 声明式 spec 驱动渲染，无需在此手动添加。
     """
-    print("\n" + "=" * 50)
-    print("📊 当前配置")
-    print("=" * 50)
+    from .config_display import render_config
 
-    # 格式化函数：左对齐标签，右对齐值
-    def format_line(label: str, value: str, width: int = 20) -> str:
-        return f"  {label:<{width}} {value}"
-
-    # LLM 配置
-    print("\n## LLM 设置")
-    print(format_line("Provider:", config.llm.provider))
-    print(format_line("Model:", config.llm.model))
-    print(format_line("Base URL:", config.llm.base_url))
-    print(format_line("Timeout:", f"{config.llm.timeout}s"))
-    print(format_line("Temperature:", str(config.llm.temperature)))
-    print(format_line("Context Length:", f"{config.llm.get_context_length():,}"))
-
-    # Agent 配置
-    print("\n## Agent 设置")
-    print(format_line("Max Iterations:", str(config.agent.max_iterations)))
-    print(format_line("Verbose:", str(config.agent.verbose)))
-
-    # Memory 配置
-    print("\n## 记忆设置")
-    print(format_line("Type:", config.memory.type))
-    print(format_line("Storage Type:", config.memory.storage_type))
-    print(format_line("Storage Path:", config.memory.storage_path))
-    print(format_line("Max Messages:", str(config.memory.max_messages)))
-    print(format_line("Clean Threshold:", str(config.memory.clean_threshold)))
-    if config.memory.type == "hybrid":
-        print(format_line("Long-term Path:", config.memory.long_term_storage_path))
-        print(format_line("Auto Extract:", str(config.memory.auto_extract)))
-
-    # Skills 配置
-    print("\n## 技能设置")
-    print(format_line("Directory:", config.skills.directory))
-    if hasattr(agent, "skill_loader"):
-        skills = agent.skill_loader.list_loaded_skills()
-        print(format_line("Loaded Skills:", ", ".join(skills) if skills else "None"))
-
-    # Plugins 配置
-    print("\n## 插件设置")
-    print(
-        format_line(
-            "Directories:",
-            (
-                ", ".join(config.plugins.directories)
-                if config.plugins.directories
-                else "None"
-            ),
-        )
-    )
-    print(
-        format_line(
-            "Modules:",
-            ", ".join(config.plugins.modules) if config.plugins.modules else "None",
-        )
-    )
-
-    # Logging 配置
-    print("\n## 日志设置")
-    print(format_line("Level:", config.logging.level))
-    print(format_line("Console:", str(config.logging.console)))
-    print(format_line("File:", config.logging.file or "None"))
-
-    # 工具统计
-    print("\n## 工具")
-    tools = agent.tool_registry.list_tools()
-    print(format_line("Total:", str(len(tools))))
-    tools_display = ", ".join(tools[:10])
-    if len(tools) > 10:
-        tools_display += f"... (+{len(tools) - 10} more)"
-    print(format_line("Tools:", tools_display))
-
-    # Output Style 配置
-    print("\n## 输出风格")
-    print(format_line("Style:", config.output_style.style))
-    print(
-        format_line(
-            "Max Tool Output:", f"{config.output_style.tool_output_max_tokens} tokens"
-        )
-    )
-
-    # Smart Optimization 配置 (v0.7.14)
-    print("\n## 智能优化")
-    print(format_line("置信度早停:", str(config.smart_optimization.confidence_enabled)))
-    print(format_line("Token 预算:", str(config.smart_optimization.budget_enabled)))
-    print(format_line("查询路由:", str(config.smart_optimization.routing_enabled)))
-    print(format_line("预判机制:", str(config.smart_optimization.prejudgment_enabled)))
-    if config.smart_optimization.prejudgment_enabled:
-        print(
-            format_line(
-                "  最大回答 Token:",
-                str(config.smart_optimization.prejudgment_max_answer_tokens),
-            )
-        )
-    # v0.7.18: Calibration & Audit
-    print(format_line("校准:", str(config.smart_optimization.calibration_enabled)))
-    print(
-        format_line(
-            "估算审计:", str(config.smart_optimization.estimation_audit_enabled)
-        )
-    )
-
-    # Prompt 配置 (v0.7.6)
-    print("\n## Prompt 设置")
-    print(format_line("Source:", config.prompt.source))
-    print(format_line("Style:", config.prompt.style))
-    print(format_line("Token Budget:", f"{config.prompt.token_budget} tokens"))
-    print(format_line("Include Environment:", str(config.prompt.include_environment)))
-    print(format_line("Include Git Status:", str(config.prompt.include_git_status)))
-    print(format_line("Enable Caching:", str(config.prompt.enable_caching)))
-    if hasattr(agent, "_prompt_builder") and agent._prompt_builder:
-        stable_names = agent._prompt_builder.get_stable_module_names()
-        if stable_names:
-            print(format_line("Stable Modules:", ", ".join(stable_names)))
-        else:
-            print(format_line("Stable Modules:", "None"))
-
-    # Aggressive Output 配置 (v0.7.15)
-    print("\n## 激进输出简化")
-    print(format_line("Enabled:", str(config.aggressive_output.enabled)))
-    if config.aggressive_output.enabled:
-        print(format_line("Level:", config.aggressive_output.level))
-        print(
-            format_line(
-                "Max Sentences:",
-                (
-                    str(config.aggressive_output.max_response_sentences)
-                    if config.aggressive_output.max_response_sentences > 0
-                    else "auto"
-                ),
-            )
-        )
-        print(format_line("Strip Emoji:", str(config.aggressive_output.strip_emoji)))
-        print(
-            format_line(
-                "Strip Tables:", str(config.aggressive_output.strip_markdown_tables)
-            )
-        )
-        print(
-            format_line(
-                "Strip Lists:", str(config.aggressive_output.strip_markdown_lists)
-            )
-        )
-
-    # Standardized Output 配置 (v0.7.15)
-    print("\n## 标准化工具输出")
-    print(format_line("Enabled:", str(config.standardized_output.enabled)))
-    print(format_line("Detailed:", str(config.standardized_output.detailed)))
-
-    # Tool Offload 配置 (v0.7.17)
-    print("\n## 工具结果卸载")
-    print(format_line("Enabled:", str(config.offload.enabled)))
-    if config.offload.enabled:
-        print(
-            format_line(
-                "Size Threshold:", f"{config.offload.size_threshold_tokens} tokens"
-            )
-        )
-        print(format_line("Offload Dir:", config.offload.offload_dir))
-        print(format_line("Auto Cleanup:", str(config.offload.auto_cleanup)))
-        print(
-            format_line("Summary Max Tokens:", str(config.offload.summary_max_tokens))
-        )
-        if config.offload.excluded_tools:
-            print(
-                format_line("Excluded Tools:", ", ".join(config.offload.excluded_tools))
-            )
-
-    # Semantic compressor (v0.7.19)
-    if hasattr(config, "semantic_compressor"):
-        print("\n## 语义压缩")
-        print(format_line("Enabled:", str(config.semantic_compressor.enabled)))
-        if config.semantic_compressor.enabled:
-            print(
-                format_line(
-                    "Similarity Threshold:",
-                    f"{config.semantic_compressor.similarity_threshold}",
-                )
-            )
-            print(
-                format_line(
-                    "Min Messages:",
-                    str(config.semantic_compressor.min_messages_to_compress),
-                )
-            )
-            print(format_line("Provider:", config.semantic_compressor.provider))
-            print(
-                format_line(
-                    "Embedding Model:", config.semantic_compressor.embedding_model
-                )
-            )
-            print(
-                format_line(
-                    "Cache Embeddings:",
-                    str(config.semantic_compressor.cache_embeddings),
-                )
-            )
-            print(format_line("Merge Tag:", config.semantic_compressor.merge_tag))
-
-    # Retry 配置 (v0.8.0)
-    if hasattr(config, "retry"):
-        print("\n## 重试策略")
-        print(format_line("Enabled:", str(config.retry.enabled)))
-        if config.retry.enabled:
-            print(format_line("Max Retries:", str(config.retry.max_retries)))
-            print(format_line("Base Delay:", f"{config.retry.base_delay}s"))
-            print(format_line("Max Delay:", f"{config.retry.max_delay}s"))
-            print(format_line("Jitter:", str(config.retry.jitter)))
-            print(
-                format_line(
-                    "Retryable Status Codes:",
-                    ", ".join(str(c) for c in config.retry.retryable_status_codes),
-                )
-            )
-
-    # Rate Limiter 配置 (v0.8.1)
-    if hasattr(config, "rate_limiter"):
-        print("\n## 限流策略")
-        print(format_line("Enabled:", str(config.rate_limiter.enabled)))
-        if config.rate_limiter.enabled:
-            print(
-                format_line(
-                    "Requests Per Minute:",
-                    str(config.rate_limiter.requests_per_minute),
-                )
-            )
-            print(format_line("Burst:", str(config.rate_limiter.burst)))
-
-    # Sanitizer 配置 (v0.8.3)
-    if hasattr(config, "sanitizer"):
-        print("\n## 输入净化 (Input Sanitizer)")
-        print(format_line("Enabled:", str(config.sanitizer.enabled)))
-        if config.sanitizer.enabled:
-            print(
-                format_line(
-                    "Injection Patterns:",
-                    str(len(config.sanitizer.injection_patterns)),
-                )
-            )
-            print(
-                format_line(
-                    "Custom Patterns:", str(len(config.sanitizer.custom_patterns))
-                )
-            )
-            print(
-                format_line("Max Input Length:", str(config.sanitizer.max_input_length))
-            )
-            print(format_line("Length Action:", config.sanitizer.length_action))
-            print(
-                format_line(
-                    "Reject Null Bytes:", str(config.sanitizer.reject_null_bytes)
-                )
-            )
-            print(
-                format_line(
-                    "Reject Control Chars:", str(config.sanitizer.reject_control_chars)
-                )
-            )
-            print(
-                format_line("Max Line Length:", str(config.sanitizer.max_line_length))
-            )
-            print(
-                format_line("PII Desensitization:", str(config.sanitizer.pii_enabled))
-            )
-            if config.sanitizer.pii_enabled:
-                print(format_line("PII Mask Mode:", config.sanitizer.pii_mask_mode))
-                print(format_line("PII Mask Char:", config.sanitizer.pii_mask_char))
-                print(format_line("PII Types:", ", ".join(config.sanitizer.pii_types)))
-
-    print("\n## 输出护栏 (Output Guard)")
-    print(format_line("Enabled:", str(config.output_guard.enabled)))
-    if config.output_guard.enabled:
-        print(format_line("Action:", config.output_guard.action))
-        print(format_line("Mask Mode:", config.output_guard.mask_mode))
-        print(format_line("Mask Char:", config.output_guard.mask_char))
-        print(
-            format_line(
-                "Sensitive Types:",
-                ", ".join(config.output_guard.sensitive_types),
-            )
-        )
-        print(
-            format_line(
-                "Block Severity:",
-                ", ".join(config.output_guard.block_severity),
-            )
-        )
-        print(
-            format_line(
-                "Custom Patterns:",
-                str(len(config.output_guard.custom_patterns)),
-            )
-        )
-
-    # 有害内容过滤 (v0.8.6)
-    if hasattr(config, "harmful_content_filter"):
-        print("\n## 有害内容过滤 (Harmful Content Filter)")
-        print(format_line("Enabled:", str(config.harmful_content_filter.enabled)))
-        if config.harmful_content_filter.enabled:
-            print(
-                format_line(
-                    "Categories:",
-                    ", ".join(config.harmful_content_filter.categories),
-                )
-            )
-            print(
-                format_line(
-                    "Default Action:",
-                    config.harmful_content_filter.default_action,
-                )
-            )
-            if config.harmful_content_filter.category_actions:
-                print(
-                    format_line(
-                        "Category Actions:",
-                        str(config.harmful_content_filter.category_actions),
-                    )
-                )
-            print(
-                format_line(
-                    "Replacement Text:",
-                    config.harmful_content_filter.replacement_text,
-                )
-            )
-            print(
-                format_line(
-                    "Custom Patterns:",
-                    str(len(config.harmful_content_filter.custom_patterns)),
-                )
-            )
-
-    # 结果正确性验证 (v0.8.7)
-    if hasattr(config, "result_validator"):
-        print("\n## 结果验证 (Result Validator)")
-        print(format_line("Enabled:", str(config.result_validator.enabled)))
-        if config.result_validator.enabled:
-            print(
-                format_line(
-                    "Checks:",
-                    ", ".join(config.result_validator.checks),
-                )
-            )
-            print(format_line("On Fail:", config.result_validator.on_fail))
-            print(format_line("On Pass:", config.result_validator.on_pass))
-            print(
-                format_line(
-                    "Custom Validators:",
-                    str(len(config.result_validator.custom_validators)),
-                )
-            )
-
-    # 反馈闭环
-    if config.feedback_loop:
-        print("\n## 反馈闭环 (Feedback Loop)")
-        print(
-            format_line(
-                "偏差信号回流:", str(config.feedback_loop.deviation_feedback_enabled)
-            )
-        )
-        if config.feedback_loop.deviation_feedback_enabled:
-            print(
-                format_line(
-                    "告警阈值:",
-                    str(config.feedback_loop.deviation_feedback_threshold),
-                )
-            )
-            print(
-                format_line(
-                    "冷却间隔:",
-                    str(config.feedback_loop.deviation_feedback_cooldown),
-                )
-            )
-            print(
-                format_line(
-                    "提示注入:",
-                    str(config.feedback_loop.deviation_feedback_hint_injection),
-                )
-            )
-        print(
-            format_line(
-                "自纠正循环:", str(config.feedback_loop.self_correction_enabled)
-            )
-        )
-        if config.feedback_loop.self_correction_enabled:
-            print(
-                format_line(
-                    "最大尝试次数:",
-                    str(config.feedback_loop.self_correction_max_attempts),
-                )
-            )
-
-    # 工具资源限制
-    if hasattr(config, "tool_resource_limiter") and config.tool_resource_limiter:
-        print("\n## 工具资源限制 (Tool Resource Limiter)")
-        print(format_line("启用:", str(config.tool_resource_limiter.enabled)))
-        if config.tool_resource_limiter.enabled:
-            print(
-                format_line(
-                    "超时保护:", str(config.tool_resource_limiter.timeout_enabled)
-                )
-            )
-            if config.tool_resource_limiter.timeout_enabled:
-                print(
-                    format_line(
-                        "默认超时:",
-                        f"{config.tool_resource_limiter.default_timeout}秒",
-                    )
-                )
-                if config.tool_resource_limiter.timeout_overrides:
-                    for (
-                        tool_name,
-                        timeout,
-                    ) in config.tool_resource_limiter.timeout_overrides.items():
-                        print(
-                            format_line(
-                                f"  {tool_name}:",
-                                f"{timeout}秒",
-                            )
-                        )
-            print(
-                format_line(
-                    "频率限制:", str(config.tool_resource_limiter.rate_limit_enabled)
-                )
-            )
-            if config.tool_resource_limiter.rate_limit_enabled:
-                print(
-                    format_line(
-                        "单工具限制:",
-                        f"{config.tool_resource_limiter.per_tool_calls_per_minute}次/分钟",
-                    )
-                )
-                print(
-                    format_line(
-                        "全局限制:",
-                        f"{config.tool_resource_limiter.global_calls_per_minute}次/分钟",
-                    )
-                )
-
-    # Memory GC config
-    if config.memory_gc:
-        print("\n## 记忆衰减与回收 (Memory GC)")
-        print(format_line("衰减启用:", str(config.memory_gc.decay_enabled)))
-        if config.memory_gc.decay_enabled:
-            print(
-                format_line(
-                    "衰减半衰期:", f"{config.memory_gc.decay_half_life_days} 天"
-                )
-            )
-        print(format_line("去重合并:", str(config.memory_gc.dedup_merge_enabled)))
-        print(format_line("GC 启用:", str(config.memory_gc.gc_enabled)))
-        if config.memory_gc.gc_enabled:
-            print(format_line("GC 阈值:", str(config.memory_gc.gc_threshold)))
-            print(format_line("GC 最小年龄:", f"{config.memory_gc.gc_min_age_days} 天"))
-        print(format_line("淘汰启用:", str(config.memory_gc.eviction_enabled)))
-        if config.memory_gc.eviction_enabled:
-            print(
-                format_line("淘汰上限:", f"{config.memory_gc.eviction_max_entries} 条")
-            )
-            print(
-                format_line(
-                    "保护类别:",
-                    ", ".join(config.memory_gc.eviction_protected_categories) or "无",
-                )
-            )
-            print(
-                format_line(
-                    "提及保护阈值:",
-                    f">= {config.memory_gc.eviction_mention_count_threshold} 次",
-                )
-            )
-
-    # Snapshot config
-    if config.snapshot:
-        print("\n## 全局状态快照 (Snapshot)")
-        print(format_line("启用:", str(config.snapshot.enabled)))
-        print(format_line("自动存档:", str(config.snapshot.auto_snapshot)))
-        print(format_line("最大存档数:", str(config.snapshot.max_snapshots)))
-        print(format_line("存档目录:", config.snapshot.snapshot_dir))
-        print(format_line("审计日志:", str(config.snapshot.audit_log_enabled)))
-        print(format_line("最大审计条数:", str(config.snapshot.max_audit_entries)))
-        print(format_line("自动回滚:", str(config.snapshot.auto_rollback_enabled)))
-        print(format_line("回滚阈值:", str(config.snapshot.auto_rollback_threshold)))
-        print(format_line("回滚后行为:", config.snapshot.auto_rollback_on_failure))
-
-    print("\n" + "=" * 50 + "\n")
+    print(render_config(config, agent))
 
 
 def _handle_memory_command(agent, config, command: str) -> None:

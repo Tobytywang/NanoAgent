@@ -29,7 +29,7 @@ from .events import EventEmitter
 from .budget import Budget, BudgetChecker
 from .undo import UndoStack
 from .subsystems import AgentSubsystems
-from .router import QueryComplexity, QueryRouter
+from .router import QueryComplexity, QueryRouter, RoutingResult
 from .duplicate import DuplicateCheckResult
 from .tool_merger import ToolCallMerger
 from .result_summarizer import ToolResultSummarizer, SummarizerConfig
@@ -118,13 +118,13 @@ class ReActAgent(BaseAgent):
         self.tool_rate_limiter = subsystems.rate_limiter
 
         # Config accessors (read by methods outside __init__)
-        self.smart_optimization_config = subsystems._smart_optimization_config
-        self.output_style_config = subsystems._output_style_config
-        self.tool_merge_config = subsystems._tool_merge_config
-        self.aggressive_output_config = subsystems._aggressive_output_config
-        self.standardized_output_config = subsystems._standardized_output_config
-        self.offload_config = subsystems._offload_config
-        self.prompt_config = prompt_config or subsystems._prompt_config
+        self.smart_optimization_config = subsystems.smart_optimization_config
+        self.output_style_config = subsystems.output_style_config
+        self.tool_merge_config = subsystems.tool_merge_config
+        self.aggressive_output_config = subsystems.aggressive_output_config
+        self.standardized_output_config = subsystems.standardized_output_config
+        self.offload_config = subsystems.offload_config
+        self.prompt_config = prompt_config or subsystems.prompt_config
 
         # Execution state
         self._undo_stack = UndoStack()
@@ -293,87 +293,17 @@ class ReActAgent(BaseAgent):
         self._prepare_run(user_input, session_id)
 
         # Phase 1: Rule-based routing (QueryRouter, zero cost)
-        routing_result = None
-        if self.query_router is not None:
-            routing_result = self.query_router.classify(user_input)
-            self._routing_max_tools = routing_result.suggested_max_tools
-
-            if self.verbose:
-                print(
-                    f"[Router] Complexity: {routing_result.complexity.value}, "
-                    f"max_tools: {self._routing_max_tools}, "
-                    f"budget_ratio: {routing_result.suggested_budget_ratio:.0%}"
-                )
-
-            # Adjust token budget based on complexity (v0.7.16)
-            if (
-                self.token_budget is not None
-                and self.smart_optimization_config.complexity_budget_enabled
-                and routing_result.suggested_budget_ratio < 1.0
-            ):
-                base_budget = self.smart_optimization_config.initial_budget
-                self.token_budget.set_budget_ratio(
-                    routing_result.suggested_budget_ratio, base_budget
-                )
-                if self.verbose:
-                    print(
-                        f"[Router] Budget adjusted to {self.token_budget.initial_budget} "
-                        f"({routing_result.suggested_budget_ratio:.0%} of {base_budget})"
-                    )
-
-            # Rule-based SIMPLE -> LLM-generated answer
-            if routing_result.complexity == QueryComplexity.SIMPLE:
-                response = QueryRouter.answer_simple(self.llm, user_input)
-                self.tracker.end_run(response)
-                return self._build_result(
-                    response,
-                    0,
-                    success=True,
-                    termination_reason=TerminationReason.COMPLETED.value,
-                )
+        early_result, routing_result = self._try_routing(user_input)
+        if early_result:
+            return early_result
 
         # Phase 2: LLM-based prejudgment (only when router defaulted to COMPLEX)
-        if self.query_prejudgment is not None:
-            should_prejudge = routing_result is None or (
-                routing_result.complexity == QueryComplexity.COMPLEX
-                and "defaulting to complex" in routing_result.reason.lower()
-            )
-            if should_prejudge:
-                prejudgment_result = self.query_prejudgment.prejudge(user_input)
-                if self.verbose:
-                    print(
-                        f"[Prejudgment] Complexity: {prejudgment_result.complexity.value}, "
-                        f"tokens: {prejudgment_result.prejudgment_tokens}"
-                    )
-
-                if prejudgment_result.complexity == QueryComplexity.SIMPLE:
-                    response = prejudgment_result.answer or QueryRouter.answer_simple(
-                        self.llm, user_input
-                    )
-                    self.tracker.end_run(response)
-                    return self._build_result(
-                        response,
-                        0,
-                        success=True,
-                        termination_reason=TerminationReason.PREJUDGMENT_SIMPLE.value,
-                    )
-                elif prejudgment_result.complexity == QueryComplexity.MODERATE:
-                    self._routing_max_tools = 1
+        if result := self._try_prejudgment(user_input, routing_result):
+            return result
 
         # Concise mode simple question check
-        if (
-            self.output_style_config.style == "concise"
-            and QueryRouter.is_simple_greeting(user_input)
-        ):
-            # Direct answer for simple questions (skip tool calls)
-            response = QueryRouter.answer_simple(self.llm, user_input)
-            self.tracker.end_run(response)
-            return self._build_result(
-                response,
-                0,
-                success=True,
-                termination_reason=TerminationReason.COMPLETED.value,
-            )
+        if result := self._try_concise_simple(user_input):
+            return result
 
         iteration = 0
         tool_calls_in_round = 0  # Track tool calls for routing limits
@@ -387,69 +317,19 @@ class ReActAgent(BaseAgent):
             ):
                 break
 
-            # Token budget check with progressive warnings (v0.7.8)
+            # Token budget: progressive warnings
             if self.token_budget is not None:
-                # Check for progressive warnings
                 warning = self.token_budget.check_warning(iteration)
                 if warning:
                     self._handle_budget_warning(warning)
 
-                # Budget wrap-up round (v0.7.9)
-                if self.token_budget.should_wrapup() and not self._wrapup_issued:
-                    self._wrapup_issued = True
-                    self.events.emit(
-                        AgentEvent.BUDGET_WRAPUP,
-                        {"remaining": self.token_budget.remaining},
-                    )
-                    self.memory.add_user_message(
-                        "[System] Token budget is critically low. This is the final round. "
-                        "Please summarize your findings, list any unfinished work, "
-                        "and provide the best answer you can."
-                    )
-                    if self.verbose:
-                        print(
-                            "[Budget Wrap-Up] Token budget critically low — entering final round"
-                        )
+                # Guard: budget wrap-up
+                if result := self._try_budget_wrapup(iteration):
+                    return result
 
-                    self.tracker.start_iteration(iteration)
-                    think = self._think()
-
-                    # Track usage properly then refund if free round
-                    self.token_budget.consume(think.usage.total_tokens)
-                    if self.token_budget.config.wrapup_free_round:
-                        self.token_budget.remaining += think.usage.total_tokens
-
-                    # If LLM gave a final answer → return it
-                    if think.is_final:
-                        self.tracker.end_iteration()
-                        self.tracker.end_run(think.response_text)
-                        return self._build_result(
-                            think.response_text,
-                            iteration,
-                            success=True,
-                            termination_reason=TerminationReason.BUDGET_WRAP_UP.value,
-                        )
-
-                    # If LLM still wants tools → force summarize instead
-                    response = self._force_summarize()
-                    self.tracker.end_run(response)
-                    return self._build_result(
-                        response,
-                        iteration,
-                        success=True,
-                        termination_reason=TerminationReason.BUDGET_WRAP_UP.value,
-                    )
-
-                # Check for force summarize
-                if self.token_budget.should_summarize():
-                    response = self._force_summarize()
-                    self.tracker.end_run(response)
-                    return self._build_result(
-                        response,
-                        iteration,
-                        success=True,
-                        termination_reason=TerminationReason.BUDGET_EXHAUSTED.value,
-                    )
+                # Guard: budget exhausted
+                if result := self._try_budget_exhausted(iteration):
+                    return result
 
             self.tracker.start_iteration(iteration)
 
@@ -552,40 +432,8 @@ class ReActAgent(BaseAgent):
 
             self.tracker.end_iteration()
 
-            # Stall detection (v0.7.16)
-            if self._subsystems.stall_detector.config.enabled:
-                iter_tool_names = [tc.name for tc in merged_tool_calls]
-                iter_tool_results = []
-                for tc in merged_tool_calls:
-                    for rec in self._tool_call_records:
-                        if rec.get("name") == tc.name:
-                            iter_tool_results.append(str(rec.get("output_preview", "")))
-                            break
-                    else:
-                        iter_tool_results.append("")
-
-                self._subsystems.stall_detector.record_iteration(
-                    iter_tool_names, iter_tool_results
-                )
-                stall_result = self._subsystems.stall_detector.check_stall()
-                if stall_result.is_stalled and stall_result.hint:
-                    self.events.emit(
-                        AgentEvent.STALL_DETECTED,
-                        {
-                            "stalled_iterations": stall_result.stalled_iterations,
-                        },
-                    )
-                    self.memory.add_user_message(f"[System] {stall_result.hint}")
-                    if self.verbose:
-                        print(
-                            f"[Stall] Detected ({stall_result.stalled_iterations}x), hint injected"
-                        )
-
-                # Circuit breaker: check stall (v0.8.0)
-                if self.circuit_breaker and self.circuit_breaker.check_stall(
-                    stall_result
-                ):
-                    self._log_circuit_breaker_trigger()
+            # Stall detection
+            self._check_stall(merged_tool_calls, iteration)
 
         # Reached max iterations or budget exhausted
         response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
@@ -596,6 +444,207 @@ class ReActAgent(BaseAgent):
             success=False,
             termination_reason=TerminationReason.MAX_ITERATIONS.value,
         )
+
+    def _try_routing(
+        self, user_input: str
+    ) -> tuple[ExecutionResult | None, RoutingResult | None]:
+        """Rule-based routing. Returns (early_result, routing_result)."""
+        routing_result = None
+        if self.query_router is None:
+            return None, routing_result
+
+        routing_result = self.query_router.classify(user_input)
+        self._routing_max_tools = routing_result.suggested_max_tools
+
+        if self.verbose:
+            print(
+                f"[Router] Complexity: {routing_result.complexity.value}, "
+                f"max_tools: {self._routing_max_tools}, "
+                f"budget_ratio: {routing_result.suggested_budget_ratio:.0%}"
+            )
+
+        # Adjust token budget based on complexity (v0.7.16)
+        if (
+            self.token_budget is not None
+            and self.smart_optimization_config.complexity_budget_enabled
+            and routing_result.suggested_budget_ratio < 1.0
+        ):
+            base_budget = self.smart_optimization_config.initial_budget
+            self.token_budget.set_budget_ratio(
+                routing_result.suggested_budget_ratio, base_budget
+            )
+            if self.verbose:
+                print(
+                    f"[Router] Budget adjusted to {self.token_budget.initial_budget} "
+                    f"({routing_result.suggested_budget_ratio:.0%} of {base_budget})"
+                )
+
+        # Rule-based SIMPLE -> LLM-generated answer
+        if routing_result.complexity == QueryComplexity.SIMPLE:
+            response = QueryRouter.answer_simple(self.llm, user_input)
+            self.tracker.end_run(response)
+            return (
+                self._build_result(
+                    response,
+                    0,
+                    success=True,
+                    termination_reason=TerminationReason.COMPLETED.value,
+                ),
+                routing_result,
+            )
+
+        return None, routing_result
+
+    def _try_prejudgment(
+        self, user_input: str, routing_result
+    ) -> ExecutionResult | None:
+        """LLM-based prejudgment. Returns early result or None to continue."""
+        if self.query_prejudgment is None:
+            return None
+
+        should_prejudge = routing_result is None or (
+            routing_result.complexity == QueryComplexity.COMPLEX
+            and "defaulting to complex" in routing_result.reason.lower()
+        )
+        if not should_prejudge:
+            return None
+
+        prejudgment_result = self.query_prejudgment.prejudge(user_input)
+        if self.verbose:
+            print(
+                f"[Prejudgment] Complexity: {prejudgment_result.complexity.value}, "
+                f"tokens: {prejudgment_result.prejudgment_tokens}"
+            )
+
+        if prejudgment_result.complexity == QueryComplexity.SIMPLE:
+            response = prejudgment_result.answer or QueryRouter.answer_simple(
+                self.llm, user_input
+            )
+            self.tracker.end_run(response)
+            return self._build_result(
+                response,
+                0,
+                success=True,
+                termination_reason=TerminationReason.PREJUDGMENT_SIMPLE.value,
+            )
+        elif prejudgment_result.complexity == QueryComplexity.MODERATE:
+            self._routing_max_tools = 1
+
+        return None
+
+    def _try_concise_simple(self, user_input: str) -> ExecutionResult | None:
+        """Concise mode simple greeting check. Returns early result or None."""
+        if (
+            self.output_style_config.style == "concise"
+            and QueryRouter.is_simple_greeting(user_input)
+        ):
+            response = QueryRouter.answer_simple(self.llm, user_input)
+            self.tracker.end_run(response)
+            return self._build_result(
+                response,
+                0,
+                success=True,
+                termination_reason=TerminationReason.COMPLETED.value,
+            )
+        return None
+
+    def _try_budget_wrapup(self, iteration: int) -> ExecutionResult | None:
+        """Budget wrap-up round. Returns early result or None to continue."""
+        if self.token_budget is None:
+            return None
+        if not self.token_budget.should_wrapup() or self._wrapup_issued:
+            return None
+
+        self._wrapup_issued = True
+        self.events.emit(
+            AgentEvent.BUDGET_WRAPUP,
+            {"remaining": self.token_budget.remaining},
+        )
+        self.memory.add_user_message(
+            "[System] Token budget is critically low. This is the final round. "
+            "Please summarize your findings, list any unfinished work, "
+            "and provide the best answer you can."
+        )
+        if self.verbose:
+            print("[Budget Wrap-Up] Token budget critically low — entering final round")
+
+        self.tracker.start_iteration(iteration)
+        think = self._think()
+
+        # Track usage properly then refund if free round
+        self.token_budget.consume(think.usage.total_tokens)
+        if self.token_budget.config.wrapup_free_round:
+            self.token_budget.remaining += think.usage.total_tokens
+
+        # If LLM gave a final answer → return it
+        if think.is_final:
+            self.tracker.end_iteration()
+            self.tracker.end_run(think.response_text)
+            return self._build_result(
+                think.response_text,
+                iteration,
+                success=True,
+                termination_reason=TerminationReason.BUDGET_WRAP_UP.value,
+            )
+
+        # If LLM still wants tools → force summarize instead
+        response = self._force_summarize()
+        self.tracker.end_run(response)
+        return self._build_result(
+            response,
+            iteration,
+            success=True,
+            termination_reason=TerminationReason.BUDGET_WRAP_UP.value,
+        )
+
+    def _try_budget_exhausted(self, iteration: int) -> ExecutionResult | None:
+        """Budget exhausted check. Returns early result or None to continue."""
+        if self.token_budget is None or not self.token_budget.should_summarize():
+            return None
+        response = self._force_summarize()
+        self.tracker.end_run(response)
+        return self._build_result(
+            response,
+            iteration,
+            success=True,
+            termination_reason=TerminationReason.BUDGET_EXHAUSTED.value,
+        )
+
+    def _check_stall(self, merged_tool_calls: list, iteration: int) -> None:
+        """Stall detection + hint injection. Does not return, only injects prompts."""
+        if not self._subsystems.stall_detector.config.enabled:
+            return
+
+        iter_tool_names = [tc.name for tc in merged_tool_calls]
+        iter_tool_results = []
+        for tc in merged_tool_calls:
+            for rec in self._tool_call_records:
+                if rec.get("name") == tc.name:
+                    iter_tool_results.append(str(rec.get("output_preview", "")))
+                    break
+            else:
+                iter_tool_results.append("")
+
+        self._subsystems.stall_detector.record_iteration(
+            iter_tool_names, iter_tool_results
+        )
+        stall_result = self._subsystems.stall_detector.check_stall()
+        if stall_result.is_stalled and stall_result.hint:
+            self.events.emit(
+                AgentEvent.STALL_DETECTED,
+                {
+                    "stalled_iterations": stall_result.stalled_iterations,
+                },
+            )
+            self.memory.add_user_message(f"[System] {stall_result.hint}")
+            if self.verbose:
+                print(
+                    f"[Stall] Detected ({stall_result.stalled_iterations}x), hint injected"
+                )
+
+        # Circuit breaker: check stall (v0.8.0)
+        if self.circuit_breaker and self.circuit_breaker.check_stall(stall_result):
+            self._log_circuit_breaker_trigger()
 
     def _prepare_run(self, user_input: str, session_id: str) -> None:
         """
@@ -611,7 +660,6 @@ class ReActAgent(BaseAgent):
         self._tool_call_records = []
         self._total_tokens = 0
         self._session_id = session_id
-        self._pending_name_updates = []
 
         # Reset duplicate detection state (v0.7.9)
         self._subsystems.duplicate_detector.reset()
@@ -810,13 +858,7 @@ class ReActAgent(BaseAgent):
         Returns:
             Merged tool calls (possibly fewer than input)
         """
-        print(f"[Merge] Called with {len(tool_calls) if tool_calls else 0} tool calls")
-        print(
-            f"[Merge] enabled={self.tool_merge_config.enabled}, concise_only={self.tool_merge_config.concise_only}, style={self.output_style_config.style}"
-        )
-
         if not tool_calls or not self.tool_merge_config.enabled:
-            print("[Merge] Skipping: no calls or disabled")
             return tool_calls
 
         # Only merge in concise mode if configured
@@ -824,17 +866,137 @@ class ReActAgent(BaseAgent):
             self.tool_merge_config.concise_only
             and self.output_style_config.style != "concise"
         ):
-            print("[Merge] Skipping: concise_only check failed")
             return tool_calls
 
         merger = ToolCallMerger(self.tool_merge_config)
-        original_count = len(tool_calls)
         merged = merger.analyze_and_merge(tool_calls)
 
-        # Always print merge result for debugging
-        print(f"[Merge] Input: {original_count} calls, Output: {len(merged)} calls")
-
         return merged
+
+    def _try_duplicate_skip(
+        self, tool_call: ToolCall, dry_run: bool
+    ) -> ToolResult | None:
+        """Check for duplicate tool calls; return result to skip, or None to continue."""
+        if dry_run:
+            return None
+        dup_result = self._check_duplicate_tool_call(tool_call)
+        if not dup_result.should_skip:
+            return None
+        # Circuit breaker: check duplicate (v0.8.0)
+        if self.circuit_breaker and self.circuit_breaker.check_duplicate(dup_result):
+            self._log_circuit_breaker_trigger()
+        # Record as skipped
+        self.tracker.record_skipped_tool_call(
+            tool_call.name, tool_call.arguments, "duplicate"
+        )
+        # Return cached result or empty result
+        cached_result = self.cache.get_cached_result(
+            tool_call.name, tool_call.arguments
+        )
+        if cached_result is not None:
+            result = cached_result
+        else:
+            result = ToolResult(success=True, output="[跳过] 检测到重复调用，已跳过")
+        # Record tool call
+        self._tool_call_records.append(
+            {
+                "name": tool_call.name,
+                "arguments": tool_call.arguments,
+                "success": result.success,
+                "output_preview": result.output[:100] if result.output else None,
+            }
+        )
+        return result
+
+    def _confirm_tool_execution(self, tool_call: ToolCall) -> ToolResult | None:
+        """Handle circuit breaker and risk-based confirmation; return denied result or None to continue."""
+        # Circuit breaker: SUPERVISED mode forces confirmation (v0.8.0)
+        needs_cb_confirm = (
+            self.circuit_breaker
+            and self.circuit_breaker.mode == ExecutionMode.SUPERVISED
+        )
+        if needs_cb_confirm:
+            self.confirmation.request_confirmation()
+            self.events.emit(
+                AgentEvent.CONFIRMATION_REQUIRED,
+                {
+                    "tool": tool_call.name,
+                    "arguments": tool_call.arguments,
+                    "risk_level": "circuit_breaker",
+                    "message": f"[熔断介入] {self.circuit_breaker.trigger_reason}\n是否执行 {tool_call.name}?",
+                },
+            )
+            confirmed = self.confirmation.wait_for_result()
+            if not confirmed:
+                return self._handle_confirmation_denied(tool_call)
+            # User confirmed — optionally reset to AUTO
+            if self.circuit_breaker.config.auto_reset_on_user_confirm:
+                self.circuit_breaker.reset()
+
+        # Check if confirmation is needed (risk-based)
+        tool = self.tool_registry.get(tool_call.name)
+        if tool and self.confirmation.needs_confirmation(tool):
+            # Request confirmation
+            self.confirmation.request_confirmation()
+            self.events.emit(
+                AgentEvent.CONFIRMATION_REQUIRED,
+                {
+                    "tool": tool_call.name,
+                    "arguments": tool_call.arguments,
+                    "risk_level": tool.risk_level.value,
+                },
+            )
+
+            # Wait for confirmation (blocking)
+            confirmed = self.confirmation.wait_for_result()
+
+            if not confirmed:
+                return self._handle_confirmation_denied(tool_call)
+
+        return None
+
+    def _try_rate_limit(self, tool_call: ToolCall) -> ToolResult | None:
+        """Check rate limits; return error result if limited, or None to continue."""
+        if not self.tool_rate_limiter:
+            return None
+        rate_result = self.tool_rate_limiter.check(tool_call.name)
+        if rate_result.allowed:
+            return None
+        self.tracker.record_skipped_tool_call(
+            tool_call.name,
+            tool_call.arguments,
+            "rate_limited",
+        )
+        self.events.emit(
+            AgentEvent.TOOL_RATE_LIMITED,
+            {
+                "tool": tool_call.name,
+                "limit_type": rate_result.limit_type.value,
+                "wait_time": rate_result.wait_time,
+            },
+        )
+        if self.verbose:
+            print(
+                f"[Rate Limit] {tool_call.name} "
+                f"({rate_result.limit_type.value}), "
+                f"等待 {rate_result.wait_time:.1f}s"
+            )
+        result = ToolResult(
+            success=False,
+            output="",
+            error=(
+                f"工具调用频率超限 ({rate_result.limit_type.value})，" f"请更换策略"
+            ),
+        )
+        self._tool_call_records.append(
+            {
+                "name": tool_call.name,
+                "arguments": tool_call.arguments,
+                "success": False,
+                "output_preview": result.error,
+            }
+        )
+        return result
 
     def _act(self, tool_call: ToolCall, dry_run: bool = False) -> ToolResult:
         """
@@ -847,41 +1009,9 @@ class ReActAgent(BaseAgent):
         Returns:
             ToolResult from the execution
         """
-        # Check for duplicate tool calls (v0.7.8)
-        if not dry_run:
-            dup_result = self._check_duplicate_tool_call(tool_call)
-            if dup_result.should_skip:
-                # Circuit breaker: check duplicate (v0.8.0)
-                if self.circuit_breaker and self.circuit_breaker.check_duplicate(
-                    dup_result
-                ):
-                    self._log_circuit_breaker_trigger()
-                # Record as skipped
-                self.tracker.record_skipped_tool_call(
-                    tool_call.name, tool_call.arguments, "duplicate"
-                )
-                # Return cached result or empty result
-                cached_result = self.cache.get_cached_result(
-                    tool_call.name, tool_call.arguments
-                )
-                if cached_result is not None:
-                    result = cached_result
-                else:
-                    result = ToolResult(
-                        success=True, output="[跳过] 检测到重复调用，已跳过"
-                    )
-                # Record tool call
-                self._tool_call_records.append(
-                    {
-                        "name": tool_call.name,
-                        "arguments": tool_call.arguments,
-                        "success": result.success,
-                        "output_preview": (
-                            result.output[:100] if result.output else None
-                        ),
-                    }
-                )
-                return result
+        # Guard: duplicate check
+        if result := self._try_duplicate_skip(tool_call, dry_run):
+            return result
 
         # Emit tool call event
         self.events.emit(
@@ -898,94 +1028,19 @@ class ReActAgent(BaseAgent):
                 tool_call.name, tool_call.arguments
             )
             if cached_result is not None:
-                # Cache now returns string content, wrap in ToolResult
                 result = ToolResult(success=True, output=cached_result)
                 if self.verbose:
                     print(f"[Cache] Hit for {tool_call.name}")
             else:
-                # Circuit breaker: SUPERVISED mode forces confirmation (v0.8.0)
-                needs_cb_confirm = (
-                    self.circuit_breaker
-                    and self.circuit_breaker.mode == ExecutionMode.SUPERVISED
-                )
-                if needs_cb_confirm:
-                    self.confirmation.request_confirmation()
-                    self.events.emit(
-                        AgentEvent.CONFIRMATION_REQUIRED,
-                        {
-                            "tool": tool_call.name,
-                            "arguments": tool_call.arguments,
-                            "risk_level": "circuit_breaker",
-                            "message": f"[熔断介入] {self.circuit_breaker.trigger_reason}\n是否执行 {tool_call.name}?",
-                        },
-                    )
-                    confirmed = self.confirmation.wait_for_result()
-                    if not confirmed:
-                        return self._handle_confirmation_denied(tool_call)
-                    # User confirmed — optionally reset to AUTO
-                    if self.circuit_breaker.config.auto_reset_on_user_confirm:
-                        self.circuit_breaker.reset()
+                # Guard: confirmation (circuit breaker + risk-based)
+                if denied := self._confirm_tool_execution(tool_call):
+                    return denied
 
-                # Check if confirmation is needed (risk-based)
-                tool = self.tool_registry.get(tool_call.name)
-                if tool and self.confirmation.needs_confirmation(tool):
-                    # Request confirmation
-                    self.confirmation.request_confirmation()
-                    self.events.emit(
-                        AgentEvent.CONFIRMATION_REQUIRED,
-                        {
-                            "tool": tool_call.name,
-                            "arguments": tool_call.arguments,
-                            "risk_level": tool.risk_level.value,
-                        },
-                    )
+                # Guard: rate limit
+                if limited := self._try_rate_limit(tool_call):
+                    return limited
 
-                    # Wait for confirmation (blocking)
-                    confirmed = self.confirmation.wait_for_result()
-
-                    if not confirmed:
-                        return self._handle_confirmation_denied(tool_call)
-
-                if self.tool_rate_limiter:
-                    rate_result = self.tool_rate_limiter.check(tool_call.name)
-                    if not rate_result.allowed:
-                        self.tracker.record_skipped_tool_call(
-                            tool_call.name,
-                            tool_call.arguments,
-                            "rate_limited",
-                        )
-                        self.events.emit(
-                            AgentEvent.TOOL_RATE_LIMITED,
-                            {
-                                "tool": tool_call.name,
-                                "limit_type": rate_result.limit_type.value,
-                                "wait_time": rate_result.wait_time,
-                            },
-                        )
-                        if self.verbose:
-                            print(
-                                f"[Rate Limit] {tool_call.name} "
-                                f"({rate_result.limit_type.value}), "
-                                f"等待 {rate_result.wait_time:.1f}s"
-                            )
-                        result = ToolResult(
-                            success=False,
-                            output="",
-                            error=(
-                                f"工具调用频率超限 ({rate_result.limit_type.value})，"
-                                f"请更换策略"
-                            ),
-                        )
-                        self._tool_call_records.append(
-                            {
-                                "name": tool_call.name,
-                                "arguments": tool_call.arguments,
-                                "success": False,
-                                "output_preview": result.error,
-                            }
-                        )
-                        return result
-
+                # Execute tool
                 tool_start = time.perf_counter()
                 should_timeout = (
                     self.timeout_wrapper
@@ -1139,59 +1194,6 @@ class ReActAgent(BaseAgent):
         self.memory.add_tool_result(
             tool_call_id=tool_call.id, content=result_content, tool_name=tool_call.name
         )
-
-    def _answer_simple_via_llm(self, user_input: str) -> str:
-        """Answer simple questions via lightweight LLM call (no tools, no history)."""
-        simple_prompt = (
-            self.smart_optimization_config.prejudgment_simple_prompt
-            or "Answer briefly and directly in the user's language."
-        )
-        messages = [
-            {"role": "system", "content": simple_prompt},
-            {"role": "user", "content": user_input},
-        ]
-        try:
-            response, _, _ = self.llm.chat(
-                messages=messages, tools=None, system_stable=None
-            )
-            return response
-        except Exception:
-            return self._answer_simple_question(user_input)
-
-    def _answer_simple_question(self, user_input: str) -> str:
-        """
-        Answer simple questions directly without tool calls.
-
-        Args:
-            user_input: User's input text
-
-        Returns:
-            Direct response string
-        """
-        input_lower = user_input.lower().strip()
-
-        # Greetings
-        if any(g in input_lower for g in ["你好", "hello", "hi", "嗨"]):
-            return f"你好！我是{self.skill_prompt.split('名字是')[-1] if '名字是' in self.skill_prompt else '助手'}，有什么可以帮助你的？"
-
-        # Thanks
-        if any(t in input_lower for t in ["谢谢", "thanks", "thank you", "感谢"]):
-            return "不客气！"
-
-        # Identity
-        if any(i in input_lower for i in ["你是谁", "who are you", "你的名字"]):
-            return f"我是一个 AI 助手，可以帮助你处理各种任务。"
-
-        # Capabilities
-        if any(c in input_lower for c in ["你能做什么", "what can you do"]):
-            return "我可以帮你：查看文件、执行命令、搜索内容、管理记忆等。"
-
-        # Confirmations
-        if any(c in input_lower for c in ["好的", "ok", "okay", "明白"]):
-            return "好的，请告诉我你需要什么帮助。"
-
-        # Default: let LLM handle it
-        return "请继续说明你的需求。"
 
     def _handle_confirmation_denied(self, tool_call: ToolCall) -> ToolResult:
         """Handle user denying tool confirmation."""

@@ -1267,5 +1267,6 @@ YAML 中 `key: null` 表示显式设为 null，会使用字段的默认值。如
 ## 下一步
 
 - 阅读 [API 文档](api.md) 了解详细接口
+- 查看 [架构文档](architecture.md) 了解 guard clause 等设计模式
 - 查看 [ROADMAP](../ROADMAP.md) 了解开发计划
 - 访问 [GitHub Issues](https://github.com/Tobytywang/NanoAgent/issues) 反馈问题

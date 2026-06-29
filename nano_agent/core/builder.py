@@ -231,28 +231,24 @@ class AgentBuilder:
         subsystems = AgentSubsystems.from_configs(
             smart_optimization=_cfg("smart_optimization", SmartOptimizationConfig),
             output_style=_cfg("output_style", OutputStyleConfig),
-            cache_config=_cfg("cache", CacheConfig),
-            compressor_config=_cfg("compressor", CompressorConfig),
-            semantic_compressor_config=_cfg(
-                "semantic_compressor", SemanticCompressorConfig
-            ),
-            tool_merge_config=_cfg("tool_merge", ToolMergeConfig),
-            confirmation_config=_cfg("confirmation", ConfirmationConfig),
-            offload_config=_cfg("offload", ToolOffloadConfig),
+            cache=_cfg("cache", CacheConfig),
+            compressor=_cfg("compressor", CompressorConfig),
+            semantic_compressor=_cfg("semantic_compressor", SemanticCompressorConfig),
+            tool_merge=_cfg("tool_merge", ToolMergeConfig),
+            confirmation=_cfg("confirmation", ConfirmationConfig),
+            offload=_cfg("offload", ToolOffloadConfig),
             aggressive_output=_cfg("aggressive_output", AggressiveOutputConfig),
             standardized_output=_cfg("standardized_output", StandardizedOutputConfig),
-            prompt_config=_cfg("prompt", PromptConfig),
-            context_config=getattr(self.config, "context", None),
+            prompt=_cfg("prompt", PromptConfig),
+            context=getattr(self.config, "context", None),
             llm=self._llm,
             memory=self._memory,
             llm_config=self.config.llm,
             verbose=self.config.agent.verbose,
-            circuit_breaker_config=getattr(
+            circuit_breaker=getattr(
                 self.config.smart_optimization, "circuit_breaker", None
             ),
-            tool_resource_limiter_config=getattr(
-                self.config, "tool_resource_limiter", None
-            ),
+            tool_resource_limiter=getattr(self.config, "tool_resource_limiter", None),
         )
 
         # Create agent

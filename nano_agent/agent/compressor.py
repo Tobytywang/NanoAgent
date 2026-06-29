@@ -5,21 +5,9 @@ Compresses old messages into summaries to keep prompt size manageable.
 """
 
 import time
-from dataclasses import dataclass, field
 
-from ..agent.token_utils import estimate_tokens, calculate_max_chars
-
-
-@dataclass
-class CompressorConfig:
-    """Configuration for message compression."""
-
-    enabled: bool = True
-    threshold_tokens: int = 2000  # Compress when prompt_tokens > threshold
-    keep_recent: int = (
-        3  # Keep recent N rounds of conversation (user + assistant pairs)
-    )
-    summary_max_tokens: int = 500  # Max tokens for summary
+from .token_utils import estimate_tokens, calculate_max_chars
+from ..config.schema import CompressorConfig
 
 
 class MessageCompressor:

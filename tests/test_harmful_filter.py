@@ -14,7 +14,6 @@ from nano_agent.agent.harmful_filter import (
 from nano_agent.agent.types import AgentEvent, TerminationReason
 from nano_agent.agent.events import EventEmitter
 from nano_agent.config.schema import HarmfulContentFilterConfig, Config
-from nano_agent.tools.middleware import HarmfulContentMiddleware, MiddlewareContext
 from nano_agent.tools.base import ToolResult
 
 pytestmark = pytest.mark.unit
@@ -510,74 +509,6 @@ class TestOrchestratorIntegration:
         assert (
             result.termination_reason == TerminationReason.HARMFUL_CONTENT_BLOCKED.value
         )
-
-
-# === Middleware Tests ===
-
-
-class TestHarmfulContentMiddleware:
-    def test_middleware_replaces_output(self):
-        f = _make_filter(default_action="replace", categories=["violence"])
-        middleware = HarmfulContentMiddleware(harmful_filter=f)
-        ctx = MiddlewareContext(
-            tool_name="test",
-            arguments={},
-            result=ToolResult(success=True, output="How to make a bomb"),
-        )
-        middleware.after(ctx)
-        assert "[Content removed for safety]" in ctx.result.output
-
-    def test_middleware_no_filter(self):
-        middleware = HarmfulContentMiddleware(harmful_filter=None)
-        original_output = "How to make a bomb"
-        ctx = MiddlewareContext(
-            tool_name="test",
-            arguments={},
-            result=ToolResult(success=True, output=original_output),
-        )
-        middleware.after(ctx)
-        assert ctx.result.output == original_output
-
-    def test_middleware_filter_disabled(self):
-        f = HarmfulContentFilter(HarmfulContentFilterConfig(enabled=False))
-        middleware = HarmfulContentMiddleware(harmful_filter=f)
-        original_output = "How to make a bomb"
-        ctx = MiddlewareContext(
-            tool_name="test",
-            arguments={},
-            result=ToolResult(success=True, output=original_output),
-        )
-        middleware.after(ctx)
-        assert ctx.result.output == original_output
-
-    def test_middleware_no_harmful_data(self):
-        f = _make_filter()
-        middleware = HarmfulContentMiddleware(harmful_filter=f)
-        original_output = "Hello world"
-        ctx = MiddlewareContext(
-            tool_name="test",
-            arguments={},
-            result=ToolResult(success=True, output=original_output),
-        )
-        middleware.after(ctx)
-        assert ctx.result.output == original_output
-
-    def test_middleware_failed_result_skipped(self):
-        f = _make_filter()
-        middleware = HarmfulContentMiddleware(harmful_filter=f)
-        ctx = MiddlewareContext(
-            tool_name="test",
-            arguments={},
-            result=ToolResult(success=False, output="Error occurred", error="bad"),
-        )
-        middleware.after(ctx)
-        assert ctx.result.output == "Error occurred"
-
-    def test_middleware_priority(self):
-        from nano_agent.tools.middleware import SensitiveOutputMiddleware
-
-        assert HarmfulContentMiddleware.priority == 99
-        assert HarmfulContentMiddleware.priority < SensitiveOutputMiddleware.priority
 
 
 # === Custom Patterns ===

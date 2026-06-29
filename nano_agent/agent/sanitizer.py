@@ -53,10 +53,9 @@ class PIIMatch:
 
 def summarize_pii_matches(matches: list[PIIMatch]) -> str:
     """Build a human-readable summary of PII match counts by type."""
-    type_counts: dict[str, int] = {}
-    for m in matches:
-        type_counts[m.pii_type] = type_counts.get(m.pii_type, 0) + 1
-    return ", ".join(f"{t}: {c}" for t, c in sorted(type_counts.items()))
+    from .filter_utils import summarize_by_field
+
+    return summarize_by_field(matches, "pii_type")
 
 
 class PIIDesensitizer:

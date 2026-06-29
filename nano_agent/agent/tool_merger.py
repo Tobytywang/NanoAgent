@@ -4,23 +4,10 @@ Tool call merging for reducing iteration count.
 Detects similar/related tool calls and merges them into single batched operations.
 """
 
-from dataclasses import dataclass, field
 import re
 
 from ..llm.messages import ToolCall
-
-
-@dataclass
-class ToolMergeConfig:
-    """Configuration for tool merging."""
-
-    enabled: bool = True
-    concise_only: bool = True  # Only merge in concise mode
-    max_batch_size: int = 3  # Maximum operations to merge
-    # Tools that support merging
-    merge_tools: list[str] = field(
-        default_factory=lambda: ["file_search", "shell_execute"]
-    )
+from ..config.schema import ToolMergeConfig
 
 
 class ToolCallMerger:

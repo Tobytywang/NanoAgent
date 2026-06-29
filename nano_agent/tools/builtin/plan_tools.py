@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from ...agent.types import Plan, PlanPhase
+from ...core.types import Plan, PlanPhase
 from ..base import BaseTool, ToolResult
 
 PLANS_DIR = Path(".nano_agent/plans")

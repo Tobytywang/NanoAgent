@@ -122,10 +122,9 @@ class HarmfulFilterResult:
 
 def summarize_harmful_matches(matches: list[HarmfulMatch]) -> str:
     """Build a human-readable summary of harmful match counts by category."""
-    cat_counts: dict[str, int] = {}
-    for m in matches:
-        cat_counts[m.category] = cat_counts.get(m.category, 0) + 1
-    return ", ".join(f"{c}: {n}" for c, n in sorted(cat_counts.items()))
+    from .filter_utils import summarize_by_field
+
+    return summarize_by_field(matches, "category")
 
 
 class HarmfulContentFilter:
@@ -321,24 +320,27 @@ class HarmfulContentFilter:
         self, original: str, matches: list[HarmfulMatch], categories: str
     ) -> None:
         """Emit events for blocked harmful content."""
-        if self._events:
-            self._events.emit(
-                AgentEvent.HARMFUL_CONTENT_DETECTED,
-                {
-                    "action": "blocked",
-                    "reason": f"Harmful content detected: {categories}",
-                    "original_length": len(original),
-                    "match_count": len(matches),
-                    "match_categories": categories,
-                },
-            )
-            self._events.emit(
-                AgentEvent.OUTPUT_BLOCKED,
-                {
-                    "reason": f"Harmful content detected: {categories}",
-                    "original_length": len(original),
-                    "match_count": len(matches),
-                    "match_categories": categories,
-                    "filter_type": "harmful_content",
-                },
-            )
+        from .filter_utils import emit_blocked_event
+
+        emit_blocked_event(
+            self._events,
+            AgentEvent.HARMFUL_CONTENT_DETECTED,
+            {
+                "action": "blocked",
+                "reason": f"Harmful content detected: {categories}",
+                "original_length": len(original),
+                "match_count": len(matches),
+                "match_categories": categories,
+            },
+        )
+        emit_blocked_event(
+            self._events,
+            AgentEvent.OUTPUT_BLOCKED,
+            {
+                "reason": f"Harmful content detected: {categories}",
+                "original_length": len(original),
+                "match_count": len(matches),
+                "match_categories": categories,
+                "filter_type": "harmful_content",
+            },
+        )

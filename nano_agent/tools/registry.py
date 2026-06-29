@@ -1,38 +1,28 @@
 """
 Tool registry for managing registered tools.
 
-Provides centralized tool management with middleware support for
-flexible execution interception and extension.
+Provides centralized tool management with registration and execution.
 """
 
 from typing import Callable
 
 from .base import BaseTool, ToolResult
-from .middleware import MiddlewareChain, BaseMiddleware, MiddlewareContext
 from ..core.registry import BaseRegistry
 
 
 class ToolRegistry(BaseRegistry["BaseTool"]):
     """
-    Registry for managing tools with middleware support.
-
-    Supports adding middlewares to intercept tool execution for
-    logging, confirmation, caching, tracing, etc.
+    Registry for managing tools.
 
     Example:
         registry = ToolRegistry()
 
-        # Add middlewares
-        registry.add_middleware(LoggingMiddleware())
-        registry.add_middleware(ConfirmationMiddleware())
+        # Register a tool
+        registry.register(my_tool)
 
-        # Execute tool - middlewares are called automatically
+        # Execute tool
         result = registry.execute("shell_execute", command="ls -la")
     """
-
-    def __init__(self):
-        super().__init__()
-        self._middleware_chain = MiddlewareChain()
 
     def register(self, tool: BaseTool, name: str | None = None) -> None:
         """
@@ -77,37 +67,9 @@ class ToolRegistry(BaseRegistry["BaseTool"]):
 
         self.register(FunctionTool())
 
-    def add_middleware(self, middleware: BaseMiddleware) -> None:
-        """
-        Add a middleware to the execution chain.
-
-        Args:
-            middleware: Middleware instance to add
-        """
-        self._middleware_chain.add(middleware)
-
-    def remove_middleware(self, middleware: BaseMiddleware) -> bool:
-        """
-        Remove a middleware from the execution chain.
-
-        Args:
-            middleware: Middleware instance to remove
-
-        Returns:
-            True if middleware was removed, False if not found
-        """
-        return self._middleware_chain.remove(middleware)
-
-    def clear_middlewares(self) -> None:
-        """Remove all middlewares."""
-        self._middleware_chain.clear()
-
     def execute(self, name: str, **kwargs) -> ToolResult:
         """
-        Execute a tool by name with middleware chain.
-
-        This is the recommended way to execute tools when middlewares
-        are needed. The execute_tool method bypasses middlewares.
+        Execute a tool by name.
 
         Args:
             name: Name of the tool to execute
@@ -119,34 +81,7 @@ class ToolRegistry(BaseRegistry["BaseTool"]):
         tool = self.get(name)
         if tool is None:
             return ToolResult(success=False, output="", error=f"Unknown tool: {name}")
-
-        def executor(args: dict) -> ToolResult:
-            # Pass tool to middleware via state
-            return tool.execute(**args)
-
-        # Create context with tool reference for confirmation middleware
-        ctx = MiddlewareContext(tool_name=name, arguments=kwargs)
-        ctx.state["tool"] = tool
-
-        return self._middleware_chain.execute(name, kwargs, executor)
-
-    def execute_tool(self, name: str, arguments: dict) -> ToolResult:
-        """
-        Execute a tool directly without middleware.
-
-        Use execute() instead to go through middleware chain.
-
-        Args:
-            name: Name of the tool
-            arguments: Arguments to pass to the tool
-
-        Returns:
-            ToolResult from execution
-        """
-        tool = self.get(name)
-        if tool is None:
-            return ToolResult(success=False, output="", error=f"Unknown tool: {name}")
-        return tool.execute(**arguments)
+        return tool.execute(**kwargs)
 
     def get_all_schemas(self) -> list[dict]:
         """Get all tool schemas in Ollama format."""

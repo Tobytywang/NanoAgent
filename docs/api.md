@@ -61,10 +61,15 @@ ReActAgent(
     llm,                    # LLM 客户端实例
     memory,                 # Memory 实例
     tool_registry,          # ToolRegistry 实例
+    subsystems=None,        # AgentSubsystems 门面（None 时使用默认值）
     max_iterations: int = 10,    # 最大推理轮数
     verbose: bool = True,        # 是否显示详细过程
     skill_prompt: str = "",      # 技能包额外提示
-    tracker = None               # MetricsTracker 实例
+    tracker = None,              # MetricsTracker 实例
+    events = None,               # EventEmitter 实例
+    budget = None,               # Budget 实例
+    prompt_config = None,        # Prompt 配置
+    llm_config = None            # LLM 配置
 )
 ```
 
@@ -100,6 +105,42 @@ class MyTool(BaseTool):
 
 agent.add_tool(MyTool())
 ```
+
+### AgentSubsystems
+
+Agent 优化子系统门面。将 20+ 子系统创建从 `ReActAgent.__init__` 中解耦，通过工厂方法统一构建。
+
+```python
+from nano_agent.agent.subsystems import AgentSubsystems
+```
+
+#### 工厂方法
+
+- `AgentSubsystems.from_defaults()` — 使用所有默认配置创建（测试和简单用法）
+- `AgentSubsystems.from_configs(smart_optimization, output_style, ...)` — 从配置对象创建所有子系统
+
+#### 核心属性
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `token_budget` | `TokenBudget \| None` | Token 预算管理 |
+| `query_router` | `QueryRouter \| None` | 查询复杂度路由 |
+| `confidence_parser` | `ConfidenceParser \| None` | 置信度早停 |
+| `duplicate_detector` | `DuplicateDetector` | 重复调用检测 |
+| `stall_detector` | `StallDetector` | 停滞检测 |
+| `cache` | `ToolResultCache` | 工具结果缓存 |
+| `compressor` | `MessageCompressor` | 消息压缩 |
+| `semantic_compressor` | `SemanticCompressor` | 语义压缩 |
+| `offload_manager` | `ToolOffloadManager` | 工具结果卸载 |
+| `output_simplifier` | `OutputSimplifier \| None` | 激进输出精简 |
+| `confirmation` | `ConfirmationManager` | 确认机制 |
+| `context_manager` | `ContextManager \| None` | 上下文管理 |
+| `circuit_breaker` | `CircuitBreaker \| None` | 熔断器 |
+| `result_validator` | `ResultValidator \| None` | 结果验证 |
+| `feedback_loop` | `FeedbackLoop \| None` | 反馈闭环 |
+| `timeout_wrapper` | `ToolTimeoutWrapper \| None` | 工具超时 |
+| `rate_limiter` | `ToolRateLimiter \| None` | 工具频率限制 |
+| `consecutive_failure_detector` | `ConsecutiveFailureDetector` | 连续失败检测 |
 
 ### ContextManager
 
@@ -675,7 +716,7 @@ result = harmful_filter.filter("Here is how to make a bomb: ...")
 
 **summarize_harmful_matches(matches)**: 生成人类可读的匹配汇总，格式如 `"violence: 2, hate: 1"`。
 
-**scan_tool_output(output)**: 扫描工具输出中的有害内容，仅执行替换（不拦截）。用于 `HarmfulContentMiddleware`（priority=99），在工具执行边界扫描输出，防止有害内容通过工具结果进入上下文。
+**scan_tool_output(output)**: 扫描工具输出中的有害内容，仅执行替换（不拦截）。在工具执行边界扫描输出，防止有害内容通过工具结果进入上下文。
 
 ```python
 # 工具输出扫描（仅替换，不拦截）
@@ -694,14 +735,6 @@ config = HarmfulContentFilterConfig(
     ],
 )
 ```
-
-### HarmfulContentMiddleware
-
-v0.8.6 有害内容中间件。在工具执行边界（after phase）扫描工具输出中的有害内容，与 HarmfulContentFilter 配合使用。
-
-- **priority**: 99（低于 SensitiveOutputMiddleware 的 100，确保敏感信息先被处理）
-- **行为**: 调用 `HarmfulContentFilter.scan_tool_output()` 对工具输出执行替换，不拦截
-- **激活条件**: 需传入 `HarmfulContentFilter` 实例且 `harmful_filter.enabled` 为 True
 
 ### ResultValidatorConfig & ResultValidator
 
@@ -1838,6 +1871,52 @@ class RunMetrics:
 
 ---
 
+## Core
+
+共享类型和构建器，供 agent/ 和 tools/ 包使用，避免循环依赖。
+
+### core/types — RiskLevel & Plan
+
+```python
+from nano_agent.core.types import RiskLevel, Plan, PlanPhase
+```
+
+`RiskLevel` 枚举（原 `agent.types.RiskLevel`，已迁移至 `core/types.py` 避免循环依赖）：
+
+- `SAFE = "safe"` — 只读、查询操作
+- `MODERATE = "moderate"` — 写入、创建操作
+- `DANGEROUS = "dangerous"` — 删除、Shell 操作
+
+`Plan` 和 `PlanPhase` 数据类也定义于此（供 agent/ 和 tools/ 共用）。
+
+### core/builder — AgentBuilder
+
+```python
+from nano_agent.core.builder import AgentBuilder
+```
+
+Builder 模式，提供流式接口组装 `AgentOrchestrator`：
+
+```python
+builder = AgentBuilder(config)
+orchestrator = (builder
+    .with_llm(create_llm_from_config)
+    .with_memory(create_memory)
+    .with_tools(register_builtin_tools)
+    .with_skills(load_skills)
+    .build())
+```
+
+### cli/config_display — 数据驱动配置渲染
+
+```python
+from nano_agent.cli.config_display import render_config
+```
+
+`render_config(config, agent=None) -> str`：基于 dataclass 内省 + 声明式 spec 渲染 `/config` 命令输出，替代手动 print 每个字段。
+
+---
+
 ## Config
 
 Config 模块提供配置加载和管理。
@@ -2218,7 +2297,7 @@ enabled: true
 | v0.8.10 | 工具资源限制（`ToolResourceLimiterConfig`、`ToolTimeoutWrapper`、`ToolRateLimiter`、`RateLimitType`、`RateLimitResult`、`_MiniTokenBucket`、`BaseTool.has_builtin_timeout`、框架级超时+两层令牌桶频率限制、非阻塞设计） |
 | v0.8.7 | 结果正确性验证（`ResultValidatorConfig`、`ResultValidator`、`ValidationCheck`、`ValidationResult`、`summarize_validation_checks`、file_exists/code_syntax/command_success 三类检查、block/warn/annotate 三级动作） |
 | v0.8.9 | 反馈闭环（`FeedbackLoopConfig`、`FeedbackLoop`、`DeviationFeedbackResult`、`SelfCorrectionResult`、偏差信号回流、自纠正循环、DEVIATION_FEEDBACK/SELF_CORRECTION 事件、SELF_CORRECTION_EXHAUSTED 终止原因） |
-| v0.8.6 | 有害内容过滤（`HarmfulContentFilter`、`HarmfulContentFilterConfig`、`HarmfulMatch`、`HarmfulFilterResult`、`summarize_harmful_matches`、`HarmfulContentMiddleware`、4 类检测、block/warn/replace 三级动作） |
+| v0.8.6 | 有害内容过滤（`HarmfulContentFilter`、`HarmfulContentFilterConfig`、`HarmfulMatch`、`HarmfulFilterResult`、`summarize_harmful_matches`、`scan_tool_output`、4 类检测、block/warn/replace 三级动作） |
 | v0.8.5 | 输出护栏（`OutputGuardConfig`、`OutputGuard`、`SensitiveMatch`、`OutputGuardResult`、敏感信息拦截） |
 | v0.8.4 | PII 脱敏（`PIIDesensitizer`、`PIIMatch`、`summarize_pii_matches`、phone/id_card/email/api_key 检测、partial/full 遮蔽、重叠处理） |
 | v0.8.3 | 输入净化器（`SanitizerConfig`、`InputSanitizer`、prompt injection 检测、格式验证、编排层硬门控） |

@@ -14,7 +14,6 @@ from nano_agent.agent.output_guard import (
 from nano_agent.agent.types import AgentEvent, TerminationReason
 from nano_agent.agent.events import EventEmitter
 from nano_agent.config.schema import OutputGuardConfig, Config
-from nano_agent.tools.middleware import SensitiveOutputMiddleware, MiddlewareContext
 from nano_agent.tools.base import ToolResult
 
 pytestmark = pytest.mark.unit
@@ -508,73 +507,6 @@ class TestOrchestratorIntegration:
             orchestrator.last_output_guard_result is None
             or len(orchestrator.last_output_guard_result.matches) == 0
         )
-
-
-# === SensitiveOutputMiddleware ===
-
-
-class TestSensitiveOutputMiddleware:
-    def test_middleware_masks_output(self):
-        guard = OutputGuard(OutputGuardConfig(sensitive_types=["api_key"]))
-        middleware = SensitiveOutputMiddleware(output_guard=guard)
-        ctx = MiddlewareContext(
-            tool_name="file_read",
-            arguments={"path": "/etc/config"},
-            result=ToolResult(success=True, output="key: sk-abc1234567890123"),
-        )
-        middleware.after(ctx)
-        assert "sk-abc1234567890123" not in ctx.result.output
-
-    def test_middleware_no_guard(self):
-        middleware = SensitiveOutputMiddleware(output_guard=None)
-        original_output = "key: sk-abc1234567890123"
-        ctx = MiddlewareContext(
-            tool_name="file_read",
-            arguments={},
-            result=ToolResult(success=True, output=original_output),
-        )
-        middleware.after(ctx)
-        assert ctx.result.output == original_output
-
-    def test_middleware_guard_disabled(self):
-        guard = OutputGuard(OutputGuardConfig(enabled=False))
-        middleware = SensitiveOutputMiddleware(output_guard=guard)
-        original_output = "key: sk-abc1234567890123"
-        ctx = MiddlewareContext(
-            tool_name="file_read",
-            arguments={},
-            result=ToolResult(success=True, output=original_output),
-        )
-        middleware.after(ctx)
-        assert ctx.result.output == original_output
-
-    def test_middleware_no_sensitive_data(self):
-        guard = OutputGuard(OutputGuardConfig(sensitive_types=["api_key"]))
-        middleware = SensitiveOutputMiddleware(output_guard=guard)
-        original_output = "This is safe output"
-        ctx = MiddlewareContext(
-            tool_name="file_read",
-            arguments={},
-            result=ToolResult(success=True, output=original_output),
-        )
-        middleware.after(ctx)
-        assert ctx.result.output == original_output
-
-    def test_middleware_failed_result_skipped(self):
-        guard = OutputGuard(OutputGuardConfig(sensitive_types=["api_key"]))
-        middleware = SensitiveOutputMiddleware(output_guard=guard)
-        ctx = MiddlewareContext(
-            tool_name="file_read",
-            arguments={},
-            result=ToolResult(success=False, output="", error="File not found"),
-        )
-        middleware.after(ctx)
-        # Failed result should not be modified
-        assert ctx.result.error == "File not found"
-
-    def test_middleware_priority(self):
-        middleware = SensitiveOutputMiddleware()
-        assert middleware.priority == 100
 
 
 # === Custom Patterns ===

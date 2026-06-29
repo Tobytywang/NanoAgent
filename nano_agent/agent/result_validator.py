@@ -103,10 +103,9 @@ class ValidationResult:
 
 def summarize_validation_checks(checks: list[ValidationCheck]) -> str:
     """Build a human-readable summary of validation check counts by type."""
-    type_counts: dict[str, int] = {}
-    for c in checks:
-        type_counts[c.check_type] = type_counts.get(c.check_type, 0) + 1
-    return ", ".join(f"{t}: {n}" for t, n in sorted(type_counts.items()))
+    from .filter_utils import summarize_by_field
+
+    return summarize_by_field(checks, "check_type")
 
 
 class ResultValidator:
@@ -464,23 +463,26 @@ class ResultValidator:
         self, original: str, failed: list[ValidationCheck], summary: str
     ) -> None:
         """Emit events for blocked validation."""
-        if self._events:
-            self._events.emit(
-                AgentEvent.VALIDATION_FAILED,
-                {
-                    "action": "blocked",
-                    "reason": f"Validation failed: {summary}",
-                    "original_length": len(original),
-                    "failed_count": len(failed),
-                    "failed_summary": summary,
-                },
-            )
-            self._events.emit(
-                AgentEvent.OUTPUT_BLOCKED,
-                {
-                    "reason": f"Validation failed: {summary}",
-                    "original_length": len(original),
-                    "failed_count": len(failed),
-                    "filter_type": "result_validator",
-                },
-            )
+        from .filter_utils import emit_blocked_event
+
+        emit_blocked_event(
+            self._events,
+            AgentEvent.VALIDATION_FAILED,
+            {
+                "action": "blocked",
+                "reason": f"Validation failed: {summary}",
+                "original_length": len(original),
+                "failed_count": len(failed),
+                "failed_summary": summary,
+            },
+        )
+        emit_blocked_event(
+            self._events,
+            AgentEvent.OUTPUT_BLOCKED,
+            {
+                "reason": f"Validation failed: {summary}",
+                "original_length": len(original),
+                "failed_count": len(failed),
+                "filter_type": "result_validator",
+            },
+        )

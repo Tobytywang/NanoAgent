@@ -11,15 +11,15 @@ from .confidence import ConfidenceParser
 from .duplicate import DuplicateDetector
 from .stall_detector import StallDetector, StallConfig
 from .cache import ToolResultCache, CacheConfig
-from .compressor import MessageCompressor, CompressorConfig
-from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
+from .compressor import MessageCompressor
+from .semantic_compressor import SemanticCompressor
 from .tool_offload import ToolOffloadManager
 from .output_simplifier import OutputSimplifier
 from .result_summarizer import ToolResultSummarizer
-from .tool_merger import ToolCallMerger, ToolMergeConfig
+from .tool_merger import ToolCallMerger
 from .prejudgment import QueryPrejudgment
 from .context import ContextManager
-from .confirmation import ConfirmationManager, ConfirmationConfig
+from .confirmation import ConfirmationManager
 from .circuit_breaker import CircuitBreaker
 from .result_validator import ResultValidator
 from .feedback_loop import FeedbackLoop
@@ -32,6 +32,10 @@ from ..config.schema import (
     AggressiveOutputConfig,
     StandardizedOutputConfig,
     PromptConfig,
+    CompressorConfig,
+    SemanticCompressorConfig,
+    ToolMergeConfig,
+    ConfirmationConfig,
 )
 
 
@@ -90,13 +94,13 @@ class AgentSubsystems:
             consecutive_failure_detector or ConsecutiveFailureDetector()
         )
         # Store config references for ReActAgent
-        self._smart_optimization_config = smart_optimization_config
-        self._output_style_config = output_style_config
-        self._tool_merge_config = tool_merge_config
-        self._aggressive_output_config = aggressive_output_config
-        self._standardized_output_config = standardized_output_config
-        self._offload_config = offload_config
-        self._prompt_config = prompt_config
+        self.smart_optimization_config = smart_optimization_config
+        self.output_style_config = output_style_config
+        self.tool_merge_config = tool_merge_config
+        self.aggressive_output_config = aggressive_output_config
+        self.standardized_output_config = standardized_output_config
+        self.offload_config = offload_config
+        self.prompt_config = prompt_config
 
     @classmethod
     def from_defaults(cls) -> "AgentSubsystems":
@@ -104,16 +108,16 @@ class AgentSubsystems:
         return cls.from_configs(
             smart_optimization=SmartOptimizationConfig(),
             output_style=OutputStyleConfig(),
-            cache_config=CacheConfig(),
-            compressor_config=CompressorConfig(),
-            semantic_compressor_config=SemanticCompressorConfig(),
-            tool_merge_config=ToolMergeConfig(),
-            confirmation_config=ConfirmationConfig(),
-            offload_config=ToolOffloadConfig(),
+            cache=CacheConfig(),
+            compressor=CompressorConfig(),
+            semantic_compressor=SemanticCompressorConfig(),
+            tool_merge=ToolMergeConfig(),
+            confirmation=ConfirmationConfig(),
+            offload=ToolOffloadConfig(),
             aggressive_output=AggressiveOutputConfig(),
             standardized_output=StandardizedOutputConfig(),
-            prompt_config=PromptConfig(),
-            circuit_breaker_config=None,
+            prompt=PromptConfig(),
+            circuit_breaker=None,
         )
 
     @classmethod
@@ -121,40 +125,30 @@ class AgentSubsystems:
         cls,
         smart_optimization: SmartOptimizationConfig,
         output_style: OutputStyleConfig,
-        cache_config: CacheConfig,
-        compressor_config: CompressorConfig,
-        semantic_compressor_config: SemanticCompressorConfig,
-        tool_merge_config: ToolMergeConfig,
-        confirmation_config: ConfirmationConfig,
-        offload_config: ToolOffloadConfig,
+        cache: CacheConfig,
+        compressor: CompressorConfig,
+        semantic_compressor: SemanticCompressorConfig,
+        tool_merge: ToolMergeConfig,
+        confirmation: ConfirmationConfig,
+        offload: ToolOffloadConfig,
         aggressive_output: AggressiveOutputConfig,
         standardized_output: StandardizedOutputConfig | None = None,
-        prompt_config: PromptConfig | None = None,
-        context_config=None,
+        prompt: PromptConfig | None = None,
+        context=None,
         llm=None,
         memory=None,
         llm_config=None,
         verbose: bool = False,
-        circuit_breaker_config=None,
+        circuit_breaker=None,
         result_validator=None,
         feedback_loop=None,
-        tool_resource_limiter_config=None,
+        tool_resource_limiter=None,
     ) -> "AgentSubsystems":
         """从配置对象创建所有子系统"""
         # Token budget
         if smart_optimization.budget_enabled:
-            token_budget_config = TokenBudgetConfig(
-                initial_budget=smart_optimization.initial_budget,
-                warning_thresholds=smart_optimization.budget_warning_thresholds,
-                warning_mode=smart_optimization.budget_warning_mode,
-                warning_interval=smart_optimization.budget_warning_interval,
-                force_summarize=smart_optimization.budget_force_summarize,
-                llm_summary_enabled=smart_optimization.budget_llm_summary_enabled,
-                llm_summary_max_tokens=smart_optimization.budget_llm_summary_max_tokens,
-                wrapup_enabled=smart_optimization.budget_wrapup_enabled,
-                wrapup_threshold=smart_optimization.budget_wrapup_threshold,
-                wrapup_free_round=smart_optimization.budget_wrapup_free_round,
-                wrapup_max_tokens=smart_optimization.budget_wrapup_max_tokens,
+            token_budget_config = TokenBudgetConfig.from_smart_optimization(
+                smart_optimization
             )
             token_budget = TokenBudget(token_budget_config)
         else:
@@ -208,20 +202,20 @@ class AgentSubsystems:
         )
 
         # Cache
-        cache = ToolResultCache(cache_config)
-        if cache_config and cache_config.warmup_on_restore and cache_config.persist:
-            cache.warmup_from_disk()
+        cache_obj = ToolResultCache(cache)
+        if cache and cache.warmup_on_restore and cache.persist:
+            cache_obj.warmup_from_disk()
 
         # Compressor
-        compressor = MessageCompressor(compressor_config)
+        compressor_obj = MessageCompressor(compressor)
 
         # Semantic compressor
-        semantic_compressor = SemanticCompressor(
-            semantic_compressor_config, llm_config=llm_config
+        semantic_compressor_obj = SemanticCompressor(
+            semantic_compressor, llm_config=llm_config
         )
 
         # Tool offload
-        offload_manager = ToolOffloadManager(offload_config)
+        offload_manager = ToolOffloadManager(offload)
 
         # Output simplifier
         output_simplifier = (
@@ -229,46 +223,46 @@ class AgentSubsystems:
         )
 
         # Confirmation
-        confirmation = ConfirmationManager(confirmation_config)
+        confirmation_obj = ConfirmationManager(confirmation)
 
         # Context manager
         context_manager = (
             ContextManager(
                 memory=memory,
                 llm=llm,
-                config=context_config,
+                config=context,
                 verbose=verbose,
                 llm_config=llm_config,
             )
-            if context_config
+            if context
             else None
         )
 
         # Circuit breaker
-        cb_config = circuit_breaker_config or getattr(
+        cb_config = circuit_breaker or getattr(
             smart_optimization, "circuit_breaker", None
         )
-        circuit_breaker = CircuitBreaker(cb_config) if cb_config else None
+        circuit_breaker_obj = CircuitBreaker(cb_config) if cb_config else None
 
         # Tool resource limiter (timeout + rate limit)
         timeout_wrapper = None
         rate_limiter = None
-        if tool_resource_limiter_config is not None:
+        if tool_resource_limiter is not None:
             from ..config.schema import ToolResourceLimiterConfig
 
             if (
-                isinstance(tool_resource_limiter_config, ToolResourceLimiterConfig)
-                and tool_resource_limiter_config.enabled
+                isinstance(tool_resource_limiter, ToolResourceLimiterConfig)
+                and tool_resource_limiter.enabled
             ):
-                if tool_resource_limiter_config.timeout_enabled:
+                if tool_resource_limiter.timeout_enabled:
                     timeout_wrapper = ToolTimeoutWrapper(
-                        default_timeout=tool_resource_limiter_config.default_timeout,
-                        timeout_overrides=tool_resource_limiter_config.timeout_overrides,
+                        default_timeout=tool_resource_limiter.default_timeout,
+                        timeout_overrides=tool_resource_limiter.timeout_overrides,
                     )
-                if tool_resource_limiter_config.rate_limit_enabled:
+                if tool_resource_limiter.rate_limit_enabled:
                     rate_limiter = ToolRateLimiter(
-                        per_tool_calls_per_minute=tool_resource_limiter_config.per_tool_calls_per_minute,
-                        global_calls_per_minute=tool_resource_limiter_config.global_calls_per_minute,
+                        per_tool_calls_per_minute=tool_resource_limiter.per_tool_calls_per_minute,
+                        global_calls_per_minute=tool_resource_limiter.global_calls_per_minute,
                     )
 
         return cls(
@@ -278,14 +272,14 @@ class AgentSubsystems:
             query_prejudgment=query_prejudgment,
             duplicate_detector=duplicate_detector,
             stall_detector=stall_detector,
-            cache=cache,
-            compressor=compressor,
-            semantic_compressor=semantic_compressor,
+            cache=cache_obj,
+            compressor=compressor_obj,
+            semantic_compressor=semantic_compressor_obj,
             offload_manager=offload_manager,
             output_simplifier=output_simplifier,
-            confirmation=confirmation,
+            confirmation=confirmation_obj,
             context_manager=context_manager,
-            circuit_breaker=circuit_breaker,
+            circuit_breaker=circuit_breaker_obj,
             result_validator=result_validator,
             feedback_loop=feedback_loop,
             timeout_wrapper=timeout_wrapper,
@@ -294,9 +288,9 @@ class AgentSubsystems:
             # Config references
             smart_optimization_config=smart_optimization,
             output_style_config=output_style,
-            tool_merge_config=tool_merge_config,
+            tool_merge_config=tool_merge,
             aggressive_output_config=aggressive_output,
             standardized_output_config=standardized_output,
-            offload_config=offload_config,
-            prompt_config=prompt_config,
+            offload_config=offload,
+            prompt_config=prompt,
         )

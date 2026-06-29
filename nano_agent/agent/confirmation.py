@@ -10,25 +10,14 @@ Design for evolution:
 - Can be wrapped by CLI or future independent agent
 """
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 import threading
 
 from .types import RiskLevel
+from ..config.schema import ConfirmationConfig
 
 if TYPE_CHECKING:
     from ..tools.base import BaseTool
-
-
-@dataclass
-class ConfirmationConfig:
-    """Configuration for confirmation behavior."""
-
-    enabled: bool = True
-    confirm_safe: bool = False
-    confirm_moderate: bool = False
-    confirm_dangerous: bool = True
-    whitelist: list[str] = field(default_factory=list)
 
 
 class ConfirmationManager:

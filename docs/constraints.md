@@ -446,7 +446,7 @@ output_guard:
 | `harmful_content_filter.replacement_text` | `"[Content removed for safety]"` | replace 动作的替换文本 |
 | `harmful_content_filter.custom_patterns` | `[]` | 用户自定义有害内容模式 |
 
-**HarmfulContentMiddleware**: priority=99，在工具执行边界（after phase）扫描工具输出，仅执行替换不拦截。低于 SensitiveOutputMiddleware（priority=100），确保敏感信息先被处理。
+**工具输出扫描**: `HarmfulContentFilter.scan_tool_output()` 在工具执行边界扫描输出，仅执行替换不拦截，防止有害内容通过工具结果间接进入上下文。
 
 **事件**: 拦截时触发 `AgentEvent.HARMFUL_CONTENT_DETECTED`（action="blocked"）和 `AgentEvent.OUTPUT_BLOCKED`（filter_type="harmful_content"），终止原因为 `TerminationReason.HARMFUL_CONTENT_BLOCKED`。
 

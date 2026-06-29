@@ -36,6 +36,7 @@ graph TB
         TRATE[ToolRateLimiter<br/>工具频率限制]
         SNAPMGR[SnapshotManager<br/>状态快照]
         CFD[ConsecutiveFailureDetector<br/>连续失败检测]
+        FILTUTIL[filter_utils<br/>过滤共享工具]
     end
 
     subgraph Core["核心组件"]
@@ -43,6 +44,8 @@ graph TB
         MEM[Memory<br/>ShortTerm/Hybrid/LongTerm]
         TOOLS[ToolRegistry<br/>工具注册表]
         SKILLS[SkillRegistry<br/>技能注册表]
+        CORETYPES[core/types<br/>共享类型 RiskLevel]
+        BUILDER[core/builder<br/>Agent Builder]
     end
 
     subgraph Storage["存储层"]
@@ -53,6 +56,7 @@ graph TB
     subgraph Monitoring["监控层"]
         TRACKER[MetricsTracker<br/>指标追踪]
         REPORTER[ReportGenerator<br/>报告生成]
+        AUDIT[EstimationAudit<br/>估算审计]
     end
 
     MAIN --> ORCH
@@ -60,14 +64,14 @@ graph TB
     MAIN --> PLAN
     ORCH --> REACT
     ORCH --> SAN
-    REACT --> CTX
+    REACT --> SUB
+    SUB --> CTX
     REACT --> CONFIRM
     REACT --> UNDO
     REACT --> GIT
     REACT --> STALL
     REACT --> CACHE
     REACT --> OFFLOAD
-    REACT --> AUDIT
     REACT --> SEMANTIC
     REACT --> RL
     REACT --> RETRY
@@ -87,6 +91,7 @@ graph TB
 
     REACT --> TRACKER
     TRACKER --> REPORTER
+    TRACKER --> AUDIT
 ```
 
 ### 层级说明
@@ -94,10 +99,10 @@ graph TB
 | 层级 | 职责 | 主要组件 |
 |------|------|----------|
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
-| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator`, `ToolTimeoutWrapper`, `ToolRateLimiter`, `SnapshotManager`, `ConsecutiveFailureDetector` |
-| **核心组件** | LLM 调用、记忆管理、工具/技能注册 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry` |
+| **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `AgentSubsystems`（门面）, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator`, `ToolTimeoutWrapper`, `ToolRateLimiter`, `SnapshotManager`, `ConsecutiveFailureDetector`, `filter_utils` |
+| **核心组件** | LLM 调用、记忆管理、工具/技能注册、共享类型 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry`, `core/types`（`RiskLevel`, `Plan`）, `core/builder`（`AgentBuilder`） |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
-| **监控层** | 执行追踪、报告生成 | `MetricsTracker`, `ReportGenerator` |
+| **监控层** | 执行追踪、报告生成、估算审计 | `MetricsTracker`, `ReportGenerator`, `EstimationAudit` |
 
 ---
 
@@ -120,13 +125,17 @@ classDiagram
         +tracker: MetricsTracker
         +events: EventEmitter
         +budget_checker: BudgetChecker
-        +context_manager: ContextManager
-        +confirmation: ConfirmationManager
+        +_subsystems: AgentSubsystems
         +_undo_stack: UndoStack
         +run(user_input) ExecutionResult
         +_think() ThinkResult
         +_act(tool_call) ToolResult
         +_observe(tool_call, result)
+        +_try_routing(user_input) tuple
+        +_try_prejudgment(user_input, routing_result) ExecutionResult
+        +_try_duplicate_skip(tool_call, dry_run) ToolResult
+        +_confirm_tool_execution(tool_call) ToolResult
+        +_try_rate_limit(tool_call) ToolResult
         +undo_current_round()
     }
 
@@ -276,6 +285,36 @@ classDiagram
         +consecutive_failure_detector: dict
     }
 
+    class AgentSubsystems {
+        +token_budget: TokenBudget
+        +query_router: QueryRouter
+        +confidence_parser: ConfidenceParser
+        +duplicate_detector: DuplicateDetector
+        +stall_detector: StallDetector
+        +cache: ToolResultCache
+        +compressor: MessageCompressor
+        +semantic_compressor: SemanticCompressor
+        +offload_manager: ToolOffloadManager
+        +output_simplifier: OutputSimplifier
+        +confirmation: ConfirmationManager
+        +context_manager: ContextManager
+        +circuit_breaker: CircuitBreaker
+        +result_validator: ResultValidator
+        +feedback_loop: FeedbackLoop
+        +timeout_wrapper: ToolTimeoutWrapper
+        +rate_limiter: ToolRateLimiter
+        +consecutive_failure_detector: ConsecutiveFailureDetector
+        +from_configs() AgentSubsystems
+        +from_defaults() AgentSubsystems
+    }
+
+    class RiskLevel {
+        <<enum from core/types>>
+        SAFE
+        MODERATE
+        DANGEROUS
+    }
+
     BaseAgent <|-- ReActAgent
     BaseLLM <|-- OllamaLLM
     BaseLLM <|-- OpenAICompatibleLLM
@@ -286,6 +325,7 @@ classDiagram
     ReActAgent --> BaseLLM
     ReActAgent --> BaseMemory
     ReActAgent --> ToolRegistry
+    ReActAgent --> AgentSubsystems
     HybridMemory --> ShortTermMemory
     HybridMemory --> LongTermMemory
     HybridMemory --> MemoryGC
@@ -402,6 +442,7 @@ flowchart TD
 graph LR
     subgraph cli[cli]
         main
+        config_display
         scanner
         plan_mode
     end
@@ -409,12 +450,14 @@ graph LR
     subgraph agent[agent]
         react
         orchestrator
+        subsystems
         context
         confirmation
         undo
         git_manager
         harmful_filter
         result_validator
+        filter_utils
         snapshot
         consecutive_failure_detector
     end
@@ -456,18 +499,26 @@ graph LR
 
     subgraph monitoring[monitoring]
         tracker
+        estimation_audit
         reporter
         logger
+    end
+
+    subgraph core[core]
+        types
+        builder
     end
 
     main --> react
     main --> config
     main --> skills
+    main --> config_display
 
     react --> llm
     react --> memory
     react --> tools
     react --> monitoring
+    react --> subsystems
 
     orchestrator --> react
     orchestrator --> skills
@@ -475,6 +526,7 @@ graph LR
     memory --> storage
 
     tools --> memory
+    tools --> core
 
     skills --> tools
 ```
@@ -485,17 +537,18 @@ graph LR
 
 | 模块 | 代码行数 | 文件数 | 主要文件 |
 |------|---------|--------|----------|
-| **cli** | 3,148 | 6 | `main.py` (2346行) - 交互式CLI入口 |
-| **agent** | 2,143 | 13 | `react.py` (505行), `context.py` (440行), `git_manager.py` (295行) |
+| **cli** | 3,766 | 7 | `main.py` (3348行) - 交互式CLI入口, `config_display.py` (418行) - 数据驱动配置渲染 |
+| **agent** | 2,143 | 16 | `react.py` (1535行), `context.py` (440行), `subsystems.py` (297行), `filter_utils.py`, `git_manager.py` (295行) |
 | **memory** | 1,996 | 13 | `sqlite_storage.py` (360行), `long_term.py` (458行), `hybrid.py` (292行), `gc.py` (138行) |
 | **tools** | 1,972 | 11 | `memory_tools.py` (421行), `plan_tools.py` (355行), `file_ops.py` (318行) |
-| **monitoring** | 819 | 5 | `tracker.py` (239行), `logger.py` (206行), `reporter.py` (205行) |
+| **monitoring** | 999 | 7 | `tracker.py` (239行), `estimation_audit.py` (180行), `logger.py` (206行), `reporter.py` (205行) |
 | **llm** | 694 | 5 | `openai_compatible.py` (192行), `ollama.py` (152行) |
 | **config** | 339 | 3 | `schema.py` (188行), `loader.py` (150行) |
 | **skills** | 334 | 3 | `loader.py` (189行), `base.py` (138行) |
 | **utils** | 72 | 3 | `patterns.py` (43行) |
+| **core** | 220 | 4 | `builder.py` (120行), `types.py` (59行) — 共享类型 (`RiskLevel`, `Plan`) 和 Agent Builder |
 
-**总计**: 11,530 行 / 64 文件
+**总计**: 12,750 行 / 71 文件
 
 ---
 
@@ -519,6 +572,23 @@ NanoAgent 采用"关键决策确认"模型，平衡用户控制与 LLM 自动化
 - **BaseAgent/BaseLLM/BaseMemory/BaseTool**: 使用 ABC 定义抽象基类
 - **Registry 模式**: `ToolRegistry` 和 `SkillRegistry` 集中管理扩展
 - **策略模式**: 存储后端可插拔 (`FileStorage` / `SQLiteStorage`)
+- **Facade 模式**: `AgentSubsystems` 门面将 20+ 子系统创建从 `ReActAgent.__init__` 中解耦，通过 `from_configs()` 工厂方法统一构建
+- **Builder 模式**: `AgentBuilder`（`core/builder.py`）提供流式接口组装 `AgentOrchestrator`
+
+### Guard Clause 模式
+
+`ReActAgent` 采用 guard clause 模式，将长方法中的前置条件检查提取为独立方法，提前返回降低嵌套层级：
+
+- **`_try_routing()`**: 规则路由，简单查询直接返回
+- **`_try_prejudgment()`**: LLM 预判，默认 COMPLEX 时才触发
+- **`_try_concise_simple()`**: 简洁模式问候语检测
+- **`_try_budget_wrapup()`**: 预算收尾轮
+- **`_try_budget_exhausted()`**: 预算耗尽强制总结
+- **`_try_duplicate_skip()`**: 重复工具调用跳过
+- **`_confirm_tool_execution()`**: 熔断/风险确认
+- **`_try_rate_limit()`**: 工具频率限制
+
+每个 guard 方法返回 `None` 表示继续，返回 `ExecutionResult`/`ToolResult` 表示提前终止。主流程仅用 `if result := guard(): return result` 一行处理。
 
 ### LLM 调用三层稳定性机制
 
@@ -614,7 +684,7 @@ OutputGuard 通过的响应
 - **输入输出+有害内容三层防护**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据不含敏感信息泄露，有害内容过滤器保护"出去"的数据不含危险内容
 - **默认关闭**: 有害内容的定义因使用场景而异，用户需显式启用并选择检测类别
 - **灵活动作**: 每个类别可独立配置 block/warn/replace，允许用户对低风险内容（如 illegal）仅警告
-- **工具输出也受保护**: HarmfulContentMiddleware（priority=99）在工具执行边界扫描输出，防止有害内容通过工具结果间接进入上下文
+- **工具输出也受保护**: `HarmfulContentFilter.scan_tool_output()` 在工具执行边界扫描输出，防止有害内容通过工具结果间接进入上下文
 
 **设计原则**：
 - **输入输出对称**: 输入净化器保护"进来"的数据，输出护栏保护"出去"的数据

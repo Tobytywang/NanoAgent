@@ -22,7 +22,6 @@ from .budget import Budget, BudgetChecker
 from .orchestrator import AgentOrchestrator, SessionStats
 from .context import ContextManager, NineSectionSummary
 from .confirmation import ConfirmationManager, ConfirmationConfig
-from .git_manager import GitManager, GitCommit
 from .token_utils import estimate_tokens, estimate_text_tokens
 from .token_budget import TokenBudget, TokenBudgetConfig
 from .router import QueryRouter, QueryComplexity, RoutingResult
@@ -32,49 +31,12 @@ from .output_simplifier import OutputSimplifier
 from .tool_offload import ToolOffloadManager, OffloadedResult
 from .semantic_compressor import SemanticCompressor, SemanticCompressorConfig
 from .subsystems import AgentSubsystems
-from .sanitizer import (
-    InputSanitizer,
-    SanitizerResult,
-    PIIDesensitizer,
-    PIIMatch,
-    summarize_pii_matches,
-    remove_overlapping,
-)
-from .output_guard import (
-    OutputGuard,
-    OutputGuardResult,
-    SensitiveMatch,
-    summarize_sensitive_matches,
-)
-from .harmful_filter import (
-    HarmfulContentFilter,
-    HarmfulFilterResult,
-    HarmfulMatch,
-    summarize_harmful_matches,
-)
-from .result_validator import (
-    ResultValidator,
-    ValidationResult,
-    ValidationCheck,
-    summarize_validation_checks,
-)
-from .feedback_loop import (
-    FeedbackLoop,
-    DeviationFeedbackResult,
-    SelfCorrectionResult,
-)
-from .snapshot import SnapshotManager, Snapshot, SnapshotMetadata, AuditLogEntry
-from .consecutive_failure_detector import (
-    ConsecutiveFailureDetector,
-    ConsecutiveFailureConfig,
-    ConsecutiveFailureResult,
-)
-from ..tools.resource_limiter import (
-    ToolTimeoutWrapper,
-    ToolRateLimiter,
-    RateLimitResult,
-    RateLimitType,
-)
+from .output_guard import OutputGuard, OutputGuardResult
+from .harmful_filter import HarmfulContentFilter, HarmfulFilterResult
+from .result_validator import ResultValidator, ValidationResult
+from .feedback_loop import FeedbackLoop, DeviationFeedbackResult, SelfCorrectionResult
+from .snapshot import SnapshotManager, Snapshot, SnapshotMetadata
+from .consecutive_failure_detector import ConsecutiveFailureDetector
 
 __all__ = [
     # Base
@@ -104,72 +66,47 @@ __all__ = [
     # Confirmation
     "ConfirmationManager",
     "ConfirmationConfig",
-    # Git integration
-    "GitManager",
-    "GitCommit",
     # Token estimation
     "estimate_tokens",
     "estimate_text_tokens",
-    # Token budget (v0.7.5)
+    # Token budget
     "TokenBudget",
     "TokenBudgetConfig",
-    # Query router (v0.7.5)
+    # Query router
     "QueryRouter",
     "QueryComplexity",
     "RoutingResult",
-    # Confidence parser (v0.7.5)
+    # Confidence parser
     "ConfidenceParser",
     "ConfidenceResult",
     "QueryPrejudgment",
     "PrejudgmentResult",
     "OutputSimplifier",
-    # Tool offloading (v0.7.17)
+    # Tool offloading
     "ToolOffloadManager",
     "OffloadedResult",
-    # Semantic compression (v0.7.19)
+    # Semantic compression
     "SemanticCompressor",
     "SemanticCompressorConfig",
-    # Subsystems facade (v0.7.20)
+    # Subsystems facade
     "AgentSubsystems",
-    # Input sanitizer (v0.8.3)
-    "InputSanitizer",
-    "SanitizerResult",
-    # PII desensitization (v0.8.4)
-    "PIIDesensitizer",
-    "PIIMatch",
-    "summarize_pii_matches",
-    "remove_overlapping",
-    # Output guard (v0.8.5)
+    # Output guard
     "OutputGuard",
     "OutputGuardResult",
-    "SensitiveMatch",
-    "summarize_sensitive_matches",
-    # Harmful content filter (v0.8.6)
+    # Harmful content filter
     "HarmfulContentFilter",
     "HarmfulFilterResult",
-    "HarmfulMatch",
-    "summarize_harmful_matches",
-    # Result validator (v0.8.7)
+    # Result validator
     "ResultValidator",
     "ValidationResult",
-    "ValidationCheck",
-    "summarize_validation_checks",
-    # Feedback loop (v0.8.9)
+    # Feedback loop
     "FeedbackLoop",
     "DeviationFeedbackResult",
     "SelfCorrectionResult",
-    # Tool resource limiter (v0.8.10)
-    "ToolTimeoutWrapper",
-    "ToolRateLimiter",
-    "RateLimitResult",
-    "RateLimitType",
-    # Snapshot (v0.8.14)
+    # Snapshot
     "SnapshotManager",
     "Snapshot",
     "SnapshotMetadata",
-    "AuditLogEntry",
-    # Consecutive failure detector (v0.8.15)
+    # Consecutive failure detector
     "ConsecutiveFailureDetector",
-    "ConsecutiveFailureConfig",
-    "ConsecutiveFailureResult",
 ]

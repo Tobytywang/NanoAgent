@@ -58,10 +58,9 @@ class OutputGuardResult:
 
 def summarize_sensitive_matches(matches: list[SensitiveMatch]) -> str:
     """Build a human-readable summary of sensitive match counts by type."""
-    type_counts: dict[str, int] = {}
-    for m in matches:
-        type_counts[m.sensitive_type] = type_counts.get(m.sensitive_type, 0) + 1
-    return ", ".join(f"{t}: {c}" for t, c in sorted(type_counts.items()))
+    from .filter_utils import summarize_by_field
+
+    return summarize_by_field(matches, "sensitive_type")
 
 
 class OutputGuard:
@@ -255,13 +254,15 @@ class OutputGuard:
         self, original: str, matches: list[SensitiveMatch], types: str
     ) -> None:
         """Emit OUTPUT_BLOCKED event if event emitter is available."""
-        if self._events:
-            self._events.emit(
-                AgentEvent.OUTPUT_BLOCKED,
-                {
-                    "reason": f"Sensitive data detected: {types}",
-                    "original_length": len(original),
-                    "match_count": len(matches),
-                    "match_types": types,
-                },
-            )
+        from .filter_utils import emit_blocked_event
+
+        emit_blocked_event(
+            self._events,
+            AgentEvent.OUTPUT_BLOCKED,
+            {
+                "reason": f"Sensitive data detected: {types}",
+                "original_length": len(original),
+                "match_count": len(matches),
+                "match_types": types,
+            },
+        )

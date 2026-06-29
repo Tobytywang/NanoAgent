@@ -70,6 +70,30 @@ class TokenBudgetConfig:
     wrapup_free_round: bool = True  # Wrap-up round doesn't consume budget
     wrapup_max_tokens: int = 2000  # Max tokens for wrap-up LLM call
 
+    @classmethod
+    def from_smart_optimization(cls, config) -> "TokenBudgetConfig":
+        """Create TokenBudgetConfig from SmartOptimizationConfig.
+
+        This eliminates the need for manual field mapping that caused
+        BUG-003 and BUG-005 (fields drifting between the two classes).
+        """
+        return cls(
+            initial_budget=config.initial_budget,
+            warning_thresholds=config.budget_warning_thresholds,
+            warning_mode=config.budget_warning_mode,
+            warning_interval=config.budget_warning_interval,
+            force_summarize=config.budget_force_summarize,
+            llm_summary_enabled=config.budget_llm_summary_enabled,
+            llm_summary_max_tokens=config.budget_llm_summary_max_tokens,
+            calibration_enabled=config.calibration_enabled,
+            calibration_window=config.calibration_window,
+            min_calibration_samples=config.min_calibration_samples,
+            wrapup_enabled=config.budget_wrapup_enabled,
+            wrapup_threshold=config.budget_wrapup_threshold,
+            wrapup_free_round=config.budget_wrapup_free_round,
+            wrapup_max_tokens=config.budget_wrapup_max_tokens,
+        )
+
 
 class TokenBudget:
     """

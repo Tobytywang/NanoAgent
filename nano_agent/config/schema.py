@@ -3,8 +3,6 @@ Configuration data structures.
 """
 
 from dataclasses import dataclass, field
-
-DEFAULT_MERGE_TAG = "[merged {n} similar]"
 from typing import Any, Literal
 
 # Default context lengths for common models (in tokens)
@@ -332,7 +330,7 @@ class SemanticCompressorConfig:
     base_url: str = "http://localhost:11434"
     api_key: str | None = None
     cache_embeddings: bool = True
-    merge_tag: str = DEFAULT_MERGE_TAG
+    merge_tag: str = "[merged {n} similar]"
 
 
 @dataclass
@@ -668,7 +666,7 @@ class MemoryGCConfig:
 
     # Dedup: enhanced merge on add()
     dedup_merge_enabled: bool = True
-    dedup_merge_tag: str = DEFAULT_MERGE_TAG
+    dedup_merge_tag: str = "[merged {n} similar]"
 
     # GC: lightweight cleanup at session start
     gc_enabled: bool = True

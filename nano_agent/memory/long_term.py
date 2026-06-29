@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Literal
 
 from .stopwords import ENGLISH_STOP_WORDS, CHINESE_STOP_WORDS
-from ..config.schema import DEFAULT_MERGE_TAG
 
 SECONDS_PER_DAY = 86400
 
@@ -182,7 +181,7 @@ class LongTermMemory:
             元组 (entry_id, is_new)，is_new 为 True 表示创建了新条目
         """
         if merge_tag is None:
-            merge_tag = DEFAULT_MERGE_TAG
+            merge_tag = "[merged {n} similar]"
 
         # 检查是否存在相似条目
         similar_entry = self._find_similar_entry(content, keywords, category, metadata)

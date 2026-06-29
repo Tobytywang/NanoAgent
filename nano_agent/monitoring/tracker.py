@@ -16,7 +16,7 @@ from .metrics import (
 )
 from .raw_data import RawLLMCallData, RawToolExecutionData
 from .token_analyzer import TokenAnalyzer
-from ..agent.estimation_audit import EstimationAudit, EstimationAuditConfig
+from .estimation_audit import EstimationAudit, EstimationAuditConfig
 
 
 class MetricsTracker:

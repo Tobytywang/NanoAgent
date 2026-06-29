@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..agent.types import RiskLevel
+    from ..core.types import RiskLevel
 
 
 @dataclass
@@ -32,7 +32,7 @@ class BaseTool(ABC):
 
     def __init__(self):
         # Import here to avoid circular import
-        from ..agent.types import RiskLevel
+        from ..core.types import RiskLevel
 
         if self.risk_level is None:
             self.risk_level = RiskLevel.MODERATE

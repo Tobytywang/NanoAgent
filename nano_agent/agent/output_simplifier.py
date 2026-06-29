@@ -3,7 +3,7 @@
 import re
 from typing import Optional
 
-from nano_agent.config.schema import AggressiveOutputConfig
+from ..config.schema import AggressiveOutputConfig
 
 
 class OutputSimplifier:
