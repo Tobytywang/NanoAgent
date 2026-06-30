@@ -2640,32 +2640,6 @@ nano_agent/__init__.py                  # v0.8.12
 
 ---
 
-### v0.8.11 - 工具沙箱隔离
-
-**目标**: 进程级隔离（可选，实现成本高）。
-
-**架构归属**: Runtime 层 - ToolGuard 工具防护 (P2)
-
-**任务列表**:
-- [ ] #17 工具沙箱隔离 (`nano_agent/tools/sandbox.py`) — 进程级隔离
-
----
-
-### v0.8.12 - 记忆衰减与去重 ✅
-
-**目标**: 对抗知识漂移。
-
-**背景**:
-Agent 管控体系审计发现 MemoryGC 记忆迭代层短时 FIFO 淘汰，长时只增不减。P2 优先级 — 存储爆炸 / 检索效率下降。
-
-**架构归属**: Runtime 层 - MemoryGC 记忆迭代 (P2)
-
-**任务列表**:
-- [x] #18 记忆衰减策略 (`nano_agent/memory/gc.py`) — 时间衰减权重，旧记忆自动降权
-- [x] #19 记忆去重/合并 (`nano_agent/memory/gc.py`) — 相同信息多次存储时自动合并
-
----
-
 ### v0.8.13 - 长时记忆淘汰 ✅
 
 **目标**: 防止长时记忆无限膨胀。
@@ -2932,7 +2906,84 @@ async def run_interactive_async(orchestrator, user_input):
 
 ---
 
-### v0.10.0 - 模式切换
+### v0.10.0 - 反思与规划能力
+
+**目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
+
+**背景**:
+ReAct 的 Think-Act-Observe 循环容易陷入死循环或偏离目标，缺少对执行质量的反思评估。反思与规划能力让 Agent 在执行后自我评估、调整策略，Plan-Execute 模式让复杂任务先规划再执行，是效果提升最大的智能层改进。
+
+**架构归属**: 执行层 - 推理增强
+
+**任务列表**:
+- [ ] 反思能力 - 执行后自我评估结果质量并调整策略
+- [ ] RCI (Reason-Call-Interact) 反思循环实现
+- [ ] Plan-Execute 模式增强 - 于反思优化计划
+
+**技术方案**:
+```python
+# 反思循环示例
+class ReflectiveAgent(ReActAgent):
+    def run_with_reflection(self, task: str) -> str:
+        # 1. 初始执行
+        result = self.run(task)
+
+        # 2. 反思评估
+        reflection = self.reflect(task, result)
+
+        # 3. 如果质量不足，调整策略重试
+        if reflection.needs_improvement:
+            result = self.run(task, strategy=reflection.suggested_strategy)
+
+        return result
+```
+
+---
+
+### v0.11.0 - 工具沙箱隔离
+
+**目标**: 进程级隔离（可选，实现成本高）。
+
+**背景**:
+`shell_execute`/`python_execute` 无隔离是真实安全风险，Agent 执行的代码可能破坏宿主环境。进程级隔离将工具执行放入独立沙箱，限制文件系统和网络访问。成本较高（进程管理复杂），P2 优先级合理。
+
+**架构归属**: Runtime 层 - ToolGuard 工具防护 (P2)
+
+**任务列表**:
+- [ ] #17 工具沙箱隔离 (`nano_agent/tools/sandbox.py`) — 进程级隔离
+
+---
+
+### v0.12.0 - 配置系统优化
+
+**目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
+
+**背景**:
+R1 重构已实现 `_show_config` 数据驱动化（`config_display.py`），但 `_init_config_file()` 仍需手动维护默认值。配置热重载尚未支持。
+
+**任务列表**:
+- [x] 配置自动显示 - `_show_config()` 数据驱动化（R1 已完成）
+- [ ] 配置自动保存 - `_init_config_file()` 自动生成所有配置字段
+- [ ] 配置热重载 - 运行时修改配置文件自动生效
+- [x] 条件显示支持 - 支持类似 `if config.memory.type == "hybrid"` 的条件逻辑（R1 已实现）
+- [x] 字段排序控制 - 支持自定义显示顺序（R1 已实现）
+
+**技术方案**:
+```python
+# 方案：使用 dataclass 字段元数据
+@dataclass
+class MemoryConfig:
+    max_messages: int = field(default=50, metadata={"display": True, "order": 1})
+    clean_threshold: int = field(default=3, metadata={"display": True, "order": 10})
+    long_term_storage_path: str = field(
+        default=".nano_agent/long_term_memory",
+        metadata={"display": True, "condition": "type == 'hybrid'"}
+    )
+```
+
+---
+
+### v0.13.0 - 模式切换
 
 **目标**: 支持在 Agent 会话中切换执行模式，提供更灵活的交互方式。
 
@@ -2966,79 +3017,47 @@ class ModeManager:
 
     def execute(self, command: str):
         if self.mode == ExecutionMode.SHELL:
-            # 直接执行 shell 命令
             return subprocess.run(command, shell=True)
         else:
-            # 通过 Agent 推理执行
             return self.agent.run(command)
 ```
 
 ---
 
-### v0.11.0 - 配置系统优化
+### v0.14.0 - 多 Agent 协作
 
-**目标**: 简化配置系统维护，新增配置项时自动同步显示和保存。
+**目标**: 支持多 Agent 协作和人机协作机制。
+
+**背景**:
+单 Agent 能力逐步稳定后，多 Agent 协作是下一个质变方向。通过编排框架实现 Agent 间通信和任务分解，支持并发执行、角色分工等协作模式。
 
 **任务列表**:
-- [ ] 配置自动显示 - `_show_config()` 自动遍历 config 对象字段
-- [ ] 配置自动保存 - `_init_config_file()` 自动生成所有配置字段
-- [ ] 条件显示支持 - 支持类似 `if config.memory.type == "hybrid"` 的条件逻辑
-- [ ] 字段排序控制 - 支持自定义显示顺序
+- [ ] 多 Agent 编排框架
+- [ ] Agent 间通信协议
+- [ ] 协作模式支持（并发、辩论、角色分工）
+- [ ] 人机协作接口 - 人类审批/干预点
+- [ ] 任务分解与分配
 
-**技术方案**:
-```python
-# 方案：使用 dataclass 字段元数据
-@dataclass
-class MemoryConfig:
-    max_messages: int = field(default=50, metadata={"display": True, "order": 1})
-    clean_threshold: int = field(default=3, metadata={"display": True, "order": 10})
-    long_term_storage_path: str = field(
-        default=".nano_agent/long_term_memory",
-        metadata={"display": True, "condition": "type == 'hybrid'"}
-    )
-
-# _show_config() 自动遍历
-def _show_config(config, agent):
-    for section_name, section_config in get_config_sections(config):
-        for field_name, field_value in get_display_fields(section_config):
-            if should_display(field_name, section_config):
-                print(format_line(field_name, field_value))
+**架构示例**:
+```
+┌─────────────────────────────────────┐
+│           Orchestrator              │
+├─────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐
+│  │ Agent A │  │ Agent B │  │ Agent C │
+│  │ Coder   │  │ Reviewer│  │ Tester  │
+│  └─────────┘  └─────────┘  └─────────┘
+└─────────────────────────────────────┘
 ```
 
 ---
 
-### v0.12.0 - 反思与规划能力
-
-**目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
-
-**任务列表**:
-- [ ] 反思能力 - 执行后自我评估结果质量并调整策略
-- [ ] RCI (Reason-Call-Interact) 反思循环实现
-- [ ] Plan-Execute 模式增强 - 于反思优化计划
-
-**技术方案**:
-```python
-# 反思循环示例
-class ReflectiveAgent(ReActAgent):
-    def run_with_reflection(self, task: str) -> str:
-        # 1. 初始执行
-        result = self.run(task)
-
-        # 2. 反思评估
-        reflection = self.reflect(task, result)
-
-        # 3. 如果质量不足，调整策略重试
-        if reflection.needs_improvement:
-            result = self.run(task, strategy=reflection.suggested_strategy)
-
-        return result
-```
-
----
-
-### v0.13.0 - 主动学习能力
+### v0.15.0 - 主动学习能力
 
 **目标**: Agent 能够主动从交互中提取知识、建立关联。
+
+**背景**:
+依赖长期记忆的质量。当前记忆系统刚完成 GC/淘汰机制，需要先跑一段时间验证稳定性，再构建上层的学习能力。
 
 **任务列表**:
 - [ ] 自动知识提取 - 从对话中识别重要信息
@@ -3063,9 +3082,12 @@ class LearningAgent(ReActAgent):
 
 ---
 
-### v0.14.0 - 个性化与角色
+### v0.16.0 - 个性化与角色
 
 **目标**: 支持可配置的 Agent 性格和专业领域深度。
+
+**背景**:
+锦上添花的特性，不影响核心能力。在 Agent 推理质量和执行体验稳定后，再提供个性化定制。
 
 **任务列表**:
 - [ ] 角色配置系统 - 定义 Agent 性格、语气、专业领域
@@ -3086,46 +3108,6 @@ persona:
     - web_development
   communication_style: "technical_but_friendly"
 ```
-
----
-
-### v0.15.0 - 多 Agent 协作
-
-**目标**: 支持多 Agent 协作和人机协作机制。
-
-**任务列表**:
-- [ ] 多 Agent 编排框架
-- [ ] Agent 间通信协议
-- [ ] 协作模式支持（并发、辩论、角色分工）
-- [ ] 人机协作接口 - 人类审批/干预点
-- [ ] 任务分解与分配
-
-**架构示例**:
-```
-┌─────────────────────────────────────┐
-│           Orchestrator              │
-├─────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐
-│  │ Agent A │  │ Agent B │  │ Agent C │
-│  │ Coder   │  │ Reviewer│  │ Tester  │
-│  └─────────┘  └─────────┘  └─────────┘
-└─────────────────────────────────────┘
-```
-
----
-
-### v0.16.0 - 安全与体验
-
-**目标**: 完善安全机制和用户体验。
-
-**任务列表**:
-- [ ] 安全审批机制 - 危险操作确认
-- [ ] 沙箱执行环境 - 隔离执行代码
-- [ ] Web UI - 更友好的交互界面
-- [ ] 流式输出优化 - 实时显示思考过程
-- [ ] 完善的权限控制
-
----
 
 ## 特性总览
 
@@ -3156,11 +3138,11 @@ persona:
 | v0.7.15 | 激进输出精简与工具输出标准化 ✅ | LLM 输出精简 + 工具结果结构化 |
 | v0.7.16 | 复杂度预算 Profile 与 Stall Detection ✅ | 小任务不浪费 + 无进展转向 |
 | v0.7.17 | 多轮缓存与 Tool Offloading ✅ | 跨轮次缓存 + 大结果 offload |
-| v0.7.18 | 估算审计与准确性增强 | 估算 vs 实际对比 + 估算准确性提升 |
-| v0.7.19 | 语义压缩 | 合并相似历史消息 |
-| v0.8.0 | 指数退避重试与熔断降级 | P0 — 429/500 自动退避 + 异常行为熔断降级 |
+| v0.7.18 | 估算审计与准确性增强 ✅ | 估算 vs 实际对比 + 估算准确性提升 |
+| v0.7.19 | 语义压缩 ✅ | 合并相似历史消息 |
+| v0.8.0 | 指数退避重试与熔断降级 ✅ | P0 — 429/500 自动退避 + 异常行为熔断降级 |
 | v0.8.1 | LLM API 限流器 ✅ | P0 — 调用频率限制，防止突发请求打爆 API |
-| v0.8.2 | 熔断器 (已合并到 v0.8.0) | P0 — 已在 v0.8.0 实现 |
+| v0.8.2 | 熔断器 (已合并到 v0.8.0) ✅ | P0 — 已在 v0.8.0 实现 |
 | v0.8.3 | 输入净化 ✅ | P1 — Prompt injection 过滤 + 输入校验 |
 | v0.8.4 | PII 脱敏 ✅ | P1 — 手机号/身份证/API key 等敏感信息自动脱敏 |
 | v0.8.5 | 输出护栏 ✅ | P1 — 敏感信息拦截 + 中间件规则扩充 |
@@ -3169,22 +3151,20 @@ persona:
 | v0.8.8 | Schema-based 校验 ✅ | P2 — StandardToolOutput.data 按格式 schema 校验 |
 | v0.8.9 | 反馈闭环 ✅ | P2 — 偏差信号回流 + 自纠正循环 |
 | v0.8.10 | 工具资源限制 ✅ | P2 — 执行超时 + 调用频率限制 |
-| v0.8.11 | 工具沙箱隔离 | P2 — 进程级隔离（可选） |
+| v0.8.11 | 工具沙箱隔离 (已移至 v0.11.0) | P2 — 进程级隔离（可选） |
 | v0.8.12 | 记忆衰减与去重 ✅ | P2 — 时间衰减权重 + 相同信息合并 |
 | v0.8.13 | 长时记忆淘汰 ✅ | P2 — 容量上限淘汰 + 保护类别 + 提及计数保护 |
 | v0.8.14 | 全局状态快照 ✅ | P3 — 一键保存/恢复 agent 完整状态 |
-| v0.8.15 | 审计回滚 | P3 — 审计-回滚关联 + 条件触发自动回滚 |
+| v0.8.15 | 审计回滚 ✅ | P3 — 审计-回滚关联 + 条件触发自动回滚 |
 | v0.9.0 | 流式执行 | ExecutionHandle、run_stream()、事件生成器 |
 | v0.9.1 | 异步流式执行 | 异步生成器、LLM 流式 API 对接 |
-| v0.10.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
-| v0.11.0 | 配置系统优化 | 自动显示/保存配置项 |
-| v0.12.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
-| v0.13.0 | 主动学习 | 知识提取、语义搜索 |
-| v0.14.0 | 个性化角色 | 可配置性格、专业领域 |
-| v0.15.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
-| v0.16.0 | 安全与体验 | 沙箱、Web UI、权限控制 |
-
----
+| v0.10.0 | 反思与规划能力 | RCI 反思循环、Plan-Execute 增强 |
+| v0.11.0 | 工具沙箱隔离 | P2 — 进程级隔离（可选，原 v0.8.11） |
+| v0.12.0 | 配置系统优化 | 自动显示/保存配置项 + 热重载 |
+| v0.13.0 | 模式切换 | Agent/Shell 模式切换，直接执行基础命令 |
+| v0.14.0 | 多 Agent 协作 | 编排框架、Agent 通信 |
+| v0.15.0 | 主动学习 | 知识提取、语义搜索 |
+| v0.16.0 | 个性化角色 | 可配置性格、专业领域 |
 
 ## 如何基于 NanoAgent 开发专用 Agent
 
