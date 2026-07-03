@@ -7,7 +7,7 @@ the orchestration layer and execution layer.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Generator
 
 from ..core.types import RiskLevel, Plan, PlanPhase  # noqa: F401
 
@@ -31,6 +31,7 @@ class TerminationReason(str, Enum):
     VALIDATION_FAILED = "validation_failed"
     SELF_CORRECTION_EXHAUSTED = "self_correction_exhausted"
     AUTO_ROLLBACK = "auto_rollback"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True)
@@ -69,17 +70,58 @@ class ThinkResult:
     can_answer: bool = True  # Whether LLM has enough info to answer definitively
 
 
+class ExecutionEventType(str, Enum):
+    """Discriminator for ExecutionEvent types in the streaming protocol."""
+
+    RUN_START = "run_start"
+    THINK_START = "think_start"
+    THINK_TEXT = "think_text"
+    THINK_END = "think_end"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    GUARD_SHORT_CIRCUIT = "guard_short_circuit"
+    RUN_END = "run_end"
+    CANCELLED = "cancelled"
+
+
 @dataclass
 class ExecutionEvent:
     """
     Execution event - the basic unit for streaming output.
 
-    Each event represents a discrete step in the execution process,
-    allowing external listeners to react to progress updates.
+    Each event represents a discrete step in the execution process.
+    Typed convenience fields are populated based on event type;
+    the data dict is kept for backward compatibility.
     """
 
-    type: str  # "run_start" / "think" / "tool_call" / "tool_result" / "end"
+    type: str
     data: dict
+    text_chunk: str | None = None
+    think_result: ThinkResult | None = None
+    tool_call: Any | None = None  # ToolCall
+    tool_result: Any | None = None  # ToolResult
+    result: ExecutionResult | None = None
+    guard_name: str | None = None
+
+
+@dataclass
+class ExecutionHandle:
+    """Execution handle - wraps a generator that yields ExecutionEvents."""
+
+    events: Generator[ExecutionEvent, None, ExecutionResult]
+    cancelled: bool = False
+
+    def cancel(self):
+        """Request cancellation of the running execution."""
+        self.cancelled = True
+
+    def collect_result(self) -> ExecutionResult | None:
+        """Consume all remaining events and return the final ExecutionResult."""
+        result = None
+        for event in self.events:
+            if event.type == ExecutionEventType.RUN_END and event.result is not None:
+                result = event.result
+        return result
 
 
 class ExecutionMode(Enum):
@@ -117,3 +159,7 @@ class AgentEvent(Enum):
     AUDIT_LOG_ENTRY = "audit_log_entry"
     AUTO_ROLLBACK_TRIGGERED = "auto_rollback_triggered"
     AUTO_ROLLBACK_COMPLETED = "auto_rollback_completed"
+    THINK_TEXT = "think_text"
+    THINK_END = "think_end"
+    GUARD_SHORT_CIRCUIT = "guard_short_circuit"
+    CANCELLED = "cancelled"

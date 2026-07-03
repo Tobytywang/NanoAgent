@@ -21,6 +21,7 @@ from ..memory import (
 from ..tools import ToolRegistry
 from ..tools.builtin import register_builtin_tools
 from ..agent import ReActAgent, AgentOrchestrator, AgentEvent, TerminationReason
+from ..agent.types import ExecutionEventType
 from ..agent.token_utils import estimate_text_tokens
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
@@ -1051,9 +1052,45 @@ def run_interactive(
             # 重置 Ctrl+C 计数
             GracefulExitManager.ctrl_c_count = 0
 
-            # Run agent through orchestrator
+            # Run agent through orchestrator (streaming)
             print(f"\n[{agent_display}]:")
-            result = orchestrator.run(user_input)
+            handle = orchestrator.run_stream(user_input)
+            result = None
+            try:
+                for event in handle.events:
+                    if event.type == ExecutionEventType.THINK_START:
+                        print("  [Thinking...]", end="", flush=True)
+                    elif event.type == ExecutionEventType.THINK_TEXT:
+                        if event.text_chunk:
+                            print(f"\r  {event.text_chunk[:200]}", flush=True)
+                    elif event.type == ExecutionEventType.THINK_END:
+                        if event.think_result and event.think_result.tool_calls:
+                            names = [tc.name for tc in event.think_result.tool_calls]
+                            print(f"  [Calling: {', '.join(names)}]")
+                    elif event.type == ExecutionEventType.TOOL_CALL:
+                        if event.tool_call:
+                            print(f"  [Tool] {event.tool_call.name}")
+                    elif event.type == ExecutionEventType.TOOL_RESULT:
+                        if event.tool_result:
+                            status = "ok" if event.tool_result.success else "fail"
+                            preview = (event.tool_result.output or "")[:80]
+                            print(f"  [Result:{status}] {preview}")
+                    elif event.type == ExecutionEventType.GUARD_SHORT_CIRCUIT:
+                        if event.guard_name:
+                            print(f"  [Guard: {event.guard_name}]")
+                    elif event.type == ExecutionEventType.CANCELLED:
+                        print("\n  [Cancelled]")
+                    elif event.type == ExecutionEventType.RUN_END:
+                        result = event.result
+            except KeyboardInterrupt:
+                handle.cancel()
+                # Drain remaining events to completion
+                try:
+                    for event in handle.events:
+                        if event.type == ExecutionEventType.RUN_END:
+                            result = event.result
+                except KeyboardInterrupt:
+                    pass
 
             # Process run result
             updated = _handle_run_result(

@@ -128,7 +128,9 @@ classDiagram
         +_subsystems: AgentSubsystems
         +_undo_stack: UndoStack
         +run(user_input) ExecutionResult
+        +run_stream(user_input) ExecutionHandle
         +_think() ThinkResult
+        +_think_stream() Generator
         +_act(tool_call) ToolResult
         +_observe(tool_call, result)
         +_try_routing(user_input) tuple
@@ -358,6 +360,7 @@ class ExecutionResult:
     tool_calls: list[dict]
     tokens_used: int
     session_id: str
+    termination_reason: str = "completed"
 
 @dataclass
 class LLMCallMetrics:
@@ -374,22 +377,59 @@ class LLMCallMetrics:
     output_text: str              # 输出文本
     tool_calls: list[dict]        # 工具调用列表
     tools_schema: list[dict]      # 工具定义 schema
+
+class ExecutionEventType(str, Enum):
+    """v0.9.0 流式执行事件类型"""
+    RUN_START = "run_start"
+    THINK_START = "think_start"
+    THINK_TEXT = "think_text"
+    THINK_END = "think_end"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    GUARD_SHORT_CIRCUIT = "guard_short_circuit"
+    RUN_END = "run_end"
+    CANCELLED = "cancelled"
+
+@dataclass
+class ExecutionEvent:
+    """v0.9.0 执行事件"""
+    type: str                              # ExecutionEventType
+    data: dict                             # 向后兼容数据
+    text_chunk: str | None = None          # THINK_TEXT
+    think_result: ThinkResult | None = None  # THINK_END
+    tool_call: Any | None = None           # TOOL_CALL
+    tool_result: Any | None = None         # TOOL_RESULT
+    result: ExecutionResult | None = None  # RUN_END / GUARD_SHORT_CIRCUIT
+    guard_name: str | None = None          # GUARD_SHORT_CIRCUIT
+
+@dataclass
+class ExecutionHandle:
+    """v0.9.0 执行句柄"""
+    events: Generator[ExecutionEvent, None, ExecutionResult]
+    cancelled: bool = False
+
+    def cancel(self):
+        self.cancelled = True
 ```
 
 ---
 
 ## 3. ReAct 循环数据流
 
+v0.9.0 起，执行流程改为流式架构：CLI → `orchestrator.run_stream()` → `agent.run_stream()` → `_think_stream()` → `llm.chat()`。每个阶段产出 `ExecutionEvent` 对象，调用方可实时观察执行进展。`run()` 是 `run_stream()` 的薄封装，内部消费事件流并收集最终 `ExecutionResult`。
+
 ```mermaid
 flowchart TD
     START([用户输入]) --> SANITIZE{输入净化<br/>InputSanitizer}
     SANITIZE -->|拒绝| REJECTED[INPUT_REJECTED<br/>返回拒绝原因]
     SANITIZE -->|通过| PREP[准备执行<br/>重置状态/添加用户消息]
-    PREP --> THINK
+    PREP --> STREAM_START["📡 RUN_START<br/>ExecutionEvent"]
 
-    subgraph Loop["ReAct 循环"]
-        THINK["🧠 Think<br/>调用 LLM 获取响应"]
-        THINK --> CHECK{有工具调用?}
+    subgraph Loop["ReAct 循环 (streaming)"]
+        THINK_START_EVENT["📡 THINK_START"] --> THINK["🧠 Think<br/>_think_stream() 调用 LLM"]
+        THINK --> THINK_TEXT["📡 THINK_TEXT<br/>流式文本片段"]
+        THINK_TEXT --> THINK_END_EVENT["📡 THINK_END<br/>ThinkResult"]
+        THINK_END_EVENT --> CHECK{有工具调用?}
         CHECK -->|否| FINAL[返回最终响应]
         CHECK -->|是| BUDGET{预算检查}
 
@@ -402,9 +442,11 @@ flowchart TD
         CONFIRM -->|否| ACT
 
         ACT["⚡ Act<br/>执行工具"]
-        ACT --> OBSERVE["👁️ Observe<br/>记录结果到记忆"]
-        OBSERVE --> OBSERVE_ERROR
-        OBSERVE_ERROR --> THINK
+        ACT --> TOOL_CALL_EVENT["📡 TOOL_CALL"]
+        TOOL_CALL_EVENT --> OBSERVE["👁️ Observe<br/>记录结果到记忆"]
+        OBSERVE --> TOOL_RESULT_EVENT["📡 TOOL_RESULT"]
+        TOOL_RESULT_EVENT --> OBSERVE_ERROR
+        OBSERVE_ERROR --> THINK_START_EVENT
     end
 
     FINAL --> BUILD[构建 ExecutionResult]
@@ -415,24 +457,36 @@ flowchart TD
     HFILTER -->|拦截| HARMFUL_BLOCKED[HARMFUL_CONTENT_BLOCKED<br/>返回拦截原因]
     HFILTER -->|替换/警告/通过| RVALIDATOR{结果验证<br/>ResultValidator}
     RVALIDATOR -->|拦截| VALIDATION_BLOCKED[VALIDATION_FAILED<br/>返回验证失败原因]
-    RVALIDATOR -->|标注/通过| END([返回响应])
+    RVALIDATOR -->|标注/通过| RUN_END_EVENT["📡 RUN_END<br/>ExecutionResult"]
 
     style THINK fill:#e1f5fe
     style ACT fill:#fff3e0
     style OBSERVE fill:#e8f5e9
+    style STREAM_START fill:#f3e5f5
+    style THINK_START_EVENT fill:#f3e5f5
+    style THINK_TEXT fill:#f3e5f5
+    style THINK_END_EVENT fill:#f3e5f5
+    style TOOL_CALL_EVENT fill:#f3e5f5
+    style TOOL_RESULT_EVENT fill:#f3e5f5
+    style RUN_END_EVENT fill:#f3e5f5
 ```
 
 ### 循环阶段说明
 
-| 阶段 | 方法 | 描述 |
-|------|------|------|
-| **净化** | `InputSanitizer.sanitize()` | 编排层硬门控，格式检查→注入检查→长度检查 |
-| **护栏** | `OutputGuard.guard()` | 编排层后门控，敏感检测→遮蔽/拦截/警告 |
-| **有害过滤** | `HarmfulContentFilter.filter()` | 编排层第二道防线，有害内容检测→拦截/替换/警告 |
-| **结果验证** | `ResultValidator.validate()` | 编排层第三道防线，验证声明正确性→拦截/警告/标注 |
-| **Think** | `_think()` | 调用 LLM，获取响应文本和工具调用 |
-| **Act** | `_act()` | 执行工具，支持确认机制和撤销追踪 |
-| **Observe** | `_observe()` | 将工具结果记录到记忆系统 |
+| 阶段 | 方法 | 事件类型 | 描述 |
+|------|------|---------|------|
+| **净化** | `InputSanitizer.sanitize()` | - | 编排层硬门控，格式检查→注入检查→长度检查 |
+| **护栏** | `OutputGuard.guard()` | - | 编排层后门控，敏感检测→遮蔽/拦截/警告 |
+| **有害过滤** | `HarmfulContentFilter.filter()` | - | 编排层第二道防线，有害内容检测→拦截/替换/警告 |
+| **结果验证** | `ResultValidator.validate()` | - | 编排层第三道防线，验证声明正确性→拦截/警告/标注 |
+| **Think Start** | `_think_stream()` 入口 | `THINK_START` | 上下文压缩、准备 LLM 调用 |
+| **Think Text** | `llm.chat()` 流式输出 | `THINK_TEXT` | LLM 逐 token 生成文本片段 |
+| **Think End** | `_think_stream()` 返回 | `THINK_END` | ThinkResult（文本 + 工具调用） |
+| **Act** | `_act()` | `TOOL_CALL` | 执行工具，支持确认机制和撤销追踪 |
+| **Observe** | `_observe()` | `TOOL_RESULT` | 将工具结果记录到记忆系统 |
+| **Guard 短路** | `_try_routing()` / `_try_prejudgment()` 等 | `GUARD_SHORT_CIRCUIT` | Guard clause 提前终止，携带 guard 名称和结果 |
+| **执行结束** | - | `RUN_END` | 携带最终 ExecutionResult |
+| **取消** | `ExecutionHandle.cancel()` | `CANCELLED` | 用户主动取消执行 |
 
 ---
 

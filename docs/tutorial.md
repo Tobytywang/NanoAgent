@@ -1146,13 +1146,72 @@ registry.register(FileWriteTool())
 # 不注册 shell_execute，限制系统命令执行
 ```
 
-### 10.3 流式响应
+### 10.3 流式执行
+
+v0.9.0 引入流式执行机制。`run_stream()` 返回 `ExecutionHandle`，通过事件生成器实时输出执行过程，允许调用方逐 token 观察 LLM 思考、工具调用和结果。
+
+**基本用法**：
 
 ```python
-# 流式获取响应
-for chunk in agent.run_stream("请写一个快速排序算法"):
-    print(chunk, end="", flush=True)
+from nano_agent.agent.types import ExecutionEventType, ExecutionHandle
+
+# 流式执行
+handle = agent.run_stream("请写一个快速排序算法")
+
+for event in handle.events:
+    if event.type == ExecutionEventType.THINK_TEXT and event.text_chunk:
+        # 逐 token 输出 LLM 思考文本
+        print(event.text_chunk, end="", flush=True)
+    elif event.type == ExecutionEventType.TOOL_CALL:
+        print(f"\n[调用工具] {event.tool_call}")
+    elif event.type == ExecutionEventType.TOOL_RESULT:
+        print(f"[工具结果] {event.tool_result}")
+    elif event.type == ExecutionEventType.RUN_END:
+        # 执行完成，获取最终结果
+        print(f"\n完成: {event.result.response}")
 ```
+
+**取消执行**：
+
+```python
+handle = agent.run_stream("长时间运行的任务")
+
+# 在另一个线程或回调中取消
+handle.cancel()
+
+# 事件流中会出现 CANCELLED 事件
+for event in handle.events:
+    if event.type == ExecutionEventType.CANCELLED:
+        print("执行已取消")
+        break
+```
+
+**Guard 短路检测**：
+
+当 guard clause（路由、预判等）提前终止执行时，会产出 `GUARD_SHORT_CIRCUIT` 事件：
+
+```python
+for event in handle.events:
+    if event.type == ExecutionEventType.GUARD_SHORT_CIRCUIT:
+        print(f"被 {event.guard_name} 提前终止")
+        print(f"结果: {event.result.response}")
+```
+
+**事件类型一览**：
+
+| 事件类型 | 说明 | 关键字段 |
+|---------|------|---------|
+| `RUN_START` | 执行开始 | `data.input` |
+| `THINK_START` | Think 阶段开始 | `data.iteration` |
+| `THINK_TEXT` | LLM 流式文本片段 | `text_chunk` |
+| `THINK_END` | Think 阶段结束 | `think_result` |
+| `TOOL_CALL` | 工具调用 | `tool_call` |
+| `TOOL_RESULT` | 工具执行结果 | `tool_result` |
+| `GUARD_SHORT_CIRCUIT` | Guard 提前终止 | `guard_name`, `result` |
+| `RUN_END` | 执行结束 | `result` |
+| `CANCELLED` | 执行被取消 | - |
+
+> **注意**: `run()` 现在是 `run_stream()` 的薄封装，内部消费事件流并返回最终 `ExecutionResult`。如需实时观察执行过程，请使用 `run_stream()`。
 
 ### 10.4 错误处理
 

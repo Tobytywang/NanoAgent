@@ -7,6 +7,7 @@ from unittest.mock import Mock, MagicMock
 
 from nano_agent.agent.base import BaseAgent
 from nano_agent.agent.react import ReActAgent
+from nano_agent.agent.types import ExecutionEventType
 from nano_agent.agent.prompts import REACT_SYSTEM_PROMPT, TOOL_DESCRIPTION_TEMPLATE
 from nano_agent.llm.base import LLMUsage
 from nano_agent.llm.messages import ToolCall
@@ -223,7 +224,7 @@ class TestReActAgentStreaming:
     """Tests for ReActAgent streaming functionality."""
 
     def test_run_stream_basic(self):
-        """Test basic streaming functionality."""
+        """Test basic streaming — final answer with no tool calls."""
         llm = Mock()
         llm.chat = Mock(return_value=("Hello! How can I help?", [], LLMUsage()))
 
@@ -235,10 +236,28 @@ class TestReActAgentStreaming:
         )
 
         # Use a non-simple input to avoid being routed to direct answer
-        chunks = list(agent.run_stream("Please tell me about Python programming"))
+        handle = agent.run_stream("Please tell me about Python programming")
+        events = list(handle.events)
 
-        assert len(chunks) == 1
-        assert chunks[0] == "Hello! How can I help?"
+        # Should have: RUN_START, THINK_START, THINK_TEXT, THINK_END, RUN_END
+        event_types = [e.type for e in events]
+        assert ExecutionEventType.RUN_START in event_types
+        assert ExecutionEventType.THINK_START in event_types
+        assert ExecutionEventType.THINK_END in event_types
+        assert ExecutionEventType.RUN_END in event_types
+
+        # Final result should match
+        result = next(
+            (
+                e.result
+                for e in events
+                if e.type == ExecutionEventType.RUN_END and e.result
+            ),
+            None,
+        )
+        assert result is not None
+        assert result.success
+        assert "Hello! How can I help?" in result.response
 
     def test_run_stream_with_tool_calls(self):
         """Test streaming with tool calls."""
@@ -260,10 +279,25 @@ class TestReActAgentStreaming:
             llm=llm, memory=memory, tool_registry=registry, verbose=False
         )
 
-        chunks = list(agent.run_stream("Process test"))
+        handle = agent.run_stream("Process test")
+        events = list(handle.events)
 
-        assert len(chunks) == 1
-        assert "Processed: test" in chunks[0]
+        # Should have TOOL_CALL and TOOL_RESULT events
+        event_types = [e.type for e in events]
+        assert ExecutionEventType.TOOL_CALL in event_types
+        assert ExecutionEventType.TOOL_RESULT in event_types
+
+        # Final result should include processed output
+        result = next(
+            (
+                e.result
+                for e in events
+                if e.type == ExecutionEventType.RUN_END and e.result
+            ),
+            None,
+        )
+        assert result is not None
+        assert "Processed: test" in result.response
 
 
 class TestReActAgentWithSkillPrompt:

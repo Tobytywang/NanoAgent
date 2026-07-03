@@ -75,13 +75,32 @@ ReActAgent(
 
 #### 方法
 
-##### `run(user_input: str) -> str`
+##### `run(user_input: str, dry_run=False, session_id="") -> ExecutionResult`
 
-运行 Agent 处理用户输入。
+运行 Agent 处理用户输入（同步）。内部使用 `run_stream()` 并收集最终结果。
 
 ```python
 response = agent.run("帮我创建一个 hello.txt 文件")
 ```
+
+##### `run_stream(user_input: str, dry_run=False, session_id="") -> ExecutionHandle`
+
+v0.9.0 流式执行。返回 `ExecutionHandle`，通过事件生成器实时输出执行过程，允许调用方观察每个阶段的进展。
+
+```python
+handle = agent.run_stream("帮我创建一个 hello.txt 文件")
+for event in handle.events:
+    if event.type == ExecutionEventType.THINK_TEXT and event.text_chunk:
+        print(event.text_chunk, end="", flush=True)
+    elif event.type == ExecutionEventType.TOOL_CALL:
+        print(f"\n[Tool] {event.tool_call}")
+    elif event.type == ExecutionEventType.TOOL_RESULT:
+        print(f"[Result] {event.tool_result}")
+    elif event.type == ExecutionEventType.RUN_END:
+        print(f"\nDone: {event.result}")
+```
+
+> **注意**: `run()` 现在是 `run_stream()` 的薄封装——内部调用 `run_stream()` 并消费事件生成器以收集最终 `ExecutionResult`。
 
 ##### `reset()`
 
@@ -105,6 +124,37 @@ class MyTool(BaseTool):
 
 agent.add_tool(MyTool())
 ```
+
+### AgentOrchestrator
+
+编排层，管理 ReAct 循环外的输入净化、输出护栏、有害内容过滤、结果验证等管线，以及快照和自动回滚。
+
+```python
+from nano_agent.agent.orchestrator import AgentOrchestrator
+```
+
+#### 方法
+
+##### `orchestrator.run(user_input: str, dry_run=False) -> ExecutionResult`
+
+执行用户输入（同步）。内部调用 `run_stream()` 并收集最终结果。
+
+```python
+result = orchestrator.run("帮我创建一个 hello.txt 文件")
+```
+
+##### `orchestrator.run_stream(user_input: str, dry_run=False) -> ExecutionHandle`
+
+v0.9.0 流式执行。返回 `ExecutionHandle`，事件流包含 Agent 内部事件和编排层后处理事件（OutputGuard、HarmfulContentFilter、ResultValidator）。
+
+```python
+handle = orchestrator.run_stream("帮我创建一个 hello.txt 文件")
+for event in handle.events:
+    if event.type == ExecutionEventType.RUN_END:
+        print(f"Result: {event.result}")
+```
+
+> **注意**: `run()` 是 `run_stream()` 的薄封装。
 
 ### AgentSubsystems
 
@@ -1336,6 +1386,92 @@ budget.set_budget_ratio(0.15, 100000)
 # budget.remaining → 15000
 ```
 
+### ExecutionEventType 枚举
+
+v0.9.0 流式执行事件类型判别器。每个 `ExecutionEvent` 的 `type` 字段使用此枚举值。
+
+```python
+from nano_agent.agent.types import ExecutionEventType
+
+class ExecutionEventType(str, Enum):
+    RUN_START = "run_start"            # 执行开始
+    THINK_START = "think_start"        # Think 阶段开始
+    THINK_TEXT = "think_text"          # LLM 流式文本片段
+    THINK_END = "think_end"            # Think 阶段结束
+    TOOL_CALL = "tool_call"            # 工具调用
+    TOOL_RESULT = "tool_result"        # 工具执行结果
+    GUARD_SHORT_CIRCUIT = "guard_short_circuit"  # Guard clause 提前终止
+    RUN_END = "run_end"                # 执行结束
+    CANCELLED = "cancelled"            # 执行被取消
+```
+
+### ExecutionEvent 数据类
+
+v0.9.0 执行事件——流式输出的基本单元。每个事件代表执行过程中的一个离散步骤。类型化便捷字段根据事件类型填充；`data` 字典保留用于向后兼容。
+
+```python
+from nano_agent.agent.types import ExecutionEvent
+
+@dataclass
+class ExecutionEvent:
+    type: str                              # ExecutionEventType 枚举值
+    data: dict                             # 事件数据（向后兼容）
+    text_chunk: str | None = None          # THINK_TEXT: LLM 流式文本片段
+    think_result: ThinkResult | None = None  # THINK_END: Think 阶段完整结果
+    tool_call: Any | None = None           # TOOL_CALL: ToolCall 对象
+    tool_result: Any | None = None         # TOOL_RESULT: ToolResult 对象
+    result: ExecutionResult | None = None  # RUN_END / GUARD_SHORT_CIRCUIT: 最终结果
+    guard_name: str | None = None          # GUARD_SHORT_CIRCUIT: 触发提前终止的 guard 名称
+```
+
+**事件类型与字段对应关系**:
+
+| 事件类型 | `text_chunk` | `think_result` | `tool_call` | `tool_result` | `result` | `guard_name` |
+|----------|-------------|----------------|-------------|---------------|----------|-------------|
+| `RUN_START` | - | - | - | - | - | - |
+| `THINK_START` | - | - | - | - | - | - |
+| `THINK_TEXT` | LLM 文本片段 | - | - | - | - | - |
+| `THINK_END` | - | ThinkResult | - | - | - | - |
+| `TOOL_CALL` | - | - | ToolCall | - | - | - |
+| `TOOL_RESULT` | - | - | - | ToolResult | - | - |
+| `GUARD_SHORT_CIRCUIT` | - | - | - | - | ExecutionResult | guard 名称 |
+| `RUN_END` | - | - | - | - | ExecutionResult | - |
+| `CANCELLED` | - | - | - | - | - | - |
+
+### ExecutionHandle 数据类
+
+v0.9.0 执行句柄——包装事件生成器，提供取消能力。
+
+```python
+from nano_agent.agent.types import ExecutionHandle
+
+@dataclass
+class ExecutionHandle:
+    events: Generator[ExecutionEvent, None, ExecutionResult]  # 事件生成器
+    cancelled: bool = False  # 是否已请求取消
+
+    def cancel(self):
+        """请求取消正在执行的流式任务。"""
+        self.cancelled = True
+```
+
+**使用模式**:
+
+```python
+handle = agent.run_stream("分析这段代码")
+
+# 消费事件流
+for event in handle.events:
+    if handle.cancelled:
+        break
+    # 处理事件...
+
+# 主动取消（例如用户中断）
+handle.cancel()
+```
+
+**生成器返回值**: `handle.events` 的生成器返回值为 `ExecutionResult`，可通过 `yield from` 或 `for` 循环后的返回值获取。
+
 ### AgentEvent 枚举
 
 ```python
@@ -1362,6 +1498,10 @@ class AgentEvent(Enum):
     AUDIT_LOG_ENTRY = "audit_log_entry"                  # v0.8.15
     AUTO_ROLLBACK_TRIGGERED = "auto_rollback_triggered"  # v0.8.15
     AUTO_ROLLBACK_COMPLETED = "auto_rollback_completed"  # v0.8.15
+    THINK_TEXT = "think_text"                            # v0.9.0
+    THINK_END = "think_end"                              # v0.9.0
+    GUARD_SHORT_CIRCUIT = "guard_short_circuit"          # v0.9.0
+    CANCELLED = "cancelled"                              # v0.9.0
 ```
 
 ### TerminationReason 枚举
@@ -2290,6 +2430,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.9.0 | 流式执行（`ExecutionEventType`、`ExecutionEvent`、`ExecutionHandle`、`ReActAgent.run_stream`、`AgentOrchestrator.run_stream`、`_think_stream`、`THINK_TEXT`/`THINK_END`/`GUARD_SHORT_CIRCUIT`/`CANCELLED` 事件、`run()` 改为 `run_stream()` 薄封装） |
 | v0.8.15 | 审计日志与自动回滚（`AuditLogEntry`、`ConsecutiveFailureDetector`、`ConsecutiveFailureConfig`、`ConsecutiveFailureResult`、`SnapshotConfig` 新增审计/回滚字段、`SnapshotManager.list_audit_entries`/`rollback_from_audit`/`attempt_auto_rollback`、`ReActAgent.get_failure_result`、`SNAPSHOT_DELETED`/`AUDIT_LOG_ENTRY`/`AUTO_ROLLBACK_TRIGGERED`/`AUTO_ROLLBACK_COMPLETED` 事件、`TerminationReason.AUTO_ROLLBACK`、CLI `/snapshot audit`/`/snapshot rollback <audit_id>`） |
 | v0.8.14 | 全局状态快照（`SnapshotConfig`、`SnapshotManager`、`Snapshot`、`SnapshotMetadata`、`SNAPSHOT_SAVED`/`SNAPSHOT_RESTORED` 事件、CLI `/snapshot` 命令、原位恢复、auto_snapshot） |
 | v0.8.12 | 记忆衰减与去重（`MemoryGCConfig`、`MemoryGC`、`GCResult`、`compute_decay_weight`、`compute_age_days`、`DEFAULT_MERGE_TAG`、`SECONDS_PER_DAY`、`LongTermEntry.mention_count/last_mentioned_at`、增强合并、衰减搜索、会话启动 GC） |

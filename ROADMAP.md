@@ -2747,7 +2747,7 @@ snapshot:
 
 ---
 
-### v0.9.0 - 流式执行
+### v0.9.0 - 流式执行 ✅
 
 **目标**: 实现流式输出，让用户实时看到执行过程。
 
@@ -2757,12 +2757,12 @@ snapshot:
 **架构归属**: 执行层 - 流式输出
 
 **任务列表**:
-- [ ] 定义 `ExecutionHandle` 类 - 执行句柄，封装生成器
-- [ ] 定义 `ExecutionEvent` 类型扩展 - stream/text/tool_call/tool_result/end
-- [ ] 实现 `run_stream()` 方法 - 返回生成器，逐事件 yield
-- [ ] 重构 `run()` 方法 - 内部调用 `run_stream()`，返回最终结果
-- [ ] 编排层流式处理 - 逐事件更新 UI、记录统计
-- [ ] 中断支持 - 用户可随时中断执行
+- [x] 定义 `ExecutionHandle` 类 - 执行句柄，封装生成器
+- [x] 定义 `ExecutionEvent` 类型扩展 - stream/text/tool_call/tool_result/end
+- [x] 实现 `run_stream()` 方法 - 返回生成器，逐事件 yield
+- [x] 重构 `run()` 方法 - 内部调用 `run_stream()`，返回最终结果
+- [x] 编排层流式处理 - 逐事件更新 UI、记录统计
+- [x] 中断支持 - 用户可随时中断执行
 
 **技术方案**:
 ```python

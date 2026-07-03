@@ -24,6 +24,9 @@ from .types import (
     AgentEvent,
     TerminationReason,
     ExecutionMode,
+    ExecutionEvent,
+    ExecutionEventType,
+    ExecutionHandle,
 )
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
@@ -34,6 +37,7 @@ from .duplicate import DuplicateCheckResult
 from .tool_merger import ToolCallMerger
 from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from .prompt_builder import PromptBuilder
+from .token_utils import estimate_tokens, calculate_max_chars
 from ..llm.messages import ToolCall
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
@@ -279,7 +283,9 @@ class ReActAgent(BaseAgent):
         self, user_input: str, dry_run: bool = False, session_id: str = ""
     ) -> ExecutionResult:
         """
-        Run the ReAct loop to process user input.
+        Run the ReAct loop to process user input (synchronous).
+
+        Internally uses run_stream() and collects the final result.
 
         Args:
             user_input: The user's input text
@@ -289,160 +295,288 @@ class ReActAgent(BaseAgent):
         Returns:
             ExecutionResult containing response and execution metadata
         """
-        # Prepare execution
-        self._prepare_run(user_input, session_id)
+        handle = self.run_stream(user_input, dry_run, session_id)
+        result = handle.collect_result()
+        return result or self._build_result(
+            "No result produced.",
+            0,
+            success=False,
+            termination_reason=TerminationReason.COMPLETED.value,
+        )
 
-        # Phase 1: Rule-based routing (QueryRouter, zero cost)
-        early_result, routing_result = self._try_routing(user_input)
-        if early_result:
-            return early_result
+    def run_stream(
+        self, user_input: str, dry_run: bool = False, session_id: str = ""
+    ) -> ExecutionHandle:
+        """
+        Stream the ReAct loop execution via events.
 
-        # Phase 2: LLM-based prejudgment (only when router defaulted to COMPLEX)
-        if result := self._try_prejudgment(user_input, routing_result):
-            return result
+        Yields ExecutionEvent objects for each phase of execution,
+        allowing callers to observe progress in real-time.
 
-        # Concise mode simple question check
-        if result := self._try_concise_simple(user_input):
-            return result
+        Args:
+            user_input: The user's input text
+            dry_run: If True, tools are not actually executed
+            session_id: Session identifier for tracking
 
-        iteration = 0
-        tool_calls_in_round = 0  # Track tool calls for routing limits
+        Returns:
+            ExecutionHandle wrapping an event generator
+        """
 
-        while iteration < self.max_iterations:
-            iteration += 1
+        def event_generator():
+            # Prepare execution
+            self._prepare_run(user_input, session_id)
+            yield ExecutionEvent(type=ExecutionEventType.RUN_START, data={})
 
-            # Budget check
-            if not self.budget_checker.can_continue(
-                iteration, self._total_tokens, len(self._tool_call_records)
-            ):
-                break
+            # Guard clauses — routing, prejudgment, concise_simple
+            early_result, routing_result = self._try_routing(user_input)
+            if early_result:
+                yield from self._guard_exit("routing", early_result)
+                return early_result
 
-            # Token budget: progressive warnings
-            if self.token_budget is not None:
-                warning = self.token_budget.check_warning(iteration)
-                if warning:
-                    self._handle_budget_warning(warning)
+            early_result = self._try_prejudgment(user_input, routing_result)
+            if early_result:
+                yield from self._guard_exit("prejudgment", early_result)
+                return early_result
 
-                # Guard: budget wrap-up
-                if result := self._try_budget_wrapup(iteration):
-                    return result
+            early_result = self._try_concise_simple(user_input)
+            if early_result:
+                yield from self._guard_exit("concise_simple", early_result)
+                return early_result
 
-                # Guard: budget exhausted
-                if result := self._try_budget_exhausted(iteration):
-                    return result
+            iteration = 0
+            tool_calls_in_round = 0
 
-            self.tracker.start_iteration(iteration)
+            while iteration < self.max_iterations:
+                iteration += 1
 
-            if self.verbose:
-                print(f"\n[Iteration {iteration}/{self.max_iterations}]")
-
-            # Think phase
-            think = self._think()
-
-            # Circuit breaker: check LLM response size (v0.8.0)
-            if self.circuit_breaker and self.circuit_breaker.check_llm_response(
-                think.usage.completion_tokens
-            ):
-                self._log_circuit_breaker_trigger()
-
-            # Confidence-based early stop (v0.7.5)
-            if self.confidence_parser is not None and think.is_final:
-                should_stop, conf_result = self.confidence_parser.should_stop_early(
-                    think.response_text
-                )
-                if should_stop:
-                    if self.verbose:
-                        print(f"[Confidence] Early stop: {conf_result.confidence:.2f}")
-                    self.tracker.end_iteration()
-                    self.tracker.end_run(conf_result.cleaned_response)
-                    return self._build_result(
-                        conf_result.cleaned_response,
+                if handle.cancelled:
+                    result = self._build_result(
+                        "Cancelled by user.",
                         iteration,
-                        success=True,
-                        termination_reason=TerminationReason.CONFIDENCE_EARLY_STOP.value,
+                        success=False,
+                        termination_reason=TerminationReason.CANCELLED.value,
                     )
+                    yield ExecutionEvent(type=ExecutionEventType.CANCELLED, data={})
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.RUN_END, data={}, result=result
+                    )
+                    return result
 
-            if think.is_final:
-                self.tracker.end_iteration()
-                self.tracker.end_run(think.response_text)
-                return self._build_result(
-                    think.response_text,
-                    iteration,
-                    success=True,
-                    termination_reason=TerminationReason.COMPLETED.value,
-                )
+                # Budget check
+                if not self.budget_checker.can_continue(
+                    iteration, self._total_tokens, len(self._tool_call_records)
+                ):
+                    break
 
-            # Merge similar tool calls for token efficiency
-            merged_tool_calls = self._merge_tool_calls(think.tool_calls)
+                if self.token_budget is not None:
+                    warning = self.token_budget.check_warning(iteration)
+                    if warning:
+                        self._handle_budget_warning(warning)
 
-            # Act and Observe phases
-            for tool_call in merged_tool_calls:
-                # Check routing limit (v0.7.5)
-                if self._routing_max_tools >= 0:
-                    if tool_calls_in_round >= self._routing_max_tools:
+                    early_result = self._try_budget_wrapup(iteration)
+                    if early_result:
+                        yield from self._guard_exit("budget_wrapup", early_result)
+                        return early_result
+
+                    early_result = self._try_budget_exhausted(iteration)
+                    if early_result:
+                        yield from self._guard_exit("budget_exhausted", early_result)
+                        return early_result
+
+                self.tracker.start_iteration(iteration)
+
+                if self.verbose:
+                    print(f"\n[Iteration {iteration}/{self.max_iterations}]")
+
+                # Consume _think_stream() events and extract return value
+                think = None
+                gen = self._think_stream()
+                while True:
+                    try:
+                        think_event = next(gen)
+                        yield think_event
+                    except StopIteration as e:
+                        think = e.value
+                        break
+
+                # Circuit breaker: check LLM response size (v0.8.0)
+                if self.circuit_breaker and self.circuit_breaker.check_llm_response(
+                    think.usage.completion_tokens
+                ):
+                    self._log_circuit_breaker_trigger()
+
+                # Confidence-based early stop (v0.7.5)
+                if self.confidence_parser is not None and think.is_final:
+                    should_stop, conf_result = self.confidence_parser.should_stop_early(
+                        think.response_text
+                    )
+                    if should_stop:
                         if self.verbose:
                             print(
-                                f"[Router] Reached max tools limit: {self._routing_max_tools}"
+                                f"[Confidence] Early stop: {conf_result.confidence:.2f}"
                             )
-                        # Record all remaining tool calls as skipped
-                        remaining_calls = merged_tool_calls[
-                            merged_tool_calls.index(tool_call) :
-                        ]
-                        for skipped_call in remaining_calls:
-                            self.tracker.record_skipped_tool_call(
-                                skipped_call.name,
-                                skipped_call.arguments,
-                                "routing_limit",
-                            )
-                        # Force summarize with current info
-                        response = self._force_summarize()
-                        self.tracker.end_run(response)
-                        return self._build_result(
-                            response,
+                        self.tracker.end_iteration()
+                        self.tracker.end_run(conf_result.cleaned_response)
+                        result = self._build_result(
+                            conf_result.cleaned_response,
                             iteration,
                             success=True,
-                            termination_reason=TerminationReason.ROUTING_LIMIT.value,
+                            termination_reason=TerminationReason.CONFIDENCE_EARLY_STOP.value,
                         )
+                        yield ExecutionEvent(
+                            type=ExecutionEventType.RUN_END,
+                            data={},
+                            result=result,
+                        )
+                        return result
 
-                result = self._act(tool_call, dry_run)
-                self._observe(tool_call, result)
-                tool_calls_in_round += 1
-
-            # Consecutive failure check (v0.8.15)
-            if self._subsystems.consecutive_failure_detector.config.enabled:
-                failure_result = self._subsystems.consecutive_failure_detector.check()
-                if failure_result.triggered:
-                    self.events.emit(
-                        AgentEvent.AUTO_ROLLBACK_TRIGGERED,
-                        {
-                            "consecutive_failures": failure_result.consecutive_failures,
-                            "last_tool": failure_result.last_tool_name,
-                        },
+                if think.is_final:
+                    self.tracker.end_iteration()
+                    self.tracker.end_run(think.response_text)
+                    result = self._build_result(
+                        think.response_text,
+                        iteration,
+                        success=True,
+                        termination_reason=TerminationReason.COMPLETED.value,
                     )
-                    return self._build_result(
-                        response="Auto-rollback triggered: consecutive tool failures.",
-                        iterations=iteration,
-                        success=False,
-                        termination_reason=TerminationReason.AUTO_ROLLBACK.value,
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.RUN_END,
+                        data={},
+                        result=result,
                     )
+                    return result
 
-            # Update token budget once per iteration (not per tool call)
-            if self.token_budget is not None:
-                self.token_budget.consume(think.usage.total_tokens)
+                # Merge similar tool calls for token efficiency
+                merged_tool_calls = self._merge_tool_calls(think.tool_calls)
 
-            self.tracker.end_iteration()
+                # Act and Observe phases
+                for tool_call in merged_tool_calls:
+                    # Cancellation check per tool call
+                    if handle.cancelled:
+                        result = self._build_result(
+                            "Cancelled by user.",
+                            iteration,
+                            success=False,
+                            termination_reason=TerminationReason.CANCELLED.value,
+                        )
+                        yield ExecutionEvent(type=ExecutionEventType.CANCELLED, data={})
+                        yield ExecutionEvent(
+                            type=ExecutionEventType.RUN_END,
+                            data={},
+                            result=result,
+                        )
+                        return result
 
-            # Stall detection
-            self._check_stall(merged_tool_calls, iteration)
+                    # Check routing limit (v0.7.5)
+                    if self._routing_max_tools >= 0:
+                        if tool_calls_in_round >= self._routing_max_tools:
+                            if self.verbose:
+                                print(
+                                    f"[Router] Reached max tools limit: {self._routing_max_tools}"
+                                )
+                            remaining_calls = merged_tool_calls[
+                                merged_tool_calls.index(tool_call) :
+                            ]
+                            for skipped_call in remaining_calls:
+                                self.tracker.record_skipped_tool_call(
+                                    skipped_call.name,
+                                    skipped_call.arguments,
+                                    "routing_limit",
+                                )
+                            response = self._force_summarize()
+                            self.tracker.end_run(response)
+                            result = self._build_result(
+                                response,
+                                iteration,
+                                success=True,
+                                termination_reason=TerminationReason.ROUTING_LIMIT.value,
+                            )
+                            yield ExecutionEvent(
+                                type=ExecutionEventType.RUN_END,
+                                data={},
+                                result=result,
+                            )
+                            return result
 
-        # Reached max iterations or budget exhausted
-        response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
-        self.tracker.end_run(response)
-        return self._build_result(
-            response,
-            iteration,
-            success=False,
-            termination_reason=TerminationReason.MAX_ITERATIONS.value,
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.TOOL_CALL,
+                        data={},
+                        tool_call=tool_call,
+                    )
+                    act_result = self._act(tool_call, dry_run)
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.TOOL_RESULT,
+                        data={},
+                        tool_result=act_result,
+                    )
+                    self._observe(tool_call, act_result)
+                    tool_calls_in_round += 1
+
+                # Consecutive failure check (v0.8.15)
+                if self._subsystems.consecutive_failure_detector.config.enabled:
+                    failure_result = (
+                        self._subsystems.consecutive_failure_detector.check()
+                    )
+                    if failure_result.triggered:
+                        self.events.emit(
+                            AgentEvent.AUTO_ROLLBACK_TRIGGERED,
+                            {
+                                "consecutive_failures": failure_result.consecutive_failures,
+                                "last_tool": failure_result.last_tool_name,
+                            },
+                        )
+                        result = self._build_result(
+                            response="Auto-rollback triggered: consecutive tool failures.",
+                            iterations=iteration,
+                            success=False,
+                            termination_reason=TerminationReason.AUTO_ROLLBACK.value,
+                        )
+                        yield ExecutionEvent(
+                            type=ExecutionEventType.RUN_END,
+                            data={},
+                            result=result,
+                        )
+                        return result
+
+                # Update token budget once per iteration (not per tool call)
+                if self.token_budget is not None:
+                    self.token_budget.consume(think.usage.total_tokens)
+
+                self.tracker.end_iteration()
+
+                # Stall detection
+                self._check_stall(merged_tool_calls, iteration)
+
+            # Reached max iterations or budget exhausted
+            response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
+            self.tracker.end_run(response)
+            result = self._build_result(
+                response,
+                iteration,
+                success=False,
+                termination_reason=TerminationReason.MAX_ITERATIONS.value,
+            )
+            yield ExecutionEvent(
+                type=ExecutionEventType.RUN_END,
+                data={},
+                result=result,
+            )
+            return result
+
+        handle = ExecutionHandle(events=event_generator())
+        return handle
+
+    def _guard_exit(
+        self, guard_name: str, early_result: ExecutionResult
+    ) -> Generator[ExecutionEvent, None, None]:
+        """Yield GUARD_SHORT_CIRCUIT + RUN_END events for a guard short-circuit."""
+        yield ExecutionEvent(
+            type=ExecutionEventType.GUARD_SHORT_CIRCUIT,
+            data={},
+            guard_name=guard_name,
+        )
+        yield ExecutionEvent(
+            type=ExecutionEventType.RUN_END, data={}, result=early_result
         )
 
     def _try_routing(
@@ -695,14 +829,31 @@ class ReActAgent(BaseAgent):
 
     def _think(self) -> ThinkResult:
         """
-        Think phase: Call LLM and get response.
+        Think phase: Call LLM and get response (non-streaming).
+
+        Delegates to _think_stream() and collects the result.
+        """
+        gen = self._think_stream()
+        try:
+            while True:
+                next(gen)
+        except StopIteration as e:
+            return e.value
+
+    def _think_stream(self) -> Generator[ExecutionEvent, None, ThinkResult]:
+        """
+        Think phase yielding streaming events. Returns ThinkResult via generator return.
+
+        Yields:
+            THINK_START, THINK_TEXT, THINK_END events
 
         Returns:
-            ThinkResult containing response text and any tool calls
+            ThinkResult (via generator return value)
         """
         self.events.emit(
             AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1}
         )
+        yield ExecutionEvent(type=ExecutionEventType.THINK_START, data={})
 
         # v0.7.12: Context pressure check using real tokens from previous iteration
         # v0.7.13: Pass calibration factor for more accurate estimation
@@ -775,8 +926,6 @@ class ReActAgent(BaseAgent):
         if usage.prompt_tokens > 0:
             self._last_prompt_tokens = usage.prompt_tokens
 
-            from .token_utils import estimate_tokens
-
             estimated_prompt_tokens = estimate_tokens(messages)
             self.token_budget.record_calibration_data(
                 estimated=estimated_prompt_tokens, actual=usage.prompt_tokens
@@ -841,12 +990,28 @@ class ReActAgent(BaseAgent):
                 response_text, tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
-        return ThinkResult(
+        think_result = ThinkResult(
             response_text=response_text,
             tool_calls=tool_calls or [],
             usage=usage,
             is_final=not tool_calls,
         )
+
+        # Yield streaming events
+        if response_text:
+            yield ExecutionEvent(
+                type=ExecutionEventType.THINK_TEXT,
+                data={},
+                text_chunk=response_text,
+            )
+
+        yield ExecutionEvent(
+            type=ExecutionEventType.THINK_END,
+            data={},
+            think_result=think_result,
+        )
+
+        return think_result
 
     def _merge_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolCall]:
         """
@@ -869,9 +1034,7 @@ class ReActAgent(BaseAgent):
             return tool_calls
 
         merger = ToolCallMerger(self.tool_merge_config)
-        merged = merger.analyze_and_merge(tool_calls)
-
-        return merged
+        return merger.analyze_and_merge(tool_calls)
 
     def _try_duplicate_skip(
         self, tool_call: ToolCall, dry_run: bool
@@ -1185,8 +1348,6 @@ class ReActAgent(BaseAgent):
             max_tokens = self.smart_optimization_config.tool_processor_max_output_tokens
         else:
             max_tokens = self.output_style_config.tool_output_max_tokens
-        from .token_utils import calculate_max_chars
-
         max_chars = calculate_max_chars(result_content, max_tokens)
         if len(result_content) > max_chars:
             result_content = result_content[:max_chars] + "\n... [输出已截断]"
@@ -1404,22 +1565,6 @@ class ReActAgent(BaseAgent):
             session_id=self._session_id,
             termination_reason=termination_reason,
         )
-
-    def run_stream(self, user_input: str) -> Generator[str, None, None]:
-        """
-        Stream the response (simplified version).
-
-        For now, this runs the full loop and yields the final result.
-        True streaming with tool calls requires more complex handling.
-
-        Args:
-            user_input: The user's input text
-
-        Yields:
-            Text chunks from the response
-        """
-        result = self.run(user_input)
-        yield result.response
 
     def _execute_tool_call(self, tool_call: ToolCall) -> ToolResult:
         """

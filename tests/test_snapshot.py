@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from nano_agent import __version__
 from nano_agent.agent.snapshot import (
     Snapshot,
     SnapshotMetadata,
@@ -124,7 +125,7 @@ class TestSnapshotMetadata:
         assert m2.name == m.name
         assert m2.round_counter == m.round_counter
         assert m2.total_tokens == m.total_tokens
-        assert m2.version == "0.8.15"
+        assert m2.version == __version__
 
     def test_from_dict_missing_optional_fields(self):
         d = {

@@ -364,6 +364,8 @@ SECTIONS: list[SectionSpec] = [
                   formatter=lambda v: f"{v} 天",
                   condition=lambda o: o.decay_enabled),
         FieldSpec("dedup_merge_enabled", "去重合并:"),
+        FieldSpec("dedup_merge_tag", "合并标签:",
+                  condition=lambda o: o.dedup_merge_enabled),
         FieldSpec("gc_enabled", "GC 启用:"),
         FieldSpec("gc_threshold", "GC 阈值:", condition=lambda o: o.gc_enabled),
         FieldSpec("gc_min_age_days", "GC 最小年龄:",
