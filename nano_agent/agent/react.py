@@ -1148,23 +1148,10 @@ class ReActAgent(BaseAgent):
         except StopIteration as e:
             return e.value
 
-    def _think_stream(self) -> Generator[ExecutionEvent, None, ThinkResult]:
-        """
-        Think phase yielding streaming events. Returns ThinkResult via generator return.
-
-        Yields:
-            THINK_START, THINK_TEXT, THINK_END events
-
-        Returns:
-            ThinkResult (via generator return value)
-        """
-        self.events.emit(
-            AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1}
-        )
-        yield ExecutionEvent(type=ExecutionEventType.THINK_START, data={})
-
-        # v0.7.12: Context pressure check using real tokens from previous iteration
-        # v0.7.13: Pass calibration factor for more accurate estimation
+    def _prepare_think_context(
+        self,
+    ) -> tuple[list, list | None, str | None]:
+        """Prepare messages, tools schema, and prefix-caching setup for a think phase."""
         calibration_factor = self.token_budget.get_calibration_factor()
         if self.context_manager:
             self.context_manager.check_and_compress(
@@ -1172,11 +1159,8 @@ class ReActAgent(BaseAgent):
                 calibration_factor=calibration_factor,
             )
 
-        # Get context and tools
         messages = self.memory.get_all()
 
-        # v0.7.12: Apply message compression using real tokens from previous iteration
-        # v0.7.13: Pass calibration factor
         if self.compressor.should_compress(
             messages,
             last_prompt_tokens=self._last_prompt_tokens,
@@ -1193,7 +1177,6 @@ class ReActAgent(BaseAgent):
                     f"[Compressor] Reduced {original_count} messages to {len(messages)}"
                 )
 
-        # v0.7.19: Semantic compression (second pass, after rule-based compression)
         if self.semantic_compressor.should_compress(messages):
             original_count = len(messages)
             messages = self.semantic_compressor.compress(messages)
@@ -1205,7 +1188,6 @@ class ReActAgent(BaseAgent):
 
         tools_schema = self.tool_registry.get_all_schemas()
 
-        # Prefix caching support (v0.7.7)
         system_stable = None
         if self.prompt_config.enable_caching and self._stable_system_prompt:
             system_stable = self._stable_system_prompt
@@ -1214,39 +1196,40 @@ class ReActAgent(BaseAgent):
                     f"[Caching] Using stable system prompt ({len(system_stable)} chars)"
                 )
 
-        # Call LLM
-        llm_start = time.perf_counter()
-        response_text, tool_calls, usage = self.llm.chat(
-            messages=messages,
-            tools=tools_schema if tools_schema else None,
-            system_stable=system_stable,
-        )
+        return messages, tools_schema if tools_schema else None, system_stable
+
+    def _finalize_think_result(
+        self,
+        response_text: str,
+        tool_calls: list,
+        usage: LLMUsage,
+        llm_start: float,
+        messages: list,
+        tools_schema: list | None,
+    ) -> ThinkResult:
+        """Post-process LLM response: record metrics, handle deviations, update memory."""
+        if usage is None:
+            usage = LLMUsage()
         llm_latency = (time.perf_counter() - llm_start) * 1000
 
-        # Report cache hit if available (Anthropic)
         if usage.cache_read_tokens > 0 and self.verbose:
             print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
 
-        # v0.7.12: Store real prompt_tokens for next iteration's decision
-        # v0.7.13: Record calibration data (actual vs estimated)
-        # v0.7.18: Compute estimated before RawLLMCallData
         estimated_prompt_tokens = 0
         if usage.prompt_tokens > 0:
             self._last_prompt_tokens = usage.prompt_tokens
-
             estimated_prompt_tokens = estimate_tokens(messages)
             self.token_budget.record_calibration_data(
                 estimated=estimated_prompt_tokens, actual=usage.prompt_tokens
             )
 
-        # Record LLM call with raw data (decoupled API, v0.7.18: include estimation fields)
         self.tracker.record_raw_llm_call(
             RawLLMCallData(
                 llm=self.llm,
                 messages=messages,
                 tools_schema=tools_schema,
                 response_text=response_text,
-                tool_calls=tool_calls,  # Pass raw ToolCall objects
+                tool_calls=tool_calls,
                 usage=usage,
                 latency_ms=llm_latency,
                 estimated_tokens=estimated_prompt_tokens,
@@ -1254,10 +1237,8 @@ class ReActAgent(BaseAgent):
             )
         )
 
-        # Update token count
         self._total_tokens += usage.total_tokens
 
-        # v0.7.18: Structured deviation logging (replaces temporary verbose print)
         if usage.prompt_tokens > 0 and estimated_prompt_tokens > 0:
             deviation_pct = abs(usage.prompt_tokens - estimated_prompt_tokens) / max(
                 estimated_prompt_tokens, 1
@@ -1273,7 +1254,6 @@ class ReActAgent(BaseAgent):
                     f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
                 )
 
-        # Deviation feedback — check if hint should be injected
         if self._subsystems.feedback_loop is not None and usage.prompt_tokens > 0:
             audit_result = self.tracker.estimation_audit.get_latest_result()
             if audit_result is not None:
@@ -1288,24 +1268,38 @@ class ReActAgent(BaseAgent):
                             f"({feedback_result.deviation_pct:.0%}), hint injected"
                         )
 
-        # Verbose output
         if self.verbose and response_text:
             print(f"[Think] {safe_str(response_text[:200])}...")
 
-        # Add assistant message to memory if there are tool calls
         if tool_calls:
             self.memory.add_assistant_message(
                 response_text, tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
-        think_result = ThinkResult(
+        return ThinkResult(
             response_text=response_text,
             tool_calls=tool_calls or [],
             usage=usage,
             is_final=not tool_calls,
         )
 
-        # Yield streaming events
+    def _think_stream(self) -> Generator[ExecutionEvent, None, ThinkResult]:
+        self.events.emit(
+            AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1}
+        )
+        yield ExecutionEvent(type=ExecutionEventType.THINK_START, data={})
+
+        messages, tools, system_stable = self._prepare_think_context()
+
+        llm_start = time.perf_counter()
+        response_text, tool_calls, usage = self.llm.chat(
+            messages=messages, tools=tools, system_stable=system_stable
+        )
+
+        think_result = self._finalize_think_result(
+            response_text, tool_calls, usage, llm_start, messages, tools
+        )
+
         if response_text:
             yield ExecutionEvent(
                 type=ExecutionEventType.THINK_TEXT,
@@ -1324,76 +1318,20 @@ class ReActAgent(BaseAgent):
     async def _think_stream_async(
         self,
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """
-        Async think phase yielding streaming events token by token.
-
-        Unlike _think_stream() which calls self.llm.chat() (blocking),
-        this method calls self.llm.chat_stream_async() for true token-by-token output.
-
-        Yields:
-            THINK_START, THINK_TEXT (per token), THINK_END events
-        """
         self.events.emit(
             AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1}
         )
         yield ExecutionEvent(type=ExecutionEventType.THINK_START, data={})
 
-        calibration_factor = self.token_budget.get_calibration_factor()
-        if self.context_manager:
-            self.context_manager.check_and_compress(
-                last_prompt_tokens=self._last_prompt_tokens,
-                calibration_factor=calibration_factor,
-            )
+        messages, tools, system_stable = self._prepare_think_context()
 
-        # Get context and tools
-        messages = self.memory.get_all()
-
-        if self.compressor.should_compress(
-            messages,
-            last_prompt_tokens=self._last_prompt_tokens,
-            calibration_factor=calibration_factor,
-        ):
-            original_count = len(messages)
-            messages = self.compressor.compress(
-                messages,
-                last_prompt_tokens=self._last_prompt_tokens,
-                calibration_factor=calibration_factor,
-            )
-            if self.verbose and len(messages) < original_count:
-                print(
-                    f"[Compressor] Reduced {original_count} messages to {len(messages)}"
-                )
-
-        if self.semantic_compressor.should_compress(messages):
-            original_count = len(messages)
-            messages = self.semantic_compressor.compress(messages)
-            if self.verbose and len(messages) < original_count:
-                print(
-                    f"[SemanticCompressor] Merged similar messages: "
-                    f"{original_count} -> {len(messages)}"
-                )
-
-        tools_schema = self.tool_registry.get_all_schemas()
-
-        # Prefix caching support
-        system_stable = None
-        if self.prompt_config.enable_caching and self._stable_system_prompt:
-            system_stable = self._stable_system_prompt
-            if self.verbose:
-                print(
-                    f"[Caching] Using stable system prompt ({len(system_stable)} chars)"
-                )
-
-        # Stream LLM response token by token
         llm_start = time.perf_counter()
         text_parts: list[str] = []
         tool_calls = []
         usage = None
 
         async for chunk in self.llm.chat_stream_async(
-            messages=messages,
-            tools=tools_schema if tools_schema else None,
-            system_stable=system_stable,
+            messages=messages, tools=tools, system_stable=system_stable
         ):
             if chunk.text:
                 text_parts.append(chunk.text)
@@ -1409,90 +1347,10 @@ class ReActAgent(BaseAgent):
             if chunk.usage is not None:
                 usage = chunk.usage
 
-        llm_latency = (time.perf_counter() - llm_start) * 1000
         full_text = "".join(text_parts)
 
-        # Fallback usage if not provided in stream
-        if usage is None:
-            usage = LLMUsage()
-
-        # Report cache hit if available
-        if usage.cache_read_tokens > 0 and self.verbose:
-            print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
-
-        # Store real prompt_tokens for next iteration
-        estimated_prompt_tokens = 0
-        if usage.prompt_tokens > 0:
-            self._last_prompt_tokens = usage.prompt_tokens
-            estimated_prompt_tokens = estimate_tokens(messages)
-            self.token_budget.record_calibration_data(
-                estimated=estimated_prompt_tokens, actual=usage.prompt_tokens
-            )
-
-        # Record LLM call with raw data
-        self.tracker.record_raw_llm_call(
-            RawLLMCallData(
-                llm=self.llm,
-                messages=messages,
-                tools_schema=tools_schema,
-                response_text=full_text,
-                tool_calls=tool_calls,
-                usage=usage,
-                latency_ms=llm_latency,
-                estimated_tokens=estimated_prompt_tokens,
-                calibration_factor=self.token_budget.get_calibration_factor(),
-            )
-        )
-
-        # Update token count
-        self._total_tokens += usage.total_tokens
-
-        # Deviation logging
-        if usage.prompt_tokens > 0 and estimated_prompt_tokens > 0:
-            deviation_pct = abs(usage.prompt_tokens - estimated_prompt_tokens) / max(
-                estimated_prompt_tokens, 1
-            )
-            if deviation_pct > 0.50 and self.verbose:
-                print(
-                    f"[Estimation] WARNING: Deviation {deviation_pct:.0%} "
-                    f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
-                )
-            elif deviation_pct > 0.10 and self.verbose:
-                print(
-                    f"[Estimation] Deviation: {deviation_pct:.0%} "
-                    f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
-                )
-
-        # Deviation feedback
-        if self._subsystems.feedback_loop is not None and usage.prompt_tokens > 0:
-            audit_result = self.tracker.estimation_audit.get_latest_result()
-            if audit_result is not None:
-                feedback_result = self._subsystems.feedback_loop.check_deviation(
-                    audit_result
-                )
-                if feedback_result.should_inject and feedback_result.hint:
-                    self.memory.add_user_message(f"[System] {feedback_result.hint}")
-                    if self.verbose:
-                        print(
-                            f"[DeviationFeedback] {feedback_result.direction} "
-                            f"({feedback_result.deviation_pct:.0%}), hint injected"
-                        )
-
-        # Verbose output
-        if self.verbose and full_text:
-            print(f"[Think] {safe_str(full_text[:200])}...")
-
-        # Add assistant message to memory if there are tool calls
-        if tool_calls:
-            self.memory.add_assistant_message(
-                full_text, tool_calls=[tc.to_dict() for tc in tool_calls]
-            )
-
-        think_result = ThinkResult(
-            response_text=full_text,
-            tool_calls=tool_calls or [],
-            usage=usage,
-            is_final=not tool_calls,
+        think_result = self._finalize_think_result(
+            full_text, tool_calls, usage, llm_start, messages, tools
         )
 
         yield ExecutionEvent(

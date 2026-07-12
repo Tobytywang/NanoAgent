@@ -1264,6 +1264,8 @@ safe_text = safe_str(response_text)
 > **注意**: `run_async()` 是 `run_stream_async()` 的薄封装。
 > 
 > 异步模式下的工具确认可通过 `ExecutionMode` 控制执行权限（`ExecutionMode.SUPERVISED` 需用户确认，`ExecutionMode.AUTONOMOUS` 自动执行）。
+> 
+> Think 阶段的上下文准备（消息压缩、工具 schema 缓存）和后处理（指标追踪、偏差反馈）在同步和异步路径间共享，通过 `_prepare_think_context()` 和 `_finalize_think_result()` 实现。
 
 ### 10.4 错误处理
 

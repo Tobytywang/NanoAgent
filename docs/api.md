@@ -2544,6 +2544,8 @@ enabled: true
 
 - `safe_str(text)` — 安全地将字符串转为可打印格式，移除无效 Unicode 字符（`utils.strings`）
 - `ExecutionMode` — 执行模式枚举（`SUPERVISED`/`AUTONOMOUS`）
+- `_prepare_think_context()` — 准备 Think 阶段上下文（压缩消息、获取工具 schema、设置缓存）
+- `_finalize_think_result()` — 后处理 LLM 响应（记录指标、偏差检测、反馈注入、记忆更新）
 
 ## 版本历史
 
