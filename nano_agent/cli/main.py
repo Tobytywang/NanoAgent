@@ -1120,27 +1120,33 @@ def run_interactive(
             try:
                 for event in handle.events:
                     if event.type == ExecutionEventType.THINK_START:
-                        print("  [Thinking...]", end="", flush=True)
+                        if agent.verbose:
+                            print("  [Thinking...]", end="", flush=True)
                     elif event.type == ExecutionEventType.THINK_TEXT:
-                        if event.text_chunk:
+                        if agent.verbose and event.text_chunk:
                             print(f"\r  {event.text_chunk[:200]}", flush=True)
                     elif event.type == ExecutionEventType.THINK_END:
-                        if event.think_result and event.think_result.tool_calls:
+                        if (
+                            agent.verbose
+                            and event.think_result
+                            and event.think_result.tool_calls
+                        ):
                             names = [tc.name for tc in event.think_result.tool_calls]
                             print(f"  [Calling: {', '.join(names)}]")
                     elif event.type == ExecutionEventType.TOOL_CALL:
-                        if event.tool_call:
+                        if agent.verbose and event.tool_call:
                             print(f"  [Tool] {event.tool_call.name}")
                     elif event.type == ExecutionEventType.TOOL_RESULT:
-                        if event.tool_result:
+                        if agent.verbose and event.tool_result:
                             status = "ok" if event.tool_result.success else "fail"
                             preview = (event.tool_result.output or "")[:80]
                             print(f"  [Result:{status}] {preview}")
                     elif event.type == ExecutionEventType.GUARD_SHORT_CIRCUIT:
-                        if event.guard_name:
+                        if agent.verbose and event.guard_name:
                             print(f"  [Guard: {event.guard_name}]")
                     elif event.type == ExecutionEventType.CANCELLED:
-                        print("\n  [Cancelled]")
+                        if agent.verbose:
+                            print("\n  [Cancelled]")
                     elif event.type == ExecutionEventType.RUN_END:
                         result = event.result
             except KeyboardInterrupt:
@@ -1301,30 +1307,36 @@ async def run_interactive_async(
                 try:
                     async for event in handle.events:
                         if event.type == ExecutionEventType.THINK_START:
-                            print("  [Thinking...]", end="", flush=True)
+                            if agent.verbose:
+                                print("  [Thinking...]", end="", flush=True)
                         elif event.type == ExecutionEventType.THINK_TEXT:
                             if event.text_chunk:
                                 print(event.text_chunk, end="", flush=True)
                         elif event.type == ExecutionEventType.THINK_END:
                             print()  # Newline after streaming text
-                            if event.think_result and event.think_result.tool_calls:
+                            if (
+                                agent.verbose
+                                and event.think_result
+                                and event.think_result.tool_calls
+                            ):
                                 names = [
                                     tc.name for tc in event.think_result.tool_calls
                                 ]
                                 print(f"  [Calling: {', '.join(names)}]")
                         elif event.type == ExecutionEventType.TOOL_CALL:
-                            if event.tool_call:
+                            if agent.verbose and event.tool_call:
                                 print(f"  [Tool] {event.tool_call.name}")
                         elif event.type == ExecutionEventType.TOOL_RESULT:
-                            if event.tool_result:
+                            if agent.verbose and event.tool_result:
                                 status = "ok" if event.tool_result.success else "fail"
                                 preview = (event.tool_result.output or "")[:80]
                                 print(f"  [Result:{status}] {preview}")
                         elif event.type == ExecutionEventType.GUARD_SHORT_CIRCUIT:
-                            if event.guard_name:
+                            if agent.verbose and event.guard_name:
                                 print(f"  [Guard: {event.guard_name}]")
                         elif event.type == ExecutionEventType.CANCELLED:
-                            print("\n  [Cancelled]")
+                            if agent.verbose:
+                                print("\n  [Cancelled]")
                         elif event.type == ExecutionEventType.RUN_END:
                             result = event.result
                 except asyncio.CancelledError:
