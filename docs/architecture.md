@@ -656,6 +656,7 @@ NanoAgent 采用"关键决策确认"模型，平衡用户控制与 LLM 自动化
 - **策略模式**: 存储后端可插拔 (`FileStorage` / `SQLiteStorage`)
 - **Facade 模式**: `AgentSubsystems` 门面将 20+ 子系统创建从 `ReActAgent.__init__` 中解耦，通过 `from_configs()` 工厂方法统一构建
 - **Builder 模式**: `AgentBuilder`（`core/builder.py`）提供流式接口组装 `AgentOrchestrator`
+- **Verbose 控制**: `ReActAgent.verbose` 控制详细输出开关，默认关闭，可通过 `--verbose` CLI 参数或 `/verbose on` 命令开启
 
 ### Guard Clause 模式
 

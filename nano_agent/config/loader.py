@@ -9,10 +9,12 @@ from pathlib import Path
 
 from .schema import Config, SemanticCompressorConfig, MemoryGCConfig, StreamingConfig
 
-# Fields "merge_tag" (SemanticCompressorConfig), "dedup_merge_tag" (MemoryGCConfig),
-# and "streaming" (StreamingConfig, with nested "mode" field) are auto-handled by
-# _from_dict / _asdict_filtered via dataclass introspection. save() persists them
-# via _asdict_filtered which walks all dataclass fields including config.streaming.mode.
+# The following fields are auto-handled by _from_dict / _asdict_filtered via
+# dataclass introspection and do NOT require explicit handling in load/save:
+#   "verbose" (AgentConfig — config.agent.verbose), "merge_tag" (SemanticCompressorConfig),
+#   "dedup_merge_tag" (MemoryGCConfig),
+#   "streaming" (StreamingConfig, with nested "mode" field)
+# save() persists them via _asdict_filtered which walks all dataclass fields.
 
 
 def _is_dataclass_type(tp) -> bool:

@@ -127,7 +127,7 @@ class AgentConfig:
     """Agent configuration."""
 
     max_iterations: int = 10
-    verbose: bool = True
+    verbose: bool = False
     system_prompt: str | None = None
     user_name: str = "User"  # Display name for user
     agent_name: str = "Agent"  # Display name for agent

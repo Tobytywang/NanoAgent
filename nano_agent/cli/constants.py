@@ -52,6 +52,9 @@ class Commands:
     # 熔断器
     AUTO = "/auto"
 
+    # 输出控制
+    VERBOSE = "/verbose"
+
 
 class CommandPrefix:
     """命令前缀（用于带参数的命令）"""

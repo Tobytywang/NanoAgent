@@ -976,6 +976,7 @@ memory_gc:
 | YAML 配置路径 | 默认值 | 说明 | 类别 |
 |---------------|--------|------|------|
 | `agent.max_iterations` | `10` | 最大迭代轮数 | 硬限制 |
+| `agent.verbose` | `False` | 详细输出开关 | 软限制 |
 | `smart_optimization.initial_budget` | `50000` | Token 预算初始值 | 硬限制 |
 | `smart_optimization.budget_force_summarize` | `True` | 预算耗尽强制总结 | 硬限制 |
 | `smart_optimization.confidence_enabled` | `True` | 置信度早停开关 | 硬限制 |

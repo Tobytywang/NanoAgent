@@ -3,6 +3,8 @@ CLI entry point for NanoAgent.
 """
 
 import argparse
+
+from nano_agent import __version__
 import asyncio
 import os
 import signal
@@ -826,6 +828,21 @@ def _handle_slash_command(
         _handle_auto_command(orchestrator, agent)
         return ("continue", user_display, agent_display)
 
+    if lower == Commands.VERBOSE or lower.startswith(Commands.VERBOSE + " "):
+        parts = user_input[len(Commands.VERBOSE) :].strip().lower()
+        if parts == "on":
+            agent.verbose = True
+            Console.print("详细输出已开启", style="success")
+        elif parts == "off":
+            agent.verbose = False
+            Console.print("详细输出已关闭", style="info")
+        else:
+            Console.print(
+                f"当前详细输出: {'开启' if agent.verbose else '关闭'}", style="info"
+            )
+            Console.print("用法: /verbose on | /verbose off", style="info")
+        return ("continue", user_display, agent_display)
+
     if lower == Commands.SESSIONS:
         if hasattr(agent.memory, "list_sessions"):
             sessions = agent.memory.list_sessions()
@@ -1375,6 +1392,13 @@ Config file priority:
         "-h", "--help", action="help", help="Show this [h]elp message and exit"
     )
     parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"nano-agent {__version__}",
+        help="Show [v]ersion and exit",
+    )
+    parser.add_argument(
         "-c",
         "--config",
         type=str,
@@ -1455,6 +1479,12 @@ Config file priority:
         "--quiet",
         action="store_true",
         help="Suppress verbose output ([q]uiet mode)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Force enable [v]erbose output (overrides config)",
     )
     parser.add_argument(
         "--report", action="store_true", help="Export monitoring report after session"
@@ -1569,9 +1599,11 @@ Config file priority:
     if args.model:
         agent.llm.model = args.model
 
-    # Override verbose if quiet mode
+    # Override verbose via CLI flags
     if args.quiet:
         agent.verbose = False
+    elif args.verbose:
+        agent.verbose = True
 
     if args.non_interactive:
         # Non-interactive mode
@@ -3124,6 +3156,11 @@ def _show_help() -> None:
     print("  /skills           查看技能列表")
     print("  /sessions         查看会话列表")
     print("  /plans            查看已保存的计划")
+
+    print("\n## 输出控制")
+    print("  /verbose on      开启详细输出（工具执行、Token 消耗等）")
+    print("  /verbose off     关闭详细输出")
+    print("  /verbose         查看当前状态")
 
     print("\n## 项目管理")
     print("  /init             初始化项目")

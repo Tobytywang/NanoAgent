@@ -63,7 +63,7 @@ ReActAgent(
     tool_registry,          # ToolRegistry 实例
     subsystems=None,        # AgentSubsystems 门面（None 时使用默认值）
     max_iterations: int = 10,    # 最大推理轮数
-    verbose: bool = True,        # 是否显示详细过程
+    verbose: bool = False,       # 是否显示详细过程（默认关闭）
     skill_prompt: str = "",      # 技能包额外提示
     tracker = None,              # MetricsTracker 实例
     events = None,               # EventEmitter 实例
@@ -2187,7 +2187,7 @@ llm:
 
 agent:
   max_iterations: 10
-  verbose: true
+  verbose: false
   system_prompt: null
 
   user_name: User            # 用户显示名
