@@ -889,8 +889,6 @@ def run_interactive(
         report_format: Report format (json, markdown, summary)
         report_output: Report output path
     """
-    import os
-
     # Get the underlying agent for compatibility
     agent = orchestrator.agent
 
@@ -1058,9 +1056,9 @@ def run_interactive(
         agent_display = stored_agent
         config.agent.agent_name = stored_agent
 
+    cwd = os.getcwd()
     while True:
         try:
-            cwd = os.getcwd()
             print(f"\n[{user_display}] [{cwd}]:")
             user_input = input("> ").strip()
 
@@ -1218,19 +1216,19 @@ async def run_interactive_async(
 
     # Set up signal handler for Ctrl+C cancellation
     loop = asyncio.get_running_loop()
-    current_task = asyncio.current_task()
 
     def sigint_handler(sig, frame):
-        if current_task and not current_task.done():
-            current_task.cancel()
+        task = asyncio.current_task()
+        if task and not task.done():
+            task.cancel()
 
     original_sigint = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, sigint_handler)
 
+    cwd = os.getcwd()
     try:
         while True:
             try:
-                cwd = os.getcwd()
                 print(f"\n[{user_display}] [{cwd}]:")
 
                 # Get user input in thread to not block event loop

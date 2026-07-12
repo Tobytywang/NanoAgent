@@ -43,17 +43,8 @@ from .token_utils import estimate_tokens, calculate_max_chars
 from ..llm.messages import StreamChunk, ToolCall
 from ..llm.base import LLMUsage
 from ..tools.base import ToolResult
+from ..utils.strings import safe_str
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
-
-
-def _safe_str(text: str) -> str:
-    """Safely convert string for printing, removing invalid Unicode characters."""
-    if not text:
-        return text
-    try:
-        return text.encode("utf-8", errors="replace").decode("utf-8")
-    except (UnicodeDecodeError, UnicodeEncodeError):
-        return text
 
 
 class ReActAgent(BaseAgent):
@@ -870,31 +861,31 @@ class ReActAgent(BaseAgent):
         handle = AsyncExecutionHandle(events=event_generator())
         return handle
 
-    async def _async_guard_exit(
+    def _build_guard_exit_events(
         self, guard_name: str, early_result: ExecutionResult
-    ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Async version of _guard_exit: yield GUARD_SHORT_CIRCUIT + RUN_END events."""
-        yield ExecutionEvent(
-            type=ExecutionEventType.GUARD_SHORT_CIRCUIT,
-            data={},
-            guard_name=guard_name,
-        )
-        yield ExecutionEvent(
-            type=ExecutionEventType.RUN_END, data={}, result=early_result
-        )
+    ) -> list[ExecutionEvent]:
+        """Build GUARD_SHORT_CIRCUIT + RUN_END events for a guard short-circuit."""
+        return [
+            ExecutionEvent(
+                type=ExecutionEventType.GUARD_SHORT_CIRCUIT,
+                data={},
+                guard_name=guard_name,
+            ),
+            ExecutionEvent(
+                type=ExecutionEventType.RUN_END, data={}, result=early_result
+            ),
+        ]
 
     def _guard_exit(
         self, guard_name: str, early_result: ExecutionResult
     ) -> Generator[ExecutionEvent, None, None]:
-        """Yield GUARD_SHORT_CIRCUIT + RUN_END events for a guard short-circuit."""
-        yield ExecutionEvent(
-            type=ExecutionEventType.GUARD_SHORT_CIRCUIT,
-            data={},
-            guard_name=guard_name,
-        )
-        yield ExecutionEvent(
-            type=ExecutionEventType.RUN_END, data={}, result=early_result
-        )
+        yield from self._build_guard_exit_events(guard_name, early_result)
+
+    async def _async_guard_exit(
+        self, guard_name: str, early_result: ExecutionResult
+    ) -> AsyncGenerator[ExecutionEvent, None]:
+        for event in self._build_guard_exit_events(guard_name, early_result):
+            yield event
 
     def _try_routing(
         self, user_input: str
@@ -1299,7 +1290,7 @@ class ReActAgent(BaseAgent):
 
         # Verbose output
         if self.verbose and response_text:
-            print(f"[Think] {_safe_str(response_text[:200])}...")
+            print(f"[Think] {safe_str(response_text[:200])}...")
 
         # Add assistant message to memory if there are tool calls
         if tool_calls:
@@ -1489,7 +1480,7 @@ class ReActAgent(BaseAgent):
 
         # Verbose output
         if self.verbose and full_text:
-            print(f"[Think] {_safe_str(full_text[:200])}...")
+            print(f"[Think] {safe_str(full_text[:200])}...")
 
         # Add assistant message to memory if there are tool calls
         if tool_calls:
@@ -1748,10 +1739,10 @@ class ReActAgent(BaseAgent):
         # Verbose output
         if self.verbose:
             status = "success" if result.success else "failed"
-            args_str = _safe_str(str(tool_call.arguments))
+            args_str = safe_str(str(tool_call.arguments))
             print(f"[Tool Call] {tool_call.name}({args_str}) -> {status}")
             if result.output:
-                output = _safe_str(result.output)
+                output = safe_str(result.output)
                 preview = output[:200] + "..." if len(output) > 200 else output
                 print(f"[Observe] {preview}")
 

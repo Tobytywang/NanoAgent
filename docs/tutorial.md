@@ -1254,6 +1254,13 @@ handle = agent.run_stream_async("长时间运行的任务")
 handle.cancel()
 ```
 
+此外，`safe_str()` 实用函数可安全处理 LLM 输出中的 Unicode 字符：
+
+```python
+from nano_agent.utils.strings import safe_str
+safe_text = safe_str(response_text)
+```
+
 > **注意**: `run_async()` 是 `run_stream_async()` 的薄封装。
 
 ### 10.4 错误处理

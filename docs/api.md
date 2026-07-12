@@ -2540,6 +2540,10 @@ enabled: true
 
 ---
 
+## 内部实用函数
+
+- `safe_str(text)` — 安全地将字符串转为可打印格式，移除无效 Unicode 字符（`utils.strings`）
+
 ## 版本历史
 
 | 版本 | 主要功能 |

@@ -78,8 +78,6 @@ class OllamaLLM(BaseLLM):
 
         # If arguments is a JSON string, parse it
         if isinstance(args, str):
-            import json
-
             try:
                 args = json.loads(args)
             except json.JSONDecodeError:

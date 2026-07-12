@@ -4,6 +4,7 @@ Anthropic Claude LLM client implementation with Prompt Caching support.
 Supports Anthropic's Prompt Caching feature via cache_control parameter.
 """
 
+import json
 import os
 from typing import AsyncGenerator, Generator
 
@@ -327,8 +328,6 @@ class AnthropicLLM(BaseLLM):
         Tool call arguments arrive incrementally; emitted when block completes.
         Usage data arrives in message_delta event.
         """
-        import json
-
         request_params = self._build_stream_request_params(
             messages, tools, system_stable
         )
