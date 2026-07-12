@@ -1036,7 +1036,8 @@ def run_interactive(
         git_manager = GitManager()
         if git_manager.is_enabled():
             _setup_git_handler(agent, git_manager, config)
-            Console.print("Git integration enabled", style="info")
+            if agent.verbose:
+                Console.print("Git integration enabled", style="info")
 
     # Load project context at startup and add to system prompt
     project_context = _load_project_context(config)
@@ -1053,7 +1054,7 @@ def run_interactive(
     Console.print_header("NanoAgent - AI Assistant")
 
     # Show config source
-    if hasattr(orchestrator, "_config_source"):
+    if agent.verbose and hasattr(orchestrator, "_config_source"):
         Console.print(f"Config: {orchestrator._config_source}", style="info")
 
     # Show project context status
@@ -1061,9 +1062,11 @@ def run_interactive(
         # Append to system prompt
         current_prompt = agent.memory.system_prompt or ""
         agent.memory.set_system_prompt(f"{current_prompt}\n\n---\n\n{project_context}")
-        Console.print("Project: NANOPROJECT.md loaded", style="success")
+        if agent.verbose:
+            Console.print("Project: NANOPROJECT.md loaded", style="success")
 
-    Console.print("Type '/?' or 'help' for available commands", style="info")
+    if agent.verbose:
+        Console.print("Type '/?' or 'help' for available commands", style="info")
     Console.print_separator()
 
     # Get display names from config
@@ -1553,22 +1556,30 @@ Config file priority:
         recent_session = storage.get_most_recent_session()
         if recent_session:
             args.resume_session = recent_session
-            Console.print(
-                f"Resuming most recent session: {recent_session}", style="info"
-            )
-        else:
-            Console.print(
-                "No existing sessions found. Starting new session.", style="info"
-            )
+        # Don't print session messages here — they're gated by verbose after agent creation
 
     # Create agent
     agent = create_agent(args.config)
+
+    # Override verbose via CLI flags (before session messages so they're gated correctly)
+    if args.quiet:
+        agent.verbose = False
+    elif args.verbose:
+        agent.verbose = True
+
+    # Now print session info gated by verbose
+    if agent.verbose:
+        if args.resume_session and not args.new_session:
+            Console.print(f"Resuming session: {args.resume_session}", style="info")
+        elif not args.resume_session and not args.new_session:
+            Console.print("Starting new session", style="info")
 
     # Handle --new-session: explicitly create a new empty session
     if args.new_session:
         if hasattr(agent.memory, "new_session"):
             new_sid = agent.memory.new_session()
-            Console.print(f"Started new session: {new_sid}", style="success")
+            if agent.verbose:
+                Console.print(f"Started new session: {new_sid}", style="success")
         # else: short_term memory doesn't need explicit new_session
 
     # Handle --resume-session
@@ -1580,7 +1591,10 @@ Config file priority:
                     f"Session '{args.resume_session}' not found", style="error"
                 )
                 sys.exit(1)
-            Console.print(f"Resumed session: {args.resume_session}", style="success")
+            if agent.verbose:
+                Console.print(
+                    f"Resumed session: {args.resume_session}", style="success"
+                )
         else:
             Console.print(
                 "Session resume not available (requires persistent/hybrid memory)",
@@ -1598,12 +1612,6 @@ Config file priority:
     # Override model if specified
     if args.model:
         agent.llm.model = args.model
-
-    # Override verbose via CLI flags
-    if args.quiet:
-        agent.verbose = False
-    elif args.verbose:
-        agent.verbose = True
 
     if args.non_interactive:
         # Non-interactive mode
