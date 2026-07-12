@@ -3,6 +3,8 @@ CLI entry point for NanoAgent.
 """
 
 import argparse
+import asyncio
+import os
 import signal
 import sys
 import re
@@ -702,6 +704,174 @@ def _handle_run_result(
     return user_display, agent_display
 
 
+def _handle_slash_command(
+    user_input: str,
+    orchestrator: AgentOrchestrator,
+    agent,
+    config,
+    git_manager,
+    name_update_state: dict,
+    user_display: str,
+    agent_display: str,
+    report_format: str,
+    report_output: str | None,
+) -> tuple[str, str, str] | None:
+    """Handle slash commands shared by sync and async interactive loops.
+
+    Returns:
+        - ("continue", user_display, agent_display) — skip agent execution
+        - ("break", user_display, agent_display) — exit the loop
+        - None — not a slash command, proceed to agent execution
+    """
+    lower = user_input.lower()
+
+    if lower in Commands.HELP:
+        _show_help()
+        return ("continue", user_display, agent_display)
+
+    if lower in Commands.EXIT:
+        GracefulExitManager.exit_with_summary()
+        return ("break", user_display, agent_display)
+
+    if lower in Commands.EXIT_DIRECT:
+        Console.print("Goodbye!", style="success")
+        return ("break", user_display, agent_display)
+
+    if lower == Commands.CLEAR:
+        agent.reset()
+        Console.print("Conversation history cleared", style="success")
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.UNDO:
+        user_display, agent_display = _handle_undo_command(
+            agent, config, git_manager, name_update_state
+        )
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.HISTORY:
+        if git_manager and git_manager.is_enabled():
+            history = git_manager.get_history(limit=10)
+            if history:
+                print("\n操作历史：")
+                for commit in history:
+                    time_str = commit.time.strftime("%m-%d %H:%M")
+                    print(f"  {commit.hash} [{time_str}] {commit.message}")
+            else:
+                Console.print("暂无操作历史", style="info")
+        else:
+            Console.print("Git 未启用或不在 Git 仓库中", style="warning")
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.TOOLS:
+        tools = agent.tool_registry.list_tools()
+        Console.print(f"Available tools: {', '.join(tools)}", style="info")
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.PLANS:
+        from .plan_mode import list_plans
+
+        print(list_plans())
+        return ("continue", user_display, agent_display)
+
+    if lower.startswith(CommandPrefix.PLAN):
+        from .plan_mode import run_plan_mode_interactive
+
+        task = user_input[6:].strip()
+        if task:
+            result = run_plan_mode_interactive(agent.llm, config, task)
+            print(result)
+        else:
+            Console.print("用法: /plan <任务描述>", style="info")
+        return ("continue", user_display, agent_display)
+
+    if lower.startswith(CommandPrefix.STATS):
+        _handle_stats_command(agent, config, user_input[6:].strip())
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.USAGE:
+        _show_context_composition(agent, config)
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.CONTEXT:
+        _show_context_budget(agent, config)
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.INIT:
+        _init_project(agent)
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.CONFIG:
+        _show_config(config, agent)
+        return ("continue", user_display, agent_display)
+
+    if lower.startswith(CommandPrefix.CONFIG):
+        _handle_config_command(agent, config, user_input[8:])
+        return ("continue", user_display, agent_display)
+
+    if lower.startswith(CommandPrefix.MEMORY):
+        _handle_memory_command(agent, config, user_input[7:].strip())
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.REPORT:
+        _export_report(agent, report_format, report_output)
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.AUTO:
+        _handle_auto_command(orchestrator, agent)
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.SESSIONS:
+        if hasattr(agent.memory, "list_sessions"):
+            sessions = agent.memory.list_sessions()
+            if not sessions:
+                Console.print("No sessions found.", style="info")
+            else:
+                Console.print(f"Available sessions ({len(sessions)}):", style="info")
+                for sid in sessions:
+                    print(f"  {sid}")
+        else:
+            Console.print(
+                "Session listing not available (requires persistent/hybrid memory)",
+                style="warning",
+            )
+        return ("continue", user_display, agent_display)
+
+    if lower.startswith(CommandPrefix.SNAPSHOT):
+        _handle_snapshot_command(
+            orchestrator,
+            config,
+            user_input[len(CommandPrefix.SNAPSHOT) :].strip(),
+        )
+        return ("continue", user_display, agent_display)
+
+    if lower == Commands.SKILLS:
+        if hasattr(agent, "skill_loader"):
+            skills = agent.skill_loader.list_loaded_skills()
+            if not skills:
+                Console.print("No skills loaded.", style="info")
+            else:
+                Console.print(f"Loaded skills ({len(skills)}):", style="info")
+                for skill_name in skills:
+                    source = agent.skill_loader.get_skill_source(skill_name)
+                    print(f"  {skill_name} <- {source}")
+        else:
+            Console.print("Skill system not available", style="warning")
+        return ("continue", user_display, agent_display)
+
+    if lower.startswith(CommandPrefix.SKILL):
+        _handle_skill_command(agent, user_input[7:])
+        return ("continue", user_display, agent_display)
+
+    if lower.startswith(CommandPrefix.SETNAME):
+        user_display, agent_display = _handle_setname_command(
+            user_input, agent, config, user_display, agent_display
+        )
+        return ("continue", user_display, agent_display)
+
+    # Not a slash command
+    return None
+
+
 def run_interactive(
     orchestrator: AgentOrchestrator,
     config,
@@ -897,156 +1067,23 @@ def run_interactive(
             if not user_input:
                 continue
 
-            # 显示帮助信息
-            if user_input.lower() in ["/?", "/help", "help", "?", "？", "/？"]:
-                _show_help()
-                continue
-
-            # 优雅退出命令（生成摘要）
-            if user_input.lower() in ["/exit", "/quit", "/bye"]:
-                GracefulExitManager.exit_with_summary()
-                break
-
-            # 直接退出命令（不生成摘要）
-            if user_input.lower() in ["exit", "quit"]:
-                Console.print("Goodbye!", style="success")
-                break
-
-            if user_input.lower() == "/clear":
-                agent.reset()
-                Console.print("Conversation history cleared", style="success")
-                continue
-
-            if user_input.lower() == "/undo":
-                user_display, agent_display = _handle_undo_command(
-                    agent, config, git_manager, name_update_state
-                )
-                continue
-
-            if user_input.lower() == Commands.HISTORY:
-                if git_manager and git_manager.is_enabled():
-                    history = git_manager.get_history(limit=10)
-                    if history:
-                        print("\n操作历史：")
-                        for commit in history:
-                            time_str = commit.time.strftime("%m-%d %H:%M")
-                            print(f"  {commit.hash} [{time_str}] {commit.message}")
-                    else:
-                        Console.print("暂无操作历史", style="info")
-                else:
-                    Console.print("Git 未启用或不在 Git 仓库中", style="warning")
-                continue
-
-            if user_input.lower() == "/tools":
-                tools = agent.tool_registry.list_tools()
-                Console.print(f"Available tools: {', '.join(tools)}", style="info")
-                continue
-
-            # Plan commands
-            if user_input.lower() == Commands.PLANS:
-                from .plan_mode import list_plans
-
-                print(list_plans())
-                continue
-
-            if user_input.lower().startswith(CommandPrefix.PLAN):
-                from .plan_mode import run_plan_mode_interactive
-
-                task = user_input[6:].strip()
-                if task:
-                    result = run_plan_mode_interactive(agent.llm, config, task)
-                    print(result)
-                else:
-                    Console.print("用法: /plan <任务描述>", style="info")
-                continue
-
-            if user_input.lower().startswith("/stats"):
-                _handle_stats_command(agent, config, user_input[6:].strip())
-                continue
-
-            if user_input.lower() == Commands.USAGE:
-                _show_context_composition(agent, config)
-                continue
-
-            if user_input.lower() == Commands.CONTEXT:
-                _show_context_budget(agent, config)
-                continue
-
-            if user_input.lower() == "/init":
-                _init_project(agent)
-                continue
-
-            if user_input.lower() == "/config":
-                _show_config(config, agent)
-                continue
-
-            if user_input.lower().startswith("/config "):
-                _handle_config_command(agent, config, user_input[8:])
-                continue
-
-            if user_input.lower().startswith("/memory"):
-                _handle_memory_command(agent, config, user_input[7:].strip())
-                continue
-
-            if user_input.lower() == "/report":
-                _export_report(agent, report_format, report_output)
-                continue
-
-            if user_input.lower() == Commands.AUTO:
-                _handle_auto_command(orchestrator, agent)
-                continue
-
-            if user_input.lower() == "/sessions":
-                if hasattr(agent.memory, "list_sessions"):
-                    sessions = agent.memory.list_sessions()
-                    if not sessions:
-                        Console.print("No sessions found.", style="info")
-                    else:
-                        Console.print(
-                            f"Available sessions ({len(sessions)}):", style="info"
-                        )
-                        for sid in sessions:
-                            print(f"  {sid}")
-                else:
-                    Console.print(
-                        "Session listing not available (requires persistent/hybrid memory)",
-                        style="warning",
-                    )
-                continue
-
-            # Snapshot commands
-            if user_input.lower().startswith(CommandPrefix.SNAPSHOT):
-                _handle_snapshot_command(
-                    orchestrator,
-                    config,
-                    user_input[len(CommandPrefix.SNAPSHOT) :].strip(),
-                )
-                continue
-
-            # Skill commands
-            if user_input.lower() == "/skills":
-                if hasattr(agent, "skill_loader"):
-                    skills = agent.skill_loader.list_loaded_skills()
-                    if not skills:
-                        Console.print("No skills loaded.", style="info")
-                    else:
-                        Console.print(f"Loaded skills ({len(skills)}):", style="info")
-                        for skill_name in skills:
-                            source = agent.skill_loader.get_skill_source(skill_name)
-                            print(f"  {skill_name} <- {source}")
-                else:
-                    Console.print("Skill system not available", style="warning")
-                continue
-
-            if user_input.lower().startswith("/skill "):
-                _handle_skill_command(agent, user_input[7:])
-                continue
-
-            # /setname command - set user/agent display names
-            if user_input.lower().startswith("/setname"):
-                user_display, agent_display = _handle_setname_command(
-                    user_input, agent, config, user_display, agent_display
-                )
+            # Handle slash commands (shared with async loop)
+            cmd_result = _handle_slash_command(
+                user_input,
+                orchestrator,
+                agent,
+                config,
+                git_manager,
+                name_update_state,
+                user_display,
+                agent_display,
+                report_format,
+                report_output,
+            )
+            if cmd_result is not None:
+                action, user_display, agent_display = cmd_result
+                if action == "break":
+                    break
                 continue
 
             # 重置 Ctrl+C 计数
@@ -1111,6 +1148,185 @@ def run_interactive(
             continue
         except Exception as e:
             Console.print(f"Error: {e}", style="error")
+
+
+async def run_interactive_async(
+    orchestrator: AgentOrchestrator,
+    config,
+    report_enabled: bool = False,
+    report_format: str = "json",
+    report_output: str | None = None,
+) -> None:
+    """
+    Async interactive chat loop with token-by-token streaming.
+
+    Like run_interactive() but uses async generators and the agent's
+    run_stream_async() for true token-by-token output.
+
+    Args:
+        orchestrator: The agent orchestrator to interact with
+        config: The configuration object
+        report_enabled: Whether to export report on exit
+        report_format: Report format (json, markdown, summary)
+        report_output: Report output path
+    """
+    agent = orchestrator.agent
+
+    # Set up confirmation handler (same as sync)
+    def _setup_confirmation_handler():
+        def handle_confirmation(event, data):
+            tool_name = data.get("tool", "unknown")
+            risk_level = data.get("risk_level", "moderate")
+            if risk_level == "dangerous":
+                print(f"\n  ⚠️  Dangerous tool: {tool_name}")
+                response = input("  Execute? [y/N]: ").strip().lower()
+                if response != "y":
+                    agent.execution_mode = ExecutionMode.SUPERVISED
+
+        orchestrator.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
+
+    _setup_confirmation_handler()
+
+    # Set up git handler (same as sync)
+    git_manager = None
+    name_update_state = {"pending_name": None, "pending_updates": []}
+
+    if hasattr(agent, "git_manager") and agent.git_manager:
+        git_manager = agent.git_manager
+
+        def handle_git_commit(event, data):
+            if event == AgentEvent.TOOL_RESULT:
+                tool_name = data.get("tool", "")
+                if tool_name in ["file_write", "shell_execute"]:
+                    git_manager.auto_commit(
+                        f"[NanoAgent] {tool_name}: {data.get('summary', 'tool execution')}"
+                    )
+
+        orchestrator.events.on(AgentEvent.TOOL_RESULT, handle_git_commit)
+
+    # Get display names
+    user_display = config.agent.user_name
+    agent_display = config.agent.agent_name
+
+    # Check for stored names in memory
+    if hasattr(agent, "memory") and hasattr(agent.memory, "recall"):
+        stored_user, stored_agent = _check_names_in_memory(agent.memory)
+        if stored_user:
+            user_display = stored_user
+        if stored_agent:
+            agent_display = stored_agent
+
+    # Set up signal handler for Ctrl+C cancellation
+    loop = asyncio.get_running_loop()
+    current_task = asyncio.current_task()
+
+    def sigint_handler(sig, frame):
+        if current_task and not current_task.done():
+            current_task.cancel()
+
+    original_sigint = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, sigint_handler)
+
+    try:
+        while True:
+            try:
+                cwd = os.getcwd()
+                print(f"\n[{user_display}] [{cwd}]:")
+
+                # Get user input in thread to not block event loop
+                user_input = await loop.run_in_executor(
+                    None, lambda: input("> ").strip()
+                )
+
+                if not user_input:
+                    continue
+
+                # Handle slash commands (shared with sync loop)
+                cmd_result = _handle_slash_command(
+                    user_input,
+                    orchestrator,
+                    agent,
+                    config,
+                    git_manager,
+                    name_update_state,
+                    user_display,
+                    agent_display,
+                    report_format,
+                    report_output,
+                )
+                if cmd_result is not None:
+                    action, user_display, agent_display = cmd_result
+                    if action == "break":
+                        break
+                    continue
+
+                # Reset Ctrl+C count
+                GracefulExitManager.ctrl_c_count = 0
+
+                # Run agent through orchestrator (async streaming)
+                print(f"\n[{agent_display}]:")
+                handle = orchestrator.run_stream_async(user_input)
+                result = None
+                try:
+                    async for event in handle.events:
+                        if event.type == ExecutionEventType.THINK_START:
+                            print("  [Thinking...]", end="", flush=True)
+                        elif event.type == ExecutionEventType.THINK_TEXT:
+                            if event.text_chunk:
+                                print(event.text_chunk, end="", flush=True)
+                        elif event.type == ExecutionEventType.THINK_END:
+                            print()  # Newline after streaming text
+                            if event.think_result and event.think_result.tool_calls:
+                                names = [
+                                    tc.name for tc in event.think_result.tool_calls
+                                ]
+                                print(f"  [Calling: {', '.join(names)}]")
+                        elif event.type == ExecutionEventType.TOOL_CALL:
+                            if event.tool_call:
+                                print(f"  [Tool] {event.tool_call.name}")
+                        elif event.type == ExecutionEventType.TOOL_RESULT:
+                            if event.tool_result:
+                                status = "ok" if event.tool_result.success else "fail"
+                                preview = (event.tool_result.output or "")[:80]
+                                print(f"  [Result:{status}] {preview}")
+                        elif event.type == ExecutionEventType.GUARD_SHORT_CIRCUIT:
+                            if event.guard_name:
+                                print(f"  [Guard: {event.guard_name}]")
+                        elif event.type == ExecutionEventType.CANCELLED:
+                            print("\n  [Cancelled]")
+                        elif event.type == ExecutionEventType.RUN_END:
+                            result = event.result
+                except asyncio.CancelledError:
+                    handle.cancel()
+                    # Drain remaining events
+                    try:
+                        async for event in handle.events:
+                            if event.type == ExecutionEventType.RUN_END:
+                                result = event.result
+                    except asyncio.CancelledError:
+                        pass
+
+                # Process run result
+                updated = _handle_run_result(
+                    result,
+                    orchestrator,
+                    agent,
+                    config,
+                    name_update_state,
+                    user_display,
+                    agent_display,
+                )
+                if updated is None:
+                    continue
+                user_display, agent_display = updated
+
+            except asyncio.CancelledError:
+                # Ctrl+C during input — just continue
+                continue
+            except Exception as e:
+                Console.print(f"Error: {e}", style="error")
+    finally:
+        signal.signal(signal.SIGINT, original_sigint)
 
 
 def main():
@@ -1364,13 +1580,26 @@ Config file priority:
             config = ConfigLoader.load(config_file)
         else:
             config = ConfigLoader.load()
-        run_interactive(
-            agent,
-            config,
-            report_enabled=args.report,
-            report_format=args.report_format,
-            report_output=args.report_output,
-        )
+
+        # Use async streaming if configured
+        if getattr(config, "streaming", None) and config.streaming.mode == "async":
+            asyncio.run(
+                run_interactive_async(
+                    agent,
+                    config,
+                    report_enabled=args.report,
+                    report_format=args.report_format,
+                    report_output=args.report_output,
+                )
+            )
+        else:
+            run_interactive(
+                agent,
+                config,
+                report_enabled=args.report,
+                report_format=args.report_format,
+                report_output=args.report_output,
+            )
 
 
 def _check_names_in_memory(memory) -> tuple[str | None, str | None]:
@@ -3127,6 +3356,9 @@ def _init_config_file(config, force: bool = False) -> None:
             "auto_rollback_enabled": config.snapshot.auto_rollback_enabled,
             "auto_rollback_threshold": config.snapshot.auto_rollback_threshold,
             "auto_rollback_on_failure": config.snapshot.auto_rollback_on_failure,
+        },
+        "streaming": {
+            "mode": config.streaming.mode,
         },
     }
 

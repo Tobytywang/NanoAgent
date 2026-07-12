@@ -5,8 +5,9 @@ This module implements the execution layer of the agent architecture,
 following the Think -> Act -> Observe cycle.
 """
 
+import asyncio
 import time
-from typing import Generator
+from typing import AsyncGenerator, Generator
 
 from .base import BaseAgent
 from .prompts import (
@@ -27,6 +28,7 @@ from .types import (
     ExecutionEvent,
     ExecutionEventType,
     ExecutionHandle,
+    AsyncExecutionHandle,
 )
 from .events import EventEmitter
 from .budget import Budget, BudgetChecker
@@ -38,7 +40,8 @@ from .tool_merger import ToolCallMerger
 from .result_summarizer import ToolResultSummarizer, SummarizerConfig
 from .prompt_builder import PromptBuilder
 from .token_utils import estimate_tokens, calculate_max_chars
-from ..llm.messages import ToolCall
+from ..llm.messages import StreamChunk, ToolCall
+from ..llm.base import LLMUsage
 from ..tools.base import ToolResult
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
 
@@ -566,6 +569,320 @@ class ReActAgent(BaseAgent):
         handle = ExecutionHandle(events=event_generator())
         return handle
 
+    async def run_async(
+        self, user_input: str, dry_run: bool = False, session_id: str = ""
+    ) -> ExecutionResult:
+        """
+        Async run that collects the final result.
+
+        Internally uses run_stream_async() and collects the final result.
+
+        Args:
+            user_input: The user's input text
+            dry_run: If True, tools are not actually executed
+            session_id: Session identifier for tracking
+
+        Returns:
+            ExecutionResult containing response and execution metadata
+        """
+        handle = self.run_stream_async(user_input, dry_run, session_id)
+        result = await handle.collect_result()
+        return result or self._build_result(
+            "No result produced.",
+            0,
+            success=False,
+            termination_reason=TerminationReason.COMPLETED.value,
+        )
+
+    def run_stream_async(
+        self, user_input: str, dry_run: bool = False, session_id: str = ""
+    ) -> AsyncExecutionHandle:
+        """
+        Async streaming execution via events.
+
+        Like run_stream() but uses async generators and calls the LLM
+        via chat_stream_async() for true token-by-token output.
+
+        Args:
+            user_input: The user's input text
+            dry_run: If True, tools are not actually executed
+            session_id: Session identifier for tracking
+
+        Returns:
+            AsyncExecutionHandle wrapping an async event generator
+        """
+
+        async def event_generator() -> AsyncGenerator[ExecutionEvent, None]:
+            # Prepare execution
+            self._prepare_run(user_input, session_id)
+            yield ExecutionEvent(type=ExecutionEventType.RUN_START, data={})
+
+            # Guard clauses — routing, prejudgment, concise_simple
+            early_result, routing_result = self._try_routing(user_input)
+            if early_result:
+                async for event in self._async_guard_exit("routing", early_result):
+                    yield event
+                return
+
+            early_result = self._try_prejudgment(user_input, routing_result)
+            if early_result:
+                async for event in self._async_guard_exit("prejudgment", early_result):
+                    yield event
+                return
+
+            early_result = self._try_concise_simple(user_input)
+            if early_result:
+                async for event in self._async_guard_exit(
+                    "concise_simple", early_result
+                ):
+                    yield event
+                return
+
+            iteration = 0
+            tool_calls_in_round = 0
+
+            while iteration < self.max_iterations:
+                iteration += 1
+
+                if handle.cancelled:
+                    result = self._build_result(
+                        "Cancelled by user.",
+                        iteration,
+                        success=False,
+                        termination_reason=TerminationReason.CANCELLED.value,
+                    )
+                    yield ExecutionEvent(type=ExecutionEventType.CANCELLED, data={})
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.RUN_END, data={}, result=result
+                    )
+                    return
+
+                # Budget check
+                if not self.budget_checker.can_continue(
+                    iteration, self._total_tokens, len(self._tool_call_records)
+                ):
+                    break
+
+                if self.token_budget is not None:
+                    warning = self.token_budget.check_warning(iteration)
+                    if warning:
+                        self._handle_budget_warning(warning)
+
+                    early_result = self._try_budget_wrapup(iteration)
+                    if early_result:
+                        async for event in self._async_guard_exit(
+                            "budget_wrapup", early_result
+                        ):
+                            yield event
+                        return
+
+                    early_result = self._try_budget_exhausted(iteration)
+                    if early_result:
+                        async for event in self._async_guard_exit(
+                            "budget_exhausted", early_result
+                        ):
+                            yield event
+                        return
+
+                self.tracker.start_iteration(iteration)
+
+                if self.verbose:
+                    print(f"\n[Iteration {iteration}/{self.max_iterations}]")
+
+                # Consume _think_stream_async() events and extract ThinkResult
+                think_result = None
+                async for think_event in self._think_stream_async():
+                    yield think_event
+                    if (
+                        think_event.type == ExecutionEventType.THINK_END
+                        and think_event.think_result is not None
+                    ):
+                        think_result = think_event.think_result
+
+                if think_result is None:
+                    break
+
+                think = think_result
+
+                # Circuit breaker: check LLM response size
+                if self.circuit_breaker and self.circuit_breaker.check_llm_response(
+                    think.usage.completion_tokens
+                ):
+                    self._log_circuit_breaker_trigger()
+
+                # Confidence-based early stop
+                if self.confidence_parser is not None and think.is_final:
+                    should_stop, conf_result = self.confidence_parser.should_stop_early(
+                        think.response_text
+                    )
+                    if should_stop:
+                        if self.verbose:
+                            print(
+                                f"[Confidence] Early stop: {conf_result.confidence:.2f}"
+                            )
+                        self.tracker.end_iteration()
+                        self.tracker.end_run(conf_result.cleaned_response)
+                        result = self._build_result(
+                            conf_result.cleaned_response,
+                            iteration,
+                            success=True,
+                            termination_reason=TerminationReason.CONFIDENCE_EARLY_STOP.value,
+                        )
+                        yield ExecutionEvent(
+                            type=ExecutionEventType.RUN_END,
+                            data={},
+                            result=result,
+                        )
+                        return
+
+                if think.is_final:
+                    self.tracker.end_iteration()
+                    self.tracker.end_run(think.response_text)
+                    result = self._build_result(
+                        think.response_text,
+                        iteration,
+                        success=True,
+                        termination_reason=TerminationReason.COMPLETED.value,
+                    )
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.RUN_END,
+                        data={},
+                        result=result,
+                    )
+                    return
+
+                # Merge similar tool calls
+                merged_tool_calls = self._merge_tool_calls(think.tool_calls)
+
+                # Act and Observe phases
+                for tool_call in merged_tool_calls:
+                    # Cancellation check per tool call
+                    if handle.cancelled:
+                        result = self._build_result(
+                            "Cancelled by user.",
+                            iteration,
+                            success=False,
+                            termination_reason=TerminationReason.CANCELLED.value,
+                        )
+                        yield ExecutionEvent(type=ExecutionEventType.CANCELLED, data={})
+                        yield ExecutionEvent(
+                            type=ExecutionEventType.RUN_END,
+                            data={},
+                            result=result,
+                        )
+                        return
+
+                    # Check routing limit
+                    if self._routing_max_tools >= 0:
+                        if tool_calls_in_round >= self._routing_max_tools:
+                            if self.verbose:
+                                print(
+                                    f"[Router] Reached max tools limit: {self._routing_max_tools}"
+                                )
+                            remaining_calls = merged_tool_calls[
+                                merged_tool_calls.index(tool_call) :
+                            ]
+                            for skipped_call in remaining_calls:
+                                self.tracker.record_skipped_tool_call(
+                                    skipped_call.name,
+                                    skipped_call.arguments,
+                                    "routing_limit",
+                                )
+                            response = self._force_summarize()
+                            self.tracker.end_run(response)
+                            result = self._build_result(
+                                response,
+                                iteration,
+                                success=True,
+                                termination_reason=TerminationReason.ROUTING_LIMIT.value,
+                            )
+                            yield ExecutionEvent(
+                                type=ExecutionEventType.RUN_END,
+                                data={},
+                                result=result,
+                            )
+                            return
+
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.TOOL_CALL,
+                        data={},
+                        tool_call=tool_call,
+                    )
+                    act_result = await asyncio.to_thread(self._act, tool_call, dry_run)
+                    yield ExecutionEvent(
+                        type=ExecutionEventType.TOOL_RESULT,
+                        data={},
+                        tool_result=act_result,
+                    )
+                    self._observe(tool_call, act_result)
+                    tool_calls_in_round += 1
+
+                # Consecutive failure check
+                if self._subsystems.consecutive_failure_detector.config.enabled:
+                    failure_result = (
+                        self._subsystems.consecutive_failure_detector.check()
+                    )
+                    if failure_result.triggered:
+                        self.events.emit(
+                            AgentEvent.AUTO_ROLLBACK_TRIGGERED,
+                            {
+                                "consecutive_failures": failure_result.consecutive_failures,
+                                "last_tool": failure_result.last_tool_name,
+                            },
+                        )
+                        result = self._build_result(
+                            response="Auto-rollback triggered: consecutive tool failures.",
+                            iterations=iteration,
+                            success=False,
+                            termination_reason=TerminationReason.AUTO_ROLLBACK.value,
+                        )
+                        yield ExecutionEvent(
+                            type=ExecutionEventType.RUN_END,
+                            data={},
+                            result=result,
+                        )
+                        return
+
+                # Update token budget once per iteration
+                if self.token_budget is not None:
+                    self.token_budget.consume(think.usage.total_tokens)
+
+                self.tracker.end_iteration()
+
+                # Stall detection
+                self._check_stall(merged_tool_calls, iteration)
+
+            # Reached max iterations or budget exhausted
+            response = "I apologize, I couldn't complete this task within the iteration limit. Please try simplifying your request."
+            self.tracker.end_run(response)
+            result = self._build_result(
+                response,
+                iteration,
+                success=False,
+                termination_reason=TerminationReason.MAX_ITERATIONS.value,
+            )
+            yield ExecutionEvent(
+                type=ExecutionEventType.RUN_END,
+                data={},
+                result=result,
+            )
+
+        handle = AsyncExecutionHandle(events=event_generator())
+        return handle
+
+    async def _async_guard_exit(
+        self, guard_name: str, early_result: ExecutionResult
+    ) -> AsyncGenerator[ExecutionEvent, None]:
+        """Async version of _guard_exit: yield GUARD_SHORT_CIRCUIT + RUN_END events."""
+        yield ExecutionEvent(
+            type=ExecutionEventType.GUARD_SHORT_CIRCUIT,
+            data={},
+            guard_name=guard_name,
+        )
+        yield ExecutionEvent(
+            type=ExecutionEventType.RUN_END, data={}, result=early_result
+        )
+
     def _guard_exit(
         self, guard_name: str, early_result: ExecutionResult
     ) -> Generator[ExecutionEvent, None, None]:
@@ -1012,6 +1329,186 @@ class ReActAgent(BaseAgent):
         )
 
         return think_result
+
+    async def _think_stream_async(
+        self,
+    ) -> AsyncGenerator[ExecutionEvent, None]:
+        """
+        Async think phase yielding streaming events token by token.
+
+        Unlike _think_stream() which calls self.llm.chat() (blocking),
+        this method calls self.llm.chat_stream_async() for true token-by-token output.
+
+        Yields:
+            THINK_START, THINK_TEXT (per token), THINK_END events
+        """
+        self.events.emit(
+            AgentEvent.THINK_START, {"iteration": len(self._tool_call_records) + 1}
+        )
+        yield ExecutionEvent(type=ExecutionEventType.THINK_START, data={})
+
+        calibration_factor = self.token_budget.get_calibration_factor()
+        if self.context_manager:
+            self.context_manager.check_and_compress(
+                last_prompt_tokens=self._last_prompt_tokens,
+                calibration_factor=calibration_factor,
+            )
+
+        # Get context and tools
+        messages = self.memory.get_all()
+
+        if self.compressor.should_compress(
+            messages,
+            last_prompt_tokens=self._last_prompt_tokens,
+            calibration_factor=calibration_factor,
+        ):
+            original_count = len(messages)
+            messages = self.compressor.compress(
+                messages,
+                last_prompt_tokens=self._last_prompt_tokens,
+                calibration_factor=calibration_factor,
+            )
+            if self.verbose and len(messages) < original_count:
+                print(
+                    f"[Compressor] Reduced {original_count} messages to {len(messages)}"
+                )
+
+        if self.semantic_compressor.should_compress(messages):
+            original_count = len(messages)
+            messages = self.semantic_compressor.compress(messages)
+            if self.verbose and len(messages) < original_count:
+                print(
+                    f"[SemanticCompressor] Merged similar messages: "
+                    f"{original_count} -> {len(messages)}"
+                )
+
+        tools_schema = self.tool_registry.get_all_schemas()
+
+        # Prefix caching support
+        system_stable = None
+        if self.prompt_config.enable_caching and self._stable_system_prompt:
+            system_stable = self._stable_system_prompt
+            if self.verbose:
+                print(
+                    f"[Caching] Using stable system prompt ({len(system_stable)} chars)"
+                )
+
+        # Stream LLM response token by token
+        llm_start = time.perf_counter()
+        text_parts: list[str] = []
+        tool_calls = []
+        usage = None
+
+        async for chunk in self.llm.chat_stream_async(
+            messages=messages,
+            tools=tools_schema if tools_schema else None,
+            system_stable=system_stable,
+        ):
+            if chunk.text:
+                text_parts.append(chunk.text)
+                yield ExecutionEvent(
+                    type=ExecutionEventType.THINK_TEXT,
+                    data={},
+                    text_chunk=chunk.text,
+                )
+
+            if chunk.is_tool_call_complete and chunk.tool_call:
+                tool_calls.append(chunk.tool_call)
+
+            if chunk.usage is not None:
+                usage = chunk.usage
+
+        llm_latency = (time.perf_counter() - llm_start) * 1000
+        full_text = "".join(text_parts)
+
+        # Fallback usage if not provided in stream
+        if usage is None:
+            usage = LLMUsage()
+
+        # Report cache hit if available
+        if usage.cache_read_tokens > 0 and self.verbose:
+            print(f"[Caching] Cache hit: {usage.cache_read_tokens} tokens saved")
+
+        # Store real prompt_tokens for next iteration
+        estimated_prompt_tokens = 0
+        if usage.prompt_tokens > 0:
+            self._last_prompt_tokens = usage.prompt_tokens
+            estimated_prompt_tokens = estimate_tokens(messages)
+            self.token_budget.record_calibration_data(
+                estimated=estimated_prompt_tokens, actual=usage.prompt_tokens
+            )
+
+        # Record LLM call with raw data
+        self.tracker.record_raw_llm_call(
+            RawLLMCallData(
+                llm=self.llm,
+                messages=messages,
+                tools_schema=tools_schema,
+                response_text=full_text,
+                tool_calls=tool_calls,
+                usage=usage,
+                latency_ms=llm_latency,
+                estimated_tokens=estimated_prompt_tokens,
+                calibration_factor=self.token_budget.get_calibration_factor(),
+            )
+        )
+
+        # Update token count
+        self._total_tokens += usage.total_tokens
+
+        # Deviation logging
+        if usage.prompt_tokens > 0 and estimated_prompt_tokens > 0:
+            deviation_pct = abs(usage.prompt_tokens - estimated_prompt_tokens) / max(
+                estimated_prompt_tokens, 1
+            )
+            if deviation_pct > 0.50 and self.verbose:
+                print(
+                    f"[Estimation] WARNING: Deviation {deviation_pct:.0%} "
+                    f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
+                )
+            elif deviation_pct > 0.10 and self.verbose:
+                print(
+                    f"[Estimation] Deviation: {deviation_pct:.0%} "
+                    f"(estimated={estimated_prompt_tokens}, actual={usage.prompt_tokens})"
+                )
+
+        # Deviation feedback
+        if self._subsystems.feedback_loop is not None and usage.prompt_tokens > 0:
+            audit_result = self.tracker.estimation_audit.get_latest_result()
+            if audit_result is not None:
+                feedback_result = self._subsystems.feedback_loop.check_deviation(
+                    audit_result
+                )
+                if feedback_result.should_inject and feedback_result.hint:
+                    self.memory.add_user_message(f"[System] {feedback_result.hint}")
+                    if self.verbose:
+                        print(
+                            f"[DeviationFeedback] {feedback_result.direction} "
+                            f"({feedback_result.deviation_pct:.0%}), hint injected"
+                        )
+
+        # Verbose output
+        if self.verbose and full_text:
+            print(f"[Think] {_safe_str(full_text[:200])}...")
+
+        # Add assistant message to memory if there are tool calls
+        if tool_calls:
+            self.memory.add_assistant_message(
+                full_text, tool_calls=[tc.to_dict() for tc in tool_calls]
+            )
+
+        think_result = ThinkResult(
+            response_text=full_text,
+            tool_calls=tool_calls or [],
+            usage=usage,
+            is_final=not tool_calls,
+        )
+
+        yield ExecutionEvent(
+            type=ExecutionEventType.THINK_END,
+            data={},
+            think_result=think_result,
+        )
 
     def _merge_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolCall]:
         """

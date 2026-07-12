@@ -6,12 +6,13 @@ Supports OpenAI, DeepSeek, Moonshot, and other OpenAI-compatible APIs.
 
 import os
 import json
-from typing import Generator
+import httpx
+from typing import AsyncGenerator, Generator
 
 import requests
 
 from .base import BaseLLM, LLMUsage
-from .messages import Message, ToolCall
+from .messages import Message, StreamChunk, ToolCall
 
 
 class OpenAICompatibleLLM(BaseLLM):
@@ -249,3 +250,105 @@ class OpenAICompatibleLLM(BaseLLM):
                                 yield content
                         except json.JSONDecodeError:
                             continue
+
+    async def _chat_stream_async_impl(
+        self,
+        messages: list[Message] | list[dict],
+        tools: list[dict] | None = None,
+        system_stable: str | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Async streaming chat with OpenAI-compatible API using httpx.
+
+        OpenAI streams SSE lines. Text content arrives incrementally.
+        Tool calls arrive incrementally via delta.tool_calls with index;
+        arguments are accumulated and emitted when complete.
+        """
+        payload = self._build_payload(messages, tools, system_stable)
+        payload["stream"] = True
+
+        # Buffer for partial tool calls (keyed by index)
+        partial_tool_calls: dict[int, dict] = {}
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream(
+                "POST",
+                self.api_url,
+                json=payload,
+                headers=self._get_headers(),
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    # Handle bytes lines
+                    if isinstance(line, bytes):
+                        line = line.decode("utf-8", errors="replace")
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+
+                    choice = data.get("choices", [{}])[0]
+                    delta = choice.get("delta", {})
+
+                    # Incremental text content
+                    content = delta.get("content", "")
+                    if content:
+                        yield StreamChunk(text=content)
+
+                    # Incremental tool calls
+                    if "tool_calls" in delta:
+                        for tc_delta in delta["tool_calls"]:
+                            idx = tc_delta.get("index", 0)
+                            if idx not in partial_tool_calls:
+                                partial_tool_calls[idx] = {
+                                    "id": "",
+                                    "name": "",
+                                    "arguments_parts": [],
+                                }
+                            if "id" in tc_delta:
+                                partial_tool_calls[idx]["id"] = tc_delta["id"]
+                            func = tc_delta.get("function", {})
+                            if "name" in func:
+                                partial_tool_calls[idx]["name"] = func["name"]
+                            if "arguments" in func:
+                                partial_tool_calls[idx]["arguments_parts"].append(
+                                    func["arguments"]
+                                )
+
+                    # Usage (if provided by provider)
+                    usage_data = data.get("usage")
+                    if usage_data:
+                        yield StreamChunk(
+                            usage=LLMUsage(
+                                prompt_tokens=usage_data.get("prompt_tokens", 0),
+                                completion_tokens=usage_data.get(
+                                    "completion_tokens", 0
+                                ),
+                                total_tokens=usage_data.get("total_tokens", 0),
+                            )
+                        )
+
+        # Emit completed tool calls after stream ends
+        for idx in sorted(partial_tool_calls):
+            tc = partial_tool_calls[idx]
+            if tc["name"]:  # Only emit if we have at least a name
+                yield StreamChunk(
+                    tool_call=ToolCall.from_openai_format(
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": "".join(tc["arguments_parts"]),
+                            },
+                        }
+                    ),
+                    is_tool_call_complete=True,
+                )

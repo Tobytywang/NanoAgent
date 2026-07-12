@@ -4,8 +4,8 @@ Base LLM client interface.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, Generator
-from .messages import Message, ToolCall
+from typing import AsyncGenerator, Callable, Generator
+from .messages import Message, StreamChunk, ToolCall
 
 
 @dataclass
@@ -169,3 +169,59 @@ class BaseLLM(ABC):
             messages, tools, system_stable=system_stable, **kwargs
         )
         yield response
+
+    async def _chat_stream_async_impl(
+        self,
+        messages: list[Message] | list[dict],
+        tools: list[dict] | None = None,
+        system_stable: str | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Subclass implementation of async streaming chat.
+
+        Override this in subclasses for true async streaming.
+        The default implementation falls back to sync chat() and
+        yields the entire response as a single StreamChunk.
+
+        Args:
+            messages: List of messages in the conversation
+            tools: Optional list of tool definitions
+            system_stable: Stable portion of system prompt for prefix caching
+
+        Yields:
+            StreamChunk objects with incremental text, complete tool calls, or usage
+        """
+        # Default: fall back to sync chat()
+        response_text, tool_calls, usage = self._chat_impl(
+            messages, tools, system_stable, **kwargs
+        )
+        if response_text:
+            yield StreamChunk(text=response_text)
+        for tc in tool_calls:
+            yield StreamChunk(tool_call=tc, is_tool_call_complete=True)
+        yield StreamChunk(usage=usage)
+
+    async def chat_stream_async(
+        self,
+        messages: list[Message] | list[dict],
+        tools: list[dict] | None = None,
+        system_stable: str | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Async streaming chat with rate limiting.
+
+        Execution order: rate_limit → _chat_stream_async_impl
+
+        Args:
+            messages: List of messages in the conversation
+            tools: Optional list of tool definitions
+            system_stable: Stable portion of system prompt for prefix caching
+
+        Yields:
+            StreamChunk objects with incremental text, complete tool calls, or usage
+        """
+        self._apply_rate_limit()
+        async for chunk in self._chat_stream_async_impl(
+            messages, tools, system_stable, **kwargs
+        ):
+            yield chunk

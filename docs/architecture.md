@@ -129,8 +129,11 @@ classDiagram
         +_undo_stack: UndoStack
         +run(user_input) ExecutionResult
         +run_stream(user_input) ExecutionHandle
+        +run_async(user_input) ExecutionResult
+        +run_stream_async(user_input) AsyncExecutionHandle
         +_think() ThinkResult
         +_think_stream() Generator
+        +_think_stream_async() AsyncGenerator
         +_act(tool_call) ToolResult
         +_observe(tool_call, result)
         +_try_routing(user_input) tuple
@@ -147,16 +150,20 @@ classDiagram
         +base_url: str
         +chat(messages, tools) tuple
         +chat_stream(messages, tools) Generator
+        +chat_stream_async(messages, tools) AsyncGenerator[StreamChunk]
+        +_chat_stream_async_impl(messages, tools) AsyncGenerator[StreamChunk]
     }
 
     class OllamaLLM {
         +chat() tuple
         +chat_stream() Generator
+        +chat_stream_async() AsyncGenerator[StreamChunk]
     }
 
     class OpenAICompatibleLLM {
         +chat() tuple
         +chat_stream() Generator
+        +chat_stream_async() AsyncGenerator[StreamChunk]
     }
 
     class BaseMemory {
@@ -410,6 +417,25 @@ class ExecutionHandle:
 
     def cancel(self):
         self.cancelled = True
+
+@dataclass
+class AsyncExecutionHandle:
+    """v0.9.1 异步执行句柄"""
+    events: AsyncGenerator[ExecutionEvent, None]
+    cancelled: bool = False
+
+    def cancel(self):
+        self.cancelled = True
+
+    async def collect_result(self) -> ExecutionResult | None: ...
+
+@dataclass
+class StreamChunk:
+    """v0.9.1 异步流式块"""
+    text: str = ""
+    tool_call: ToolCall | None = None
+    is_tool_call_complete: bool = False
+    usage: LLMUsage | None = None
 ```
 
 ---
@@ -417,6 +443,8 @@ class ExecutionHandle:
 ## 3. ReAct 循环数据流
 
 v0.9.0 起，执行流程改为流式架构：CLI → `orchestrator.run_stream()` → `agent.run_stream()` → `_think_stream()` → `llm.chat()`。每个阶段产出 `ExecutionEvent` 对象，调用方可实时观察执行进展。`run()` 是 `run_stream()` 的薄封装，内部消费事件流并收集最终 `ExecutionResult`。
+
+v0.9.1 新增异步流式路径（`streaming.mode="async"` 时启用）：CLI → `orchestrator.run_stream_async()` → `agent.run_stream_async()` → `_think_stream_async()` → `llm.chat_stream_async()`。`_think_stream_async()` 逐 `StreamChunk` 接收 LLM 输出，每个 `StreamChunk.text` 转换为 `THINK_TEXT` 事件，实现真正的逐 token 实时输出。
 
 ```mermaid
 flowchart TD

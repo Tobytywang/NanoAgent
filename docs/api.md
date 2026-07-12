@@ -102,6 +102,27 @@ for event in handle.events:
 
 > **注意**: `run()` 现在是 `run_stream()` 的薄封装——内部调用 `run_stream()` 并消费事件生成器以收集最终 `ExecutionResult`。
 
+##### `run_stream_async(user_input: str, dry_run=False, session_id="") -> AsyncExecutionHandle`
+
+v0.9.1 异步流式执行。返回 `AsyncExecutionHandle`，通过异步事件生成器逐 token 输出，实现真正的实时流式体验。
+
+```python
+handle = agent.run_stream_async("帮我创建一个 hello.txt 文件")
+async for event in handle.events:
+    if event.type == ExecutionEventType.THINK_TEXT and event.text_chunk:
+        print(event.text_chunk, end="", flush=True)
+    elif event.type == ExecutionEventType.RUN_END:
+        print(f"\nDone: {event.result}")
+```
+
+##### `run_async(user_input: str, dry_run=False, session_id="") -> ExecutionResult`
+
+异步执行。`run_stream_async()` 的薄封装——内部消费异步事件生成器以收集最终 `ExecutionResult`。
+
+```python
+result = await agent.run_async("帮我创建一个 hello.txt 文件")
+```
+
 ##### `reset()`
 
 重置 Agent 状态，清空对话历史。
@@ -155,6 +176,21 @@ for event in handle.events:
 ```
 
 > **注意**: `run()` 是 `run_stream()` 的薄封装。
+
+##### `orchestrator.run_stream_async(user_input: str, dry_run=False) -> AsyncExecutionHandle`
+
+v0.9.1 异步流式执行。返回 `AsyncExecutionHandle`，事件流包含 Agent 内部事件和编排层后处理事件。
+
+```python
+handle = orchestrator.run_stream_async("帮我创建一个 hello.txt 文件")
+async for event in handle.events:
+    if event.type == ExecutionEventType.RUN_END:
+        print(f"Result: {event.result}")
+```
+
+##### `orchestrator.run_async(user_input: str, dry_run=False) -> ExecutionResult`
+
+异步执行。`run_stream_async()` 的薄封装。
 
 ### AgentSubsystems
 
@@ -1472,6 +1508,56 @@ handle.cancel()
 
 **生成器返回值**: `handle.events` 的生成器返回值为 `ExecutionResult`，可通过 `yield from` 或 `for` 循环后的返回值获取。
 
+### AsyncExecutionHandle 数据类
+
+v0.9.1 异步执行句柄——包装异步事件生成器，提供取消能力和结果收集。
+
+```python
+from nano_agent.agent.types import AsyncExecutionHandle
+
+@dataclass
+class AsyncExecutionHandle:
+    events: AsyncGenerator[ExecutionEvent, None]  # 异步事件生成器
+    cancelled: bool = False  # 是否已请求取消
+
+    def cancel(self):
+        """请求取消正在执行的异步流式任务。"""
+
+    async def collect_result(self) -> ExecutionResult | None:
+        """消费事件流并返回最终结果。"""
+```
+
+**使用模式**:
+
+```python
+handle = agent.run_stream_async("分析这段代码")
+
+# 消费事件流
+async for event in handle.events:
+    if event.type == ExecutionEventType.THINK_TEXT and event.text_chunk:
+        print(event.text_chunk, end="", flush=True)
+    elif event.type == ExecutionEventType.RUN_END:
+        print(f"\n完成: {event.result.response}")
+
+# 或直接收集结果
+result = await handle.collect_result()
+```
+
+### StreamChunk 数据类
+
+v0.9.1 异步流式块——`chat_stream_async()` 的产出类型。
+
+```python
+from nano_agent.llm.messages import StreamChunk
+
+@dataclass
+class StreamChunk:
+    text: str = ""                          # 增量文本
+    tool_call: ToolCall | None = None       # 完整工具调用（仅当 is_tool_call_complete=True）
+    is_tool_call_complete: bool = False     # 工具调用是否完成
+    usage: LLMUsage | None = None           # 用量数据（通常在最后一块）
+```
+
 ### AgentEvent 枚举
 
 ```python
@@ -1712,6 +1798,31 @@ from nano_agent.llm.retry import with_retry, is_retryable_error, calculate_delay
 - `calculate_delay(attempt, config)` — 指数退避延迟：`min(base * 2^attempt + jitter, max_delay)`
 
 重试事件通过 `AgentEvent.LLM_RETRY` 发出，verbose 模式打印 `[Retry 1/3] ConnectionError, waiting 1.0s...`。
+
+### chat_stream() 方法
+
+同步流式输出，逐文本块 yield。
+
+```python
+for chunk in llm.chat_stream(messages, tools=None, system_stable=None):
+    print(chunk, end="", flush=True)
+```
+
+### chat_stream_async() 方法
+
+v0.9.1 异步流式输出，逐 `StreamChunk` yield。调用链：`chat_stream_async() → _apply_rate_limit() → _chat_stream_async_impl()`。
+
+> **注意**: `chat_stream_async()` 有限速但**无重试**——流中途重试状态不明确，调用方需自行处理瞬态错误。
+
+```python
+async for chunk in llm.chat_stream_async(messages, tools=None, system_stable=None):
+    if chunk.text:
+        print(chunk.text, end="", flush=True)
+    elif chunk.is_tool_call_complete:
+        print(f"\n[Tool] {chunk.tool_call.name}")
+    elif chunk.usage:
+        print(f"\n[Usage] {chunk.usage}")
+```
 
 ---
 
@@ -2194,6 +2305,9 @@ snapshot:
   auto_rollback_enabled: false       # 连续失败时自动回滚
   auto_rollback_threshold: 3         # 触发自动回滚的连续失败次数
   auto_rollback_on_failure: error    # 回滚后行为：error / retry
+
+streaming:
+  mode: sync                          # sync | async（async 为逐 token 流式输出）
 ```
 
 ### ConfigLoader
@@ -2430,6 +2544,7 @@ enabled: true
 
 | 版本 | 主要功能 |
 |------|---------|
+| v0.9.1 | 异步流式执行（`StreamingConfig` mode="sync"|"async"、`StreamChunk`、`chat_stream_async`/`_chat_stream_async_impl`、`AsyncExecutionHandle`、`ReActAgent.run_stream_async`/`run_async`/`_think_stream_async`、`AgentOrchestrator.run_stream_async`/`run_async`、CLI 异步交互循环） |
 | v0.9.0 | 流式执行（`ExecutionEventType`、`ExecutionEvent`、`ExecutionHandle`、`ReActAgent.run_stream`、`AgentOrchestrator.run_stream`、`_think_stream`、`THINK_TEXT`/`THINK_END`/`GUARD_SHORT_CIRCUIT`/`CANCELLED` 事件、`run()` 改为 `run_stream()` 薄封装） |
 | v0.8.15 | 审计日志与自动回滚（`AuditLogEntry`、`ConsecutiveFailureDetector`、`ConsecutiveFailureConfig`、`ConsecutiveFailureResult`、`SnapshotConfig` 新增审计/回滚字段、`SnapshotManager.list_audit_entries`/`rollback_from_audit`/`attempt_auto_rollback`、`ReActAgent.get_failure_result`、`SNAPSHOT_DELETED`/`AUDIT_LOG_ENTRY`/`AUTO_ROLLBACK_TRIGGERED`/`AUTO_ROLLBACK_COMPLETED` 事件、`TerminationReason.AUTO_ROLLBACK`、CLI `/snapshot audit`/`/snapshot rollback <audit_id>`） |
 | v0.8.14 | 全局状态快照（`SnapshotConfig`、`SnapshotManager`、`Snapshot`、`SnapshotMetadata`、`SNAPSHOT_SAVED`/`SNAPSHOT_RESTORED` 事件、CLI `/snapshot` 命令、原位恢复、auto_snapshot） |

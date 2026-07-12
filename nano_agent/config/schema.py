@@ -702,6 +702,15 @@ class SnapshotConfig:
 
 
 @dataclass
+class StreamingConfig:
+    """Streaming execution configuration (v0.9.1)."""
+
+    mode: Literal["sync", "async"] = (
+        "sync"  # sync=existing behavior, async=token-by-token
+    )
+
+
+@dataclass
 class Config:
     """Main configuration."""
 
@@ -750,3 +759,4 @@ class Config:
     )
     memory_gc: MemoryGCConfig = field(default_factory=MemoryGCConfig)
     snapshot: SnapshotConfig = field(default_factory=SnapshotConfig)
+    streaming: StreamingConfig = field(default_factory=StreamingConfig)

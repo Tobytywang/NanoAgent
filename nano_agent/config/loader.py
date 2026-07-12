@@ -7,12 +7,12 @@ import typing
 import yaml
 from pathlib import Path
 
-from .schema import Config, SemanticCompressorConfig, MemoryGCConfig
+from .schema import Config, SemanticCompressorConfig, MemoryGCConfig, StreamingConfig
 
-# Fields "merge_tag" (SemanticCompressorConfig) and "dedup_merge_tag" (MemoryGCConfig)
-# are auto-handled by _from_dict / _asdict_filtered via dataclass introspection.
-# save() persists them via _asdict_filtered which walks all dataclass fields including
-# config.semantic_compressor.merge_tag and config.memory_gc.dedup_merge_tag.
+# Fields "merge_tag" (SemanticCompressorConfig), "dedup_merge_tag" (MemoryGCConfig),
+# and "streaming" (StreamingConfig, with nested "mode" field) are auto-handled by
+# _from_dict / _asdict_filtered via dataclass introspection. save() persists them
+# via _asdict_filtered which walks all dataclass fields including config.streaming.mode.
 
 
 def _is_dataclass_type(tp) -> bool:

@@ -3,7 +3,7 @@ Message data structures for LLM communication.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 import json
 
 
@@ -121,6 +121,20 @@ class ToolCall:
                 "arguments": self.arguments,  # Ollama expects dict, not JSON string
             },
         }
+
+
+@dataclass
+class StreamChunk:
+    """A single chunk from a streaming LLM response.
+
+    Unlike chat_stream() which only yields text, StreamChunk carries
+    structured data including tool calls and usage information.
+    """
+
+    text: str = ""  # Incremental text content
+    tool_call: ToolCall | None = None  # Complete tool call (when is_tool_call_complete)
+    is_tool_call_complete: bool = False  # True when tool call fully received
+    usage: Any | None = None  # LLMUsage (usually on final chunk)
 
 
 @dataclass

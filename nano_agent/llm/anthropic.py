@@ -5,10 +5,10 @@ Supports Anthropic's Prompt Caching feature via cache_control parameter.
 """
 
 import os
-from typing import Generator
+from typing import AsyncGenerator, Generator
 
 from .base import BaseLLM, LLMUsage
-from .messages import Message, ToolCall
+from .messages import Message, StreamChunk, ToolCall
 
 
 class AnthropicLLM(BaseLLM):
@@ -68,6 +68,9 @@ class AnthropicLLM(BaseLLM):
                 "anthropic package is required for AnthropicLLM. "
                 "Install it with: pip install anthropic"
             )
+
+        # Async client (lazy, created on first use)
+        self._async_client = None
 
     def _format_messages(self, messages: list[Message] | list[dict]) -> list[dict]:
         """Format messages for Anthropic API (skip system messages).
@@ -247,7 +250,39 @@ class AnthropicLLM(BaseLLM):
             Text chunks from the response
         """
         self._apply_rate_limit()
-        # Build system prompt with caching
+        request_params = self._build_stream_request_params(
+            messages, tools, system_stable, cache_tools
+        )
+
+        # Stream response
+        with self._client.messages.stream(**request_params) as stream:
+            for text in stream.text_stream:
+                yield text
+
+    def _get_async_client(self):
+        """Get or create the async Anthropic client."""
+        if self._async_client is None:
+            try:
+                from anthropic import AsyncAnthropic
+
+                self._async_client = AsyncAnthropic(
+                    api_key=self.api_key, timeout=self.timeout, max_retries=0
+                )
+            except ImportError:
+                raise ImportError(
+                    "anthropic package is required for async streaming. "
+                    "Install it with: pip install anthropic"
+                )
+        return self._async_client
+
+    def _build_stream_request_params(
+        self,
+        messages: list[Message] | list[dict],
+        tools: list[dict] | None = None,
+        system_stable: str | None = None,
+        cache_tools: bool = True,
+    ) -> dict:
+        """Build request params for streaming (shared by sync and async)."""
         system_content = None
         if system_stable:
             system_content = [
@@ -258,13 +293,9 @@ class AnthropicLLM(BaseLLM):
                 }
             ]
 
-        # Format messages (skip system messages)
         formatted_messages = self._format_messages(messages)
-
-        # Format tools with caching
         formatted_tools = self._format_tools(tools, cache_tools=cache_tools)
 
-        # Build request params
         request_params = {
             "model": self.model,
             "messages": formatted_messages,
@@ -281,8 +312,83 @@ class AnthropicLLM(BaseLLM):
             request_params["temperature"] = self.temperature
 
         request_params.update(self.extra_params)
+        return request_params
 
-        # Stream response
-        with self._client.messages.stream(**request_params) as stream:
-            for text in stream.text_stream:
-                yield text
+    async def _chat_stream_async_impl(
+        self,
+        messages: list[Message] | list[dict],
+        tools: list[dict] | None = None,
+        system_stable: str | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Async streaming chat with Anthropic API.
+
+        Anthropic streams events: content_block_start → content_block_delta → content_block_stop.
+        Tool call arguments arrive incrementally; emitted when block completes.
+        Usage data arrives in message_delta event.
+        """
+        import json
+
+        request_params = self._build_stream_request_params(
+            messages, tools, system_stable
+        )
+        client = self._get_async_client()
+
+        # Buffer for partial tool calls (keyed by content block id)
+        partial_tool_calls: dict[str, dict] = {}
+        current_tool_id = None
+        prompt_tokens = 0
+
+        async with client.messages.stream(**request_params) as stream:
+            async for event in stream:
+                if event.type == "message_start":
+                    # Capture input_tokens from message_start
+                    if hasattr(event, "message") and hasattr(event.message, "usage"):
+                        prompt_tokens = getattr(event.message.usage, "input_tokens", 0)
+
+                elif event.type == "content_block_delta":
+                    if event.delta.type == "text_delta":
+                        yield StreamChunk(text=event.delta.text)
+                    elif event.delta.type == "input_json_delta":
+                        # Tool call arguments arriving incrementally
+                        if current_tool_id and current_tool_id in partial_tool_calls:
+                            partial_tool_calls[current_tool_id][
+                                "arguments_parts"
+                            ].append(event.delta.partial_json)
+
+                elif event.type == "content_block_start":
+                    if event.content_block.type == "tool_use":
+                        current_tool_id = event.content_block.id
+                        partial_tool_calls[current_tool_id] = {
+                            "id": event.content_block.id,
+                            "name": event.content_block.name,
+                            "arguments_parts": [],
+                        }
+
+                elif event.type == "content_block_stop":
+                    if current_tool_id and current_tool_id in partial_tool_calls:
+                        tc = partial_tool_calls.pop(current_tool_id)
+                        args_str = "".join(tc["arguments_parts"])
+                        try:
+                            args = json.loads(args_str) if args_str else {}
+                        except json.JSONDecodeError:
+                            args = {}
+                        yield StreamChunk(
+                            tool_call=ToolCall(
+                                id=tc["id"], name=tc["name"], arguments=args
+                            ),
+                            is_tool_call_complete=True,
+                        )
+                        current_tool_id = None
+
+                elif event.type == "message_delta":
+                    # Usage on final delta
+                    if hasattr(event, "usage") and event.usage:
+                        completion_tokens = getattr(event.usage, "output_tokens", 0)
+                        yield StreamChunk(
+                            usage=LLMUsage(
+                                prompt_tokens=prompt_tokens,
+                                completion_tokens=completion_tokens,
+                                total_tokens=prompt_tokens + completion_tokens,
+                            )
+                        )

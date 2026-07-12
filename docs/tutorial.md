@@ -1088,6 +1088,10 @@ snapshot:
   auto_rollback_enabled: true   # 启用连续失败自动回滚
   auto_rollback_threshold: 3    # 连续 3 次工具失败触发
   auto_rollback_on_failure: error  # 回滚后行为：error / retry
+
+# 流式执行设置
+streaming:
+  mode: sync                     # sync | async（async 为逐 token 流式输出）
 ```
 
 **工作流程**：
@@ -1212,6 +1216,45 @@ for event in handle.events:
 | `CANCELLED` | 执行被取消 | - |
 
 > **注意**: `run()` 现在是 `run_stream()` 的薄封装，内部消费事件流并返回最终 `ExecutionResult`。如需实时观察执行过程，请使用 `run_stream()`。
+
+### 10.3.1 异步流式执行
+
+v0.9.1 新增异步流式执行。`run_stream_async()` 返回 `AsyncExecutionHandle`，通过异步事件生成器逐 token 输出，实现真正的实时流式体验。设置 `streaming.mode: async` 后 CLI 自动使用异步模式。
+
+**异步流式用法**：
+
+```python
+import asyncio
+from nano_agent.agent.types import ExecutionEventType, AsyncExecutionHandle
+
+async def main():
+    handle = agent.run_stream_async("请写一个快速排序算法")
+
+    async for event in handle.events:
+        if event.type == ExecutionEventType.THINK_TEXT and event.text_chunk:
+            print(event.text_chunk, end="", flush=True)
+        elif event.type == ExecutionEventType.RUN_END:
+            print(f"\n完成: {event.result.response}")
+
+asyncio.run(main())
+```
+
+**异步执行（等待完整结果）**：
+
+```python
+result = await agent.run_async("帮我创建一个 hello.txt 文件")
+print(result.response)
+```
+
+**异步取消**：
+
+```python
+handle = agent.run_stream_async("长时间运行的任务")
+# 在另一个协程中取消
+handle.cancel()
+```
+
+> **注意**: `run_async()` 是 `run_stream_async()` 的薄封装。
 
 ### 10.4 错误处理
 

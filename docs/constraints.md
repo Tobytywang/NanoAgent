@@ -845,7 +845,7 @@ snapshot:
 - 预算收尾轮是**TokenBudget 的子机制**：在 `should_summarize()` 之前检查，收尾轮执行后直接终止，不会回到主循环
 - 重复检测阈值现在可通过 `smart_optimization.duplicate_threshold` 配置
 - Stall Detection 是**第三个提前干预机制**：与置信度早停（循环内部）和查询路由（循环入口）不同，Stall Detection 在循环末尾检测无进展并注入转向提示，不直接终止循环
-- 速率限制和重试是**LLM 调用的两层防护**：速率限制是"预防"（主动控制调用频率），重试是"治疗"（被动恢复失败调用）。调用链为 `rate_limiter.acquire() → with_retry(_chat_impl)`
+- 速率限制和重试是**LLM 调用的两层防护**：速率限制是"预防"（主动控制调用频率），重试是"治疗"（被动恢复失败调用）。同步调用链为 `chat() → rate_limiter.acquire() → with_retry(_chat_impl)`；异步流式调用链为 `chat_stream_async() → _apply_rate_limit() → _chat_stream_async_impl()`（有限速无重试，流中途重试状态不明确）
 - 输入净化是**ReAct 循环前的硬门控**：在 orchestrator 边界执行，拒绝的输入不进入循环。处理顺序（format → PII → injection → length）不可调换，格式检查先于注入检查防止通过编码绕过，PII 脱敏在注入检查前执行确保遮蔽后的文本参与注入检测
 - ResultValidator 是**第四道输出防线**：在 OutputGuard（防信息泄露）、HarmfulContentFilter（防有害内容）之后验证结果正确性。block 动作仅对 high-severity 失败生效，medium/low 失败不会触发拦截
 - ToolRateLimiter 和 LLM RateLimiter 是**两个独立的速率限制器**：LLM RateLimiter 阻塞等待令牌（保护 API 不被 429），ToolRateLimiter 非阻塞立即返回失败（保护 Agent 不被失控工具拖慢）。两者分别控制不同层面的调用频率
@@ -1030,6 +1030,7 @@ memory_gc:
 | `rate_limiter.enabled` | `True` | 速率限制开关 | 硬限制 |
 | `rate_limiter.requests_per_minute` | `60` | 每分钟最大请求数 | 硬限制 |
 | `rate_limiter.burst` | `10` | 令牌桶容量（突发请求数） | 硬限制 |
+| `streaming.mode` | `"sync"` | 流式模式: sync=现有行为, async=逐token流式 | 硬限制 |
 | `smart_optimization.circuit_breaker.enabled` | `True` | 熔断器开关 | 硬限制 |
 | `smart_optimization.circuit_breaker.max_response_tokens` | `8000` | LLM 单次响应上限 | 硬限制 |
 | `smart_optimization.circuit_breaker.duplicate_trigger_count` | `3` | 重复调用触发次数 | 硬限制 |

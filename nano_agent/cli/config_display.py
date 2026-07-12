@@ -392,6 +392,9 @@ SECTIONS: list[SectionSpec] = [
         FieldSpec("auto_rollback_threshold", "回滚阈值:"),
         FieldSpec("auto_rollback_on_failure", "回滚后行为:"),
     ]),
+    SectionSpec("streaming", "流式执行 (Streaming)", fields=[
+        FieldSpec("mode", "模式:", formatter=lambda v: f"{v} ({'逐 token 输出' if v == 'async' else '同步'})"),
+    ]),
 ]
 # fmt: on
 

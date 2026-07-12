@@ -4,9 +4,10 @@ Ollama LLM client implementation.
 
 import requests
 import json
-from typing import Generator
+import httpx
+from typing import AsyncGenerator, Generator
 from .base import BaseLLM, LLMUsage
-from .messages import Message, ToolCall
+from .messages import Message, StreamChunk, ToolCall
 from ..monitoring.logger import get_logger
 
 
@@ -217,3 +218,60 @@ class OllamaLLM(BaseLLM):
                         content = data["message"].get("content", "")
                         if content:
                             yield content
+
+    async def _chat_stream_async_impl(
+        self,
+        messages: list[Message] | list[dict],
+        tools: list[dict] | None = None,
+        system_stable: str | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Async streaming chat with Ollama API using httpx.
+
+        Ollama streams JSON lines. Text content arrives incrementally.
+        Tool calls and usage appear in the final chunk (done: true).
+        """
+        payload = self._build_payload(messages, tools)
+        payload["stream"] = True
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream(
+                "POST",
+                self.api_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    # Incremental text content
+                    if "message" in data:
+                        content = data["message"].get("content", "")
+                        if content:
+                            yield StreamChunk(text=content)
+
+                        # Tool calls (Ollama sends complete tool calls in final message)
+                        if "tool_calls" in data["message"]:
+                            for tc in data["message"]["tool_calls"]:
+                                yield StreamChunk(
+                                    tool_call=ToolCall.from_ollama_format(tc),
+                                    is_tool_call_complete=True,
+                                )
+
+                    # Usage in final chunk
+                    if data.get("done", False):
+                        prompt_tokens = data.get("prompt_eval_count", 0)
+                        completion_tokens = data.get("eval_count", 0)
+                        yield StreamChunk(
+                            usage=LLMUsage(
+                                prompt_tokens=prompt_tokens,
+                                completion_tokens=completion_tokens,
+                                total_tokens=prompt_tokens + completion_tokens,
+                            )
+                        )

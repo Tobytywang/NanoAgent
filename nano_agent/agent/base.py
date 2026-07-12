@@ -3,6 +3,8 @@ Agent 基类
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
+
 from ..llm.base import BaseLLM
 from ..memory.base import BaseMemory
 from ..tools import ToolRegistry
@@ -43,6 +45,19 @@ class BaseAgent(ABC):
 
         Returns:
             Agent 的响应
+        """
+        pass
+
+    @abstractmethod
+    async def run_async(self, user_input: str, **kwargs) -> Any:
+        """
+        Async version of run().
+
+        Args:
+            user_input: 用户输入文本
+
+        Returns:
+            ExecutionResult
         """
         pass
 

@@ -7,7 +7,7 @@ the orchestration layer and execution layer.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Generator
+from typing import Any, AsyncGenerator, Generator
 
 from ..core.types import RiskLevel, Plan, PlanPhase  # noqa: F401
 
@@ -119,6 +119,26 @@ class ExecutionHandle:
         """Consume all remaining events and return the final ExecutionResult."""
         result = None
         for event in self.events:
+            if event.type == ExecutionEventType.RUN_END and event.result is not None:
+                result = event.result
+        return result
+
+
+@dataclass
+class AsyncExecutionHandle:
+    """Async execution handle - wraps an async generator that yields ExecutionEvents."""
+
+    events: AsyncGenerator[ExecutionEvent, None]
+    cancelled: bool = False
+
+    def cancel(self):
+        """Request cancellation of the running execution."""
+        self.cancelled = True
+
+    async def collect_result(self) -> ExecutionResult | None:
+        """Consume all remaining events and return the final ExecutionResult."""
+        result = None
+        async for event in self.events:
             if event.type == ExecutionEventType.RUN_END and event.result is not None:
                 result = event.result
         return result
