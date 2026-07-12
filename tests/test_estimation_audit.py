@@ -301,6 +301,20 @@ class TestBaseRatioFirstRoundCorrection:
         assert tracker.token_analyzer._base_ratio_initialized is False
         assert tracker.token_analyzer._base_ratio_iteration == 0
 
+    def test_get_base_chars_before_start_run(self):
+        """get_base_chars() must work before any start_run() call.
+
+        Regression test: MetricsTracker.__init__() omitted _base_tool_chars,
+        _base_system_chars, and _base_skill_chars — they were only set in
+        reset().  This caused AttributeError when /context called
+        get_base_chars() before any iteration ran.
+        """
+        from nano_agent.monitoring.tracker import MetricsTracker
+
+        tracker = MetricsTracker()
+        chars = tracker.get_base_chars()
+        assert chars == {"tool_chars": 0, "system_chars": 0, "skill_chars": 0}
+
     def test_single_iteration_no_base_ratio_set(self):
         """Single-iteration run should not set base_ratio; uses per-iteration ratio."""
         from nano_agent.monitoring.tracker import MetricsTracker
