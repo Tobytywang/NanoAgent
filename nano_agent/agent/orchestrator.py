@@ -442,8 +442,10 @@ class AgentOrchestrator:
         Returns:
             AsyncExecutionHandle wrapping an async event generator
         """
+        handle: AsyncExecutionHandle | None = None
 
         async def event_generator() -> AsyncGenerator[ExecutionEvent, None]:
+            nonlocal handle
             # Emit start event
             self.events.emit(
                 AgentEvent.RUN_START,
@@ -692,7 +694,8 @@ class AgentOrchestrator:
                 type=ExecutionEventType.RUN_END, data={}, result=result
             )
 
-        return AsyncExecutionHandle(events=event_generator())
+        handle = AsyncExecutionHandle(events=event_generator())
+        return handle
 
     def run_dry(self, user_input: str) -> ExecutionResult:
         """

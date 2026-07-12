@@ -22,7 +22,13 @@ from ..memory import (
 )
 from ..tools import ToolRegistry
 from ..tools.builtin import register_builtin_tools
-from ..agent import ReActAgent, AgentOrchestrator, AgentEvent, TerminationReason
+from ..agent import (
+    ReActAgent,
+    AgentOrchestrator,
+    AgentEvent,
+    TerminationReason,
+    ExecutionMode,
+)
 from ..agent.types import ExecutionEventType
 from ..agent.token_utils import estimate_text_tokens
 from ..config.loader import ConfigLoader
@@ -1213,6 +1219,13 @@ async def run_interactive_async(
             user_display = stored_user
         if stored_agent:
             agent_display = stored_agent
+
+    # Initialize GracefulExitManager for /exit summary
+    GracefulExitManager.agent = agent
+    GracefulExitManager.config = config
+    GracefulExitManager.report_enabled = report_enabled
+    GracefulExitManager.report_format = report_format
+    GracefulExitManager.report_output = report_output
 
     # Set up signal handler for Ctrl+C cancellation
     loop = asyncio.get_running_loop()

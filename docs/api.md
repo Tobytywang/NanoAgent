@@ -2543,6 +2543,7 @@ enabled: true
 ## 内部实用函数
 
 - `safe_str(text)` — 安全地将字符串转为可打印格式，移除无效 Unicode 字符（`utils.strings`）
+- `ExecutionMode` — 执行模式枚举（`SUPERVISED`/`AUTONOMOUS`）
 
 ## 版本历史
 

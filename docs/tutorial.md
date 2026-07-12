@@ -1262,6 +1262,8 @@ safe_text = safe_str(response_text)
 ```
 
 > **注意**: `run_async()` 是 `run_stream_async()` 的薄封装。
+> 
+> 异步模式下的工具确认可通过 `ExecutionMode` 控制执行权限（`ExecutionMode.SUPERVISED` 需用户确认，`ExecutionMode.AUTONOMOUS` 自动执行）。
 
 ### 10.4 错误处理
 
