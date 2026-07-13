@@ -311,6 +311,87 @@ class TestPersistentMemory:
         # stable_system_prompt is NOT persisted (it's regenerated each session)
         assert memory2.stable_system_prompt == ""
 
+    def test_ephemeral_message_not_persisted(self, temp_storage):
+        """Ephemeral messages must NOT be saved to storage.
+
+        Regression: PersistentMemory.add() checks metadata.ephemeral
+        and skips storage.save(). On session reload, ephemeral messages
+        should appear in memory (get_context) but not in the storage file.
+        """
+        from nano_agent.memory.base import EPHEMERAL_KEY
+
+        mem = PersistentMemory(storage=temp_storage, session_id="ephemeral_test")
+        mem.add_user_message("normal message")
+        mem.add_user_message("ephemeral msg", metadata={EPHEMERAL_KEY: True})
+
+        # Both should be in memory
+        ctx = [m["content"] for m in mem.get_context()]
+        assert "normal message" in ctx
+        assert "ephemeral msg" in ctx
+
+        # Reload from storage — ephemeral should be absent
+        mem2 = PersistentMemory(storage=temp_storage, session_id="ephemeral_test")
+        ctx2 = [m["content"] for m in mem2.get_context()]
+        assert "normal message" in ctx2
+        assert "ephemeral msg" not in ctx2
+
+    def test_load_filters_old_system_messages(self, temp_storage):
+        """On session load, [System]-prefixed user messages from pre-fix
+        sessions must be filtered out. Normal user/assistant messages
+        must be preserved.
+        """
+        import json, pathlib
+
+        # Write a raw session file simulating pre-fix storage
+        sesh_file = pathlib.Path(temp_storage.base_dir) / "session_legacy.jsonl"
+        with open(sesh_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "id": "1",
+                        "session_id": "session_legacy",
+                        "role": "user",
+                        "content": "[System] Token 估算偏差过高 (69%)",
+                        "timestamp": "",
+                        "metadata": {},
+                    }
+                )
+                + "\n"
+            )
+            f.write(
+                json.dumps(
+                    {
+                        "id": "2",
+                        "session_id": "session_legacy",
+                        "role": "user",
+                        "content": "正常用户消息",
+                        "timestamp": "",
+                        "metadata": {},
+                    }
+                )
+                + "\n"
+            )
+            f.write(
+                json.dumps(
+                    {
+                        "id": "3",
+                        "session_id": "session_legacy",
+                        "role": "assistant",
+                        "content": "正常回复",
+                        "timestamp": "",
+                        "metadata": {},
+                    }
+                )
+                + "\n"
+            )
+
+        mem = PersistentMemory(storage=temp_storage, session_id="session_legacy")
+        contents = [m["content"] for m in mem.get_context()]
+
+        assert "[System] Token 估算偏差过高 (69%)" not in contents
+        assert "正常用户消息" in contents
+        assert "正常回复" in contents
+
 
 class TestMemoryConfig:
     """Tests for memory configuration."""
