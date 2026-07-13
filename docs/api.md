@@ -898,10 +898,13 @@ config = FeedbackLoopConfig(
 
 fl = FeedbackLoop(config, events=agent.events)
 
-# #13: 检查偏差并注入提示
+# #13: 检查偏差并注入提示（ephemeral，不会写入会话文件）
 result = fl.check_deviation(audit_result)
 if result.should_inject and result.hint:
-    memory.add_user_message(f"[System] {result.hint}")
+    memory.add_user_message(
+        f"[System] {result.hint}",
+        metadata={"ephemeral": True},
+    )
 
 # #14: 判断是否应重试
 if fl.should_retry(validator_result):

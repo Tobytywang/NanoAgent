@@ -1005,7 +1005,8 @@ class ReActAgent(BaseAgent):
         self.memory.add_user_message(
             "[System] Token budget is critically low. This is the final round. "
             "Please summarize your findings, list any unfinished work, "
-            "and provide the best answer you can."
+            "and provide the best answer you can.",
+            metadata={"ephemeral": True},
         )
         if self.verbose:
             print("[Budget Wrap-Up] Token budget critically low — entering final round")
@@ -1078,7 +1079,10 @@ class ReActAgent(BaseAgent):
                     "stalled_iterations": stall_result.stalled_iterations,
                 },
             )
-            self.memory.add_user_message(f"[System] {stall_result.hint}")
+            self.memory.add_user_message(
+                f"[System] {stall_result.hint}",
+                metadata={"ephemeral": True},
+            )
             if self.verbose:
                 print(
                     f"[Stall] Detected ({stall_result.stalled_iterations}x), hint injected"
@@ -1261,7 +1265,10 @@ class ReActAgent(BaseAgent):
                     audit_result
                 )
                 if feedback_result.should_inject and feedback_result.hint:
-                    self.memory.add_user_message(f"[System] {feedback_result.hint}")
+                    self.memory.add_user_message(
+                        f"[System] {feedback_result.hint}",
+                        metadata={"ephemeral": True},
+                    )
                     if self.verbose:
                         print(
                             f"[DeviationFeedback] {feedback_result.direction} "

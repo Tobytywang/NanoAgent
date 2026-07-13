@@ -345,7 +345,10 @@ class AgentOrchestrator:
                         feedback_msg = self.feedback_loop.build_correction_feedback(
                             validator_result
                         )
-                        self.agent.memory.add_user_message(feedback_msg)
+                        self.agent.memory.add_user_message(
+                            feedback_msg,
+                            metadata={"ephemeral": True},
+                        )
 
                         if self.agent.verbose:
                             print(
@@ -638,7 +641,10 @@ class AgentOrchestrator:
                         feedback_msg = self.feedback_loop.build_correction_feedback(
                             validator_result
                         )
-                        self.agent.memory.add_user_message(feedback_msg)
+                        self.agent.memory.add_user_message(
+                            feedback_msg,
+                            metadata={"ephemeral": True},
+                        )
 
                         if self.agent.verbose:
                             print(

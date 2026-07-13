@@ -26,9 +26,11 @@ class ShortTermMemory(BaseMemory):
         self._messages.append(message)
         self._trim_if_needed()
 
-    def add_user_message(self, content: str) -> None:
+    def add_user_message(self, content: str, **kwargs) -> None:
         """添加用户消息"""
-        self.add({"role": "user", "content": content})
+        msg = {"role": "user", "content": content}
+        msg.update(kwargs)
+        self.add(msg)
 
     def add_assistant_message(
         self, content: str, tool_calls: list | None = None

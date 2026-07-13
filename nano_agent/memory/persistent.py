@@ -71,13 +71,16 @@ class PersistentMemory(BaseMemory):
     def add(self, message: dict) -> None:
         """添加消息到历史记录并持久化。"""
         self._messages.append(message)
-        entry = self._message_to_entry(message)
-        self.storage.save(entry)
+        if not message.get("metadata", {}).get("ephemeral"):
+            entry = self._message_to_entry(message)
+            self.storage.save(entry)
         self._trim_if_needed()
 
-    def add_user_message(self, content: str) -> None:
+    def add_user_message(self, content: str, **kwargs) -> None:
         """添加用户消息。"""
-        self.add({"role": "user", "content": content})
+        msg = {"role": "user", "content": content}
+        msg.update(kwargs)
+        self.add(msg)
 
     def add_assistant_message(
         self, content: str, tool_calls: list | None = None

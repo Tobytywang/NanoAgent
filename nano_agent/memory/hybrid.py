@@ -71,9 +71,9 @@ class HybridMemory(BaseMemory):
 
     # === 便捷方法 ===
 
-    def add_user_message(self, content: str) -> None:
+    def add_user_message(self, content: str, **kwargs) -> None:
         """添加用户消息到工作内存。"""
-        self.working_memory.add_user_message(content)
+        self.working_memory.add_user_message(content, **kwargs)
 
     def add_assistant_message(
         self, content: str, tool_calls: list | None = None
