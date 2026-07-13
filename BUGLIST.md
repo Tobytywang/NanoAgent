@@ -455,6 +455,126 @@ initial_budget: int = 50000  # Increased from 20000
 
 ---
 
+## BUG-006: StallDetector 相似度计算因 MD5 哈希恒为 0
+
+**发现日期**: 2026-07-13
+
+**严重程度**: 中（Stall 检测机制几乎不生效）
+
+**影响范围**: 所有启用 Stall Detector 的用户，仅完全重复的工具调用才能触发
+
+### 问题描述
+
+StallDetector 使用 Jaccard 相似度比较连续迭代的签名，但签名中包含结果的 MD5 哈希：
+
+```python
+parts.append(f"{name}:{result_hash}:{result_len}")
+```
+
+不同轮次的结果内容几乎不可能相同，导致交集恒为空，相似度恒为 0.0。`similarity_threshold: float = 0.7` 形同虚设。
+
+### 根因分析
+
+签名设计将"内容哈希"和"结构特征"混在一起。MD5 哈希是全有或全无的判断，导致：
+- 实际相似度永远 0.0 或 1.0（完全重复）
+- 无法检测"不同工具 / 不同结果但结构类似"的停滞模式
+- StallDetector 的注释自称"检测不同工具相同结果"，但实现相悖
+
+### 修复方案
+
+将签名中的 MD5 哈希替换为结果特征信号，使 Jaccard 相似度落在 0~1 之间：
+
+```python
+def _make_signature(self, tool_names, tool_results) -> str:
+    parts = []
+    for name, result in zip(tool_names, tool_results):
+        success = "ok" if result.strip() else "fail"
+        length_bucket = _length_bucket(len(result))
+        parts.append(f"{name}:{success}:{length_bucket}")
+    return "|".join(parts)
+
+def _length_bucket(length: int) -> str:
+    if length == 0: return "0"
+    if length < 100: return "small"
+    if length < 1000: return "medium"
+    if length < 10000: return "large"
+    return "huge"
+```
+
+这样同工具 + 同成功状态 + 同量级的签名就会部分匹配，相似度自然落在 0~1 之间。
+
+### 测试要点
+
+1. 不同工具不同结果 → 相似度 0.0
+2. 同工具同量级不同内容 → 相似度 > 0（部分匹配）
+3. 完全相同的调用 → 相似度 1.0
+4. 连续 N 轮高于阈值 → 触发 stall
+
+### 相关文件
+
+- `nano_agent/agent/stall_detector.py` - `_make_signature()` 和 `_signature_similarity()`
+
+---
+
+## BUG-007: StallDetector 注入的 [System] 提示跨轮次持久化污染上下文
+
+**发现日期**: 2026-07-13
+
+**严重程度**: 高（导致 Agent 在新轮次中被旧轮次的停滞提示误导）
+
+**影响范围**: 所有使用 HybridMemory/PersistentMemory + StallDetector 的用户，会话恢复后 Agent 可能过早停止使用工具
+
+### 问题描述
+
+StallDetector 触发时通过 `memory.add_user_message(f"[System] {hint}")` 注入提示。这些提示被写入会话文件，当会话恢复（resume）时重新加载到上下文中。Agent 在新一轮对话中看到来自旧轮次的 "没有明显进展"、"停止使用工具" 等提示，可能过早放弃工具调用。
+
+现场数据（`session_ca8438ed.jsonl`）中，第一条 `[System]` 提示紧随 System Prompt 之后、用户提问之前出现——这是上一轮 StallDetector 的残留。
+
+### 根因分析
+
+StallDetector 自身在 `_prepare_run()` 中正确调用了 `reset()`，清空了内部的 `_iteration_signatures` 和 `_stall_count`。但它的副作用通过 `memory.add_user_message()` 写入了持久化存储，在会话恢复时无法区分"本轮注入的系统提示"和"旧轮残留的系统提示"。
+
+类似问题同样影响 Token 估算偏差警告（`[System] Token 估算偏差过高`），同样通过 `memory.add_user_message()` 持久化。
+
+### 修复方案
+
+两种可行的修复方向：
+
+**方案 A（推荐）**：StallDetector 注入的 `[System]` 消息标记为 ephemeral，进入内存但不写入 session 文件。
+
+```python
+# react.py 中的注入点
+self.memory.add_user_message(
+    f"[System] {stall_result.hint}",
+    metadata={"ephemeral": True}  # 标记为临时消息
+)
+```
+
+各 Storage 后端在 `save()` 时跳过 `metadata.ephemeral=True` 的消息。
+
+**方案 B**：Session 恢复时过滤掉 `[System]` 前缀的 user 消息。但可能误删用户手动输入的 `[System]` 内容。
+
+### 补充的测试场景
+
+1. StallDetector 触发 → 注入 `[System]` 提示 → 对话进行 → 新轮 start → 旧 `[System]` 不在 memory.get_context() 中
+2. Token 估算偏差警告同样不跨轮次持久化
+3. Session save → resume 后 ephemeral 消息不出现
+
+### 相关文件
+
+- `nano_agent/agent/react.py` - `_check_stall()` 中 `memory.add_user_message()` 注入点
+- `nano_agent/memory/storage/file_storage.py` - `save()` 需过滤 ephemeral
+- `nano_agent/memory/storage/sqlite_storage.py` - `save()` 需过滤 ephemeral
+- `nano_agent/memory/base.py` - `add_user_message()` 需支持 metadata 透传
+
+### 修复提交
+
+- Commit `9405878`: `add_user_message()` 支持 `**kwargs` 透传；`PersistentMemory.add()` 检查 `metadata.ephemeral` 跳过 `storage.save()`；5 个注入点统一添加 `metadata={"ephemeral": True}`
+
+标记 `PersistentMemory.add()` 中判断 `message.get("metadata", {}).get("ephemeral")`，不在 storage 层做过滤——ephemeral 消息根本不会到达 save() 调用，因此 `FileStorage` 和 `SQLiteStorage` 均无需修改。
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：
