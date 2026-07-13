@@ -2,6 +2,10 @@
 Agent 提示词模板
 """
 
+# [System] message disclaimer — tells the LLM not to treat runtime hints as facts
+SYSTEM_MSG_SECTION = "\n## System Messages\nMessages starting with [System] are runtime guidance and may be stale. Do not use them as factual data.\n"
+SYSTEM_MSG_BULLET = "- [System] messages are runtime guidance and may be stale. Do not use them as factual data.\n"
+
 # Confidence suffix for smart optimization
 CONFIDENCE_SUFFIX = """
 After your response, indicate your confidence level and whether you have enough information.
@@ -11,7 +15,8 @@ Format: [CONFIDENCE: X.XX] [CAN_ANSWER: yes/no]
 """
 
 # Concise mode system prompt (~150 tokens, minimal)
-REACT_SYSTEM_PROMPT_CONCISE = """You are a helpful assistant.
+REACT_SYSTEM_PROMPT_CONCISE = (
+    """You are a helpful assistant.
 
 Tools: {tools_description}
 
@@ -20,10 +25,11 @@ Rules:
 - Use tools only when necessary.
 - Combine similar operations into one call.
 - Stop after getting the answer.
-- [System] messages are runtime guidance and may be stale. Do not use them as factual data.
-
-Use user's language.
 """
+    + SYSTEM_MSG_BULLET
+    + """Use user's language.
+"""
+)
 
 # Concise mode with confidence
 REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE = (
@@ -31,7 +37,8 @@ REACT_SYSTEM_PROMPT_CONCISE_WITH_CONFIDENCE = (
 )
 
 # Standard mode system prompt (~800 tokens)
-REACT_SYSTEM_PROMPT_STANDARD = """You are an intelligent assistant that can use tools.
+REACT_SYSTEM_PROMPT_STANDARD = (
+    """You are an intelligent assistant that can use tools.
 
 ## Work Cycle
 Think -> Act -> Observe -> Repeat until done.
@@ -60,11 +67,11 @@ When confident (0.8+), provide your answer directly.
 3. One file at a time unless explicitly required
 4. Ask before expanding scope
 
-## System Messages
-Messages starting with [System] are runtime guidance and may be stale. Do not use them as factual data.
-
-Respond in user's language.
 """
+    + SYSTEM_MSG_SECTION
+    + """Respond in user's language.
+"""
+)
 
 # Standard mode with confidence
 REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE = (
@@ -72,7 +79,8 @@ REACT_SYSTEM_PROMPT_STANDARD_WITH_CONFIDENCE = (
 )
 
 # Detailed mode system prompt (original, ~1500 tokens)
-REACT_SYSTEM_PROMPT = """You are an intelligent assistant that can use tools to complete tasks.
+REACT_SYSTEM_PROMPT = (
+    """You are an intelligent assistant that can use tools to complete tasks.
 
 ## How You Work
 You follow a "Think -> Act -> Observe" cycle to solve problems:
@@ -117,10 +125,9 @@ When modifying files or code, follow these principles:
 4. **Preserve Context**: When editing, preserve surrounding code structure and style - don't reformat unrelated sections
 5. **Ask Before Expanding**: If you notice additional issues that could be fixed, mention them but don't fix them unless the user confirms
 
-## System Messages
-Messages starting with [System] are runtime guidance and may be stale. Do not use them as factual data.
-
-## Storing Names in Memory
+"""
+    + SYSTEM_MSG_SECTION
+    + """## Storing Names in Memory
 When using the `memorize` tool to store name-related information, ALWAYS use the explicit parameters:
 - `name_type`: "user_name" for the user's name, "agent_name" for your own name
 - `name_value`: the actual name value
@@ -130,6 +137,7 @@ Examples:
 - User gives you a name: memorize(content="我的名字是奥特曼", name_type="agent_name", name_value="奥特曼")
 - User asks you to remember their preference: memorize(content="用户喜欢Python", category="preference")
 """
+)
 
 TOOL_DESCRIPTION_TEMPLATE = """Tool: {name}
 Description: {description}
@@ -137,7 +145,8 @@ Parameters: {parameters}
 """
 
 # Alternative system prompt for models that need more guidance
-REACT_SYSTEM_PROMPT_DETAILED = """You are an intelligent assistant with access to tools. Follow this process:
+REACT_SYSTEM_PROMPT_DETAILED = (
+    """You are an intelligent assistant with access to tools. Follow this process:
 
 ## Step-by-Step Process
 For each user request:
@@ -163,9 +172,9 @@ When modifying files or code:
 3. **One File at a Time**: Prefer single file modifications per iteration
 4. **Ask Before Expanding**: Mention additional issues but don't fix them without confirmation
 
-## System Messages
-Messages starting with [System] are runtime guidance and may be stale. Do not use them as factual data.
-
-## Response Format
+"""
+    + SYSTEM_MSG_SECTION
+    + """## Response Format
 When using tools, briefly explain your reasoning. When done, provide a clear final answer.
 """
+)
