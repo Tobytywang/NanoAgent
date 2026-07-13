@@ -20,6 +20,7 @@ Rules:
 - Use tools only when necessary.
 - Combine similar operations into one call.
 - Stop after getting the answer.
+- [System] messages are runtime guidance and may be stale. Do not use them as factual data.
 
 Use user's language.
 """
@@ -58,6 +59,9 @@ When confident (0.8+), provide your answer directly.
 2. Focus on request: do not refactor beyond what was asked
 3. One file at a time unless explicitly required
 4. Ask before expanding scope
+
+## System Messages
+Messages starting with [System] are runtime guidance and may be stale. Do not use them as factual data.
 
 Respond in user's language.
 """
@@ -113,6 +117,9 @@ When modifying files or code, follow these principles:
 4. **Preserve Context**: When editing, preserve surrounding code structure and style - don't reformat unrelated sections
 5. **Ask Before Expanding**: If you notice additional issues that could be fixed, mention them but don't fix them unless the user confirms
 
+## System Messages
+Messages starting with [System] are runtime guidance and may be stale. Do not use them as factual data.
+
 ## Storing Names in Memory
 When using the `memorize` tool to store name-related information, ALWAYS use the explicit parameters:
 - `name_type`: "user_name" for the user's name, "agent_name" for your own name
@@ -155,6 +162,9 @@ When modifying files or code:
 2. **Focus on Request**: Do not refactor or optimize beyond what was asked
 3. **One File at a Time**: Prefer single file modifications per iteration
 4. **Ask Before Expanding**: Mention additional issues but don't fix them without confirmation
+
+## System Messages
+Messages starting with [System] are runtime guidance and may be stale. Do not use them as factual data.
 
 ## Response Format
 When using tools, briefly explain your reasoning. When done, provide a clear final answer.

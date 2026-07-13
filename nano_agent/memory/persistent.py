@@ -38,7 +38,13 @@ class PersistentMemory(BaseMemory):
             entries = self.storage.load_session(self.session_id)
             # 在开头添加系统消息，然后添加已加载的消息
             self._messages = [{"role": "system", "content": self.system_prompt}]
-            self._messages.extend([self._entry_to_message(e) for e in entries])
+            # 过滤掉旧版 [System] 残留消息（加载时安全网，ephemeral 消息不会被保存）
+            filtered = [
+                e
+                for e in entries
+                if not (e.role == "user" and e.content.startswith("[System]"))
+            ]
+            self._messages.extend([self._entry_to_message(e) for e in filtered])
             self._loaded = True
         else:
             self._messages = [{"role": "system", "content": self.system_prompt}]
