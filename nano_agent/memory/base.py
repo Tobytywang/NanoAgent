@@ -5,6 +5,10 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+# 标记消息为临时的 key，PersistentMemory.add() 据此跳过写盘
+# 运行时可见但不持久化，不会跨轮次残留
+EPHEMERAL_KEY = "ephemeral"
+
 
 class BaseMemory(ABC):
     """记忆系统抽象基类"""

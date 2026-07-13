@@ -9,6 +9,8 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Generator
 
+from ..memory.base import EPHEMERAL_KEY
+
 from .types import (
     ExecutionResult,
     ExecutionEvent,
@@ -347,7 +349,7 @@ class AgentOrchestrator:
                         )
                         self.agent.memory.add_user_message(
                             feedback_msg,
-                            metadata={"ephemeral": True},
+                            metadata={EPHEMERAL_KEY: True},
                         )
 
                         if self.agent.verbose:
@@ -643,7 +645,7 @@ class AgentOrchestrator:
                         )
                         self.agent.memory.add_user_message(
                             feedback_msg,
-                            metadata={"ephemeral": True},
+                            metadata={EPHEMERAL_KEY: True},
                         )
 
                         if self.agent.verbose:

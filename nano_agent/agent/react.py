@@ -10,6 +10,7 @@ import time
 from typing import AsyncGenerator, Generator
 
 from .base import BaseAgent
+from ..memory.base import EPHEMERAL_KEY
 from .prompts import (
     REACT_SYSTEM_PROMPT,
     REACT_SYSTEM_PROMPT_CONCISE,
@@ -1006,7 +1007,7 @@ class ReActAgent(BaseAgent):
             "[System] Token budget is critically low. This is the final round. "
             "Please summarize your findings, list any unfinished work, "
             "and provide the best answer you can.",
-            metadata={"ephemeral": True},
+            metadata={EPHEMERAL_KEY: True},
         )
         if self.verbose:
             print("[Budget Wrap-Up] Token budget critically low — entering final round")
@@ -1081,7 +1082,7 @@ class ReActAgent(BaseAgent):
             )
             self.memory.add_user_message(
                 f"[System] {stall_result.hint}",
-                metadata={"ephemeral": True},
+                metadata={EPHEMERAL_KEY: True},
             )
             if self.verbose:
                 print(
@@ -1267,7 +1268,7 @@ class ReActAgent(BaseAgent):
                 if feedback_result.should_inject and feedback_result.hint:
                     self.memory.add_user_message(
                         f"[System] {feedback_result.hint}",
-                        metadata={"ephemeral": True},
+                        metadata={EPHEMERAL_KEY: True},
                     )
                     if self.verbose:
                         print(

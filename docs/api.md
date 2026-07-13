@@ -912,6 +912,8 @@ if fl.should_retry(validator_result):
     fl.record_correction_attempt()
 ```
 
+> ephemeral 消息通过 `EPHEMERAL_KEY` 常量（`nano_agent.memory.base`）标记，注入内存但不写入会话文件，避免跨轮次污染。
+
 **FeedbackLoop 核心方法**：
 - `check_deviation(audit_result)` → `DeviationFeedbackResult` — 检查偏差是否需要注入提示
 - `should_retry(validator_result)` → `bool` — 判断是否应自纠正重试

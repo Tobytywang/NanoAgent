@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Literal
 
-from .base import BaseMemory
+from .base import BaseMemory, EPHEMERAL_KEY
 from .storage.base import BaseStorage, MemoryEntry
 
 
@@ -71,7 +71,7 @@ class PersistentMemory(BaseMemory):
     def add(self, message: dict) -> None:
         """添加消息到历史记录并持久化。"""
         self._messages.append(message)
-        if not message.get("metadata", {}).get("ephemeral"):
+        if not (message.get("metadata") or {}).get(EPHEMERAL_KEY):
             entry = self._message_to_entry(message)
             self.storage.save(entry)
         self._trim_if_needed()
