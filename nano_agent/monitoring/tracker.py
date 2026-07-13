@@ -40,9 +40,6 @@ class MetricsTracker:
         self._base_ratio: float = 0.0
         self._base_ratio_initialized: bool = False
         self._base_ratio_iteration: int = 0
-        self._base_tool_chars: int = 0
-        self._base_system_chars: int = 0
-        self._base_skill_chars: int = 0
         self._iteration_start_time: float = 0.0
         self._run_start_time: float = 0.0
 
