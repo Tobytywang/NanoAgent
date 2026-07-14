@@ -123,7 +123,12 @@ class StallDetector:
 
     @staticmethod
     def _length_bucket(length: int) -> str:
-        """Bucketize result length into categories for similarity comparison."""
+        """Categorize result length into 5 buckets for Jaccard similarity.
+
+        Boundaries (0, 100, 1000, 10000) are roughly log10-spaced to
+        distinguish "empty", "short summary", "medium output",
+        "large file", and "huge dump".
+        """
         if length == 0:
             return "0"
         if length < 100:
@@ -191,7 +196,7 @@ class StallDetector:
         """Compute similarity between two iteration signatures.
 
         Uses Jaccard similarity on the set of signature components
-        (tool:hash:length segments).
+        (tool:success:bucket segments).
 
         Args:
             sig_a: First signature
