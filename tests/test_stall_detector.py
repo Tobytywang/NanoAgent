@@ -141,6 +141,24 @@ class TestStallDetectorSimilarity:
         # First is "ok:small", second is "fail:0" → different
         assert not result.is_stalled
 
+    def test_fractional_jaccard_similarity(self):
+        """Partially overlapping signatures must produce Jaccard similarity in (0, 1).
+
+        This is the core behavioral change from BUG-006: the old MD5 approach
+        always returned 0 or 1. Structural features allow partial matches.
+        """
+        sd = StallDetector()
+        sig_a = sd._make_signature(
+            ["file_read", "shell_execute"], ["content A", "result B"]
+        )
+        sig_b = sd._make_signature(
+            ["file_read", "web_search"], ["content A", "result C"]
+        )
+        similarity = sd._signature_similarity(sig_a, sig_b)
+        # file_read:ok:small matches, shell_execute:ok:small vs web_search:ok:small does not
+        # 1 overlapping component / 3 total = ~0.33
+        assert 0 < similarity < 1, f"Expected fractional similarity, got {similarity}"
+
     def test_mixed_tools_partial_similarity(self):
         """Multiple tools with partial overlap should produce similarity in (0, 1)."""
         detector = StallDetector(StallConfig(patience=3, similarity_threshold=0.5))
