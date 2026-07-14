@@ -111,35 +111,44 @@ class TestStallDetectorSimilarity:
         result = detector.check_stall()
         assert not result.is_stalled
 
-    def test_same_tool_different_result_no_stall(self):
+    def test_same_tool_same_size_stall(self):
+        """Same tool + same success + same size bucket → stall even if content differs.
+
+        This is the core fix for BUG-006: the old MD5 approach always returned 0
+        similarity for different content, making stall detection useless.
+        """
         detector = StallDetector(StallConfig(patience=2, similarity_threshold=0.7))
+        # Both results are "ok" (non-empty) and "small" (< 100 chars)
         detector.record_iteration(["file_read"], ["content A"])
         detector.record_iteration(["file_read"], ["completely different content here"])
         result = detector.check_stall()
-        # Different results → different signatures → not stalled
-        assert not result.is_stalled
-
-    def test_same_tool_same_result_stall(self):
-        detector = StallDetector(StallConfig(patience=2, similarity_threshold=0.5))
-        detector.record_iteration(["file_read"], ["same result"])
-        detector.record_iteration(["file_read"], ["same result"])
-        result = detector.check_stall()
         assert result.is_stalled
 
+    def test_different_size_no_stall(self):
+        """Different result sizes → different signatures → not stalled."""
+        detector = StallDetector(StallConfig(patience=2, similarity_threshold=0.7))
+        detector.record_iteration(["file_read"], ["short"])
+        detector.record_iteration(["file_read"], ["x" * 200])  # medium size
+        result = detector.check_stall()
+        assert not result.is_stalled
+
+    def test_fail_vs_success_no_stall(self):
+        """Failed result vs successful result → different signatures."""
+        detector = StallDetector(StallConfig(patience=2, similarity_threshold=0.7))
+        detector.record_iteration(["shell_execute"], ["error: file not found"])
+        detector.record_iteration(["shell_execute"], [""])  # empty = fail
+        result = detector.check_stall()
+        # First is "ok:small", second is "fail:0" → different
+        assert not result.is_stalled
+
     def test_mixed_tools_partial_similarity(self):
-        detector = StallDetector(StallConfig(patience=3, similarity_threshold=0.7))
-        # First iteration: file_read + shell
-        detector.record_iteration(
-            ["file_read", "shell_execute"], ["result A", "result B"]
-        )
-        # Second iteration: same tools, same results
-        detector.record_iteration(
-            ["file_read", "shell_execute"], ["result A", "result B"]
-        )
-        # Third iteration: same again
-        detector.record_iteration(
-            ["file_read", "shell_execute"], ["result A", "result B"]
-        )
+        """Multiple tools with partial overlap should produce similarity in (0, 1)."""
+        detector = StallDetector(StallConfig(patience=3, similarity_threshold=0.5))
+        # Iter 1-3: all share file_read + shell, same size
+        for _ in range(3):
+            detector.record_iteration(
+                ["file_read", "shell_execute"], ["result A", "result B"]
+            )
         result = detector.check_stall()
         assert result.is_stalled
 

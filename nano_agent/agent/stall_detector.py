@@ -9,7 +9,6 @@ StallDetector catches "different tools, same result" patterns where
 the agent is cycling through different approaches but not advancing.
 """
 
-import hashlib
 from dataclasses import dataclass, field
 
 
@@ -49,7 +48,7 @@ class StallDetector:
     trying different approaches.
 
     Detection strategy:
-    1. Build a "signature" for each iteration from tool names + result hashes
+    1. Build a "signature" for each iteration from tool names + result characteristics
     2. Compare signatures of recent iterations
     3. If N consecutive iterations are too similar, declare a stall
     4. Inject a redirect hint to encourage the LLM to change strategy
@@ -122,6 +121,19 @@ class StallDetector:
         self._stall_count = 0
         self._hint_index = 0
 
+    @staticmethod
+    def _length_bucket(length: int) -> str:
+        """Bucketize result length into categories for similarity comparison."""
+        if length == 0:
+            return "0"
+        if length < 100:
+            return "small"
+        if length < 1000:
+            return "medium"
+        if length < 10000:
+            return "large"
+        return "huge"
+
     def _make_signature(
         self,
         tool_names: list[str],
@@ -129,9 +141,10 @@ class StallDetector:
     ) -> str:
         """Create a signature for iteration comparison.
 
-        Combines tool names with a hash of each result's content.
-        This captures both which tools were used and what they returned,
-        without storing full result text.
+        Uses tool name + success/fail + result length bucket so that
+        similar iterations produce overlapping signatures and Jaccard
+        similarity falls between 0 and 1 (unlike the old MD5 approach
+        which was always 0 or 1).
 
         Args:
             tool_names: Tool names called
@@ -142,11 +155,9 @@ class StallDetector:
         """
         parts = []
         for name, result in zip(tool_names, tool_results):
-            # Hash the result to get a fixed-length fingerprint
-            result_hash = hashlib.md5(result.encode()).hexdigest()[:8]
-            # Include result length as a progress signal
-            result_len = len(result)
-            parts.append(f"{name}:{result_hash}:{result_len}")
+            success = "ok" if result.strip() else "fail"
+            bucket = self._length_bucket(len(result))
+            parts.append(f"{name}:{success}:{bucket}")
         return "|".join(parts)
 
     def _are_similar(self, signatures: list[str]) -> bool:

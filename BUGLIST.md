@@ -510,9 +510,10 @@ def _length_bucket(length: int) -> str:
 3. 完全相同的调用 → 相似度 1.0
 4. 连续 N 轮高于阈值 → 触发 stall
 
-### 相关文件
+### 修复提交
 
-- `nano_agent/agent/stall_detector.py` - `_make_signature()` 和 `_signature_similarity()`
+- Commit `<current>`: `_make_signature()` 将 MD5 哈希替换为 `{tool}:{success}:{bucket}` 结构特征；`_signature_similarity()` Jaccard 逻辑不变，因输入从"不可能相同"变为"可部分重叠"，相似度自然落在 0~1 之间。新增 `_length_bucket()` 静态方法。
+- 同步更新测试：`test_same_tool_different_result_no_stall` → `test_same_tool_same_size_stall`（验证新行为：同工具+同规模+同成功=应触发停滞）；新增 `test_different_size_no_stall`、`test_fail_vs_success_no_stall`。
 
 ---
 
