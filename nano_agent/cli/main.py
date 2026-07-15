@@ -843,6 +843,23 @@ def _handle_slash_command(
             Console.print("用法: /verbose on | /verbose off", style="info")
         return ("continue", user_display, agent_display)
 
+    if lower == Commands.EFFORT or lower.startswith(Commands.EFFORT + " "):
+        parts = user_input[len(Commands.EFFORT) :].strip().lower()
+        valid = {"concise", "standard", "detailed"}
+        if parts in valid:
+            agent.output_style_config.style = parts
+            agent._setup_system_prompt()
+            Console.print(f"推理强度已切换: {parts}", style="success")
+            Console.print("System prompt 已重新生成，下轮对话生效", style="info")
+        else:
+            current = agent.output_style_config.style
+            Console.print(f"当前推理强度: {current}", style="info")
+            Console.print(
+                "用法: /effort concise | /effort standard | /effort detailed",
+                style="info",
+            )
+        return ("continue", user_display, agent_display)
+
     if lower == Commands.SESSIONS:
         if hasattr(agent.memory, "list_sessions"):
             sessions = agent.memory.list_sessions()
@@ -3181,6 +3198,10 @@ def _show_help() -> None:
     print("  /verbose on      开启详细输出（工具执行、Token 消耗等）")
     print("  /verbose off     关闭详细输出")
     print("  /verbose         查看当前状态")
+    print("  /effort concise  最简模式，低 token 消耗")
+    print("  /effort standard 标准模式（默认）")
+    print("  /effort detailed 详细模式，最深推理")
+    print("  /effort         查看当前推理强度")
 
     print("\n## 项目管理")
     print("  /init             初始化项目")
