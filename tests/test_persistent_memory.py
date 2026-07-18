@@ -392,6 +392,53 @@ class TestPersistentMemory:
         assert "正常用户消息" in contents
         assert "正常回复" in contents
 
+    def test_load_filters_stale_system_prompt(self, temp_storage):
+        """Session files may contain old system prompts from previous code
+        versions (e.g. with empty tools list).  These must be filtered
+        out because _setup_system_prompt() regenerates the prompt from
+        current configuration on every startup.
+        """
+        import json, pathlib
+
+        sesh_file = pathlib.Path(temp_storage.base_dir) / "session_stale.jsonl"
+        with open(sesh_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "id": "1",
+                        "session_id": "session_stale",
+                        "role": "system",
+                        "content": "## Tools\n\n\n## Efficiency Rules",
+                        "timestamp": "",
+                        "metadata": {},
+                    }
+                )
+                + "\n"
+            )
+            f.write(
+                json.dumps(
+                    {
+                        "id": "2",
+                        "session_id": "session_stale",
+                        "role": "user",
+                        "content": "hello",
+                        "timestamp": "",
+                        "metadata": {},
+                    }
+                )
+                + "\n"
+            )
+
+        mem = PersistentMemory(storage=temp_storage, session_id="session_stale")
+        ctx = mem.get_context()
+        contents = [m["content"] for m in ctx]
+
+        assert "## Tools\n\n\n## Efficiency Rules" not in contents
+        assert "hello" in contents
+        # Only one system prompt — the freshly generated one
+        system_msgs = [m for m in ctx if m["role"] == "system"]
+        assert len(system_msgs) == 1
+
 
 class TestMemoryConfig:
     """Tests for memory configuration."""
