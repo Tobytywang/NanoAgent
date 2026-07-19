@@ -576,6 +576,45 @@ self.memory.add_user_message(
 
 ---
 
+## BUG-008: _stable_system_prompt 中的工具列表在 prefix caching 路径下未更新
+
+**发现日期**: 2026-07-19
+
+**严重程度**: 高（导致所有启用 prefix caching 的会话中工具列表为空）
+
+**影响范围**: 所有使用默认配置（`enable_caching: True`）的用户，工具在 `stream.mode != sync` 时无法使用
+
+### 问题描述
+
+`build_stable()` 构建 `_stable_system_prompt` 时，`{tools_description}` 占位符被替换为空（当时 `tool_registry` 尚未注册工具）。`_setup_system_prompt()` 在工具注册后被调用时走 modular 路径，直接复用已有的 `_stable_system_prompt`，工具列表始终为空。
+
+更大的 bug：即使 `_setup_system_prompt()` 替换了 `memory.set_system_prompt()` 中的占位符，`_prepare_think_context()` 中 `system_stable` 用的是原始 `_stable_system_prompt`，占位符未被替换，LLM 收到的是文字 `{tools_description}`。
+
+### 根因分析
+
+1. `PromptConfig.enable_caching: True`（默认）激活 modular prompt 路径
+2. `stable_modules` 默认包含 `"tools"`，`is_stable=True`，工具描述被固化进 stable prompt
+3. `build_stable()` 在 `__init__` 时执行，当时 `tool_registry` 为空
+4. 后续 `_setup_system_prompt()` 即使替换了 `memory.set_system_prompt()` 中的值，`_stable_system_prompt` 仍保留原始占位符
+5. `_prepare_think_context()` 使用 `_stable_system_prompt` 作为 `system_stable`（prefix caching），传入 LLM API 的 system message 中包含未替换的 `{tools_description}`
+
+### 修复方案
+
+1. `build_stable()` 不再替换 `{tools_description}`，保留占位符（`prompt_builder.py`）
+2. `_setup_system_prompt()` modular 路径中，用当前 `tool_registry` 替换占位符，**同时更新 `_stable_system_prompt`**（`react.py`）
+
+### 修复提交
+
+- Commit `d6bf923`: `build_stable()` 保留 `{tools_description}` 占位符；`_setup_system_prompt()` 每次从当前 `tool_registry` 替换
+- Commit `a37835b`: 修复 prefix caching 路径——`_stable_system_prompt` 也同步更新占位符
+
+### 相关文件
+
+- `nano_agent/agent/prompt_builder.py` - `build_stable()` 中的 `{tools_description}` 替换逻辑
+- `nano_agent/agent/react.py` - `_setup_system_prompt()` 和 `_prepare_think_context()` 中的 system_stable 使用
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：
