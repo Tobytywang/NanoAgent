@@ -1384,4 +1384,4 @@ YAML 中 `key: null` 表示显式设为 null，会使用字段的默认值。如
 - 查看 [ROADMAP](../ROADMAP.md) 了解开发计划
 - 系统注入消息（StallDetector 提示、Token 估算偏差等）通过 `EPHEMERAL_KEY` 常量标记为临时消息，不写入会话文件
 - 访问 [GitHub Issues](https://github.com/Tobytywang/NanoAgent/issues) 反馈问题
-- 系统提示词中的 `{tools_description}` 占位符在运行时被当前工具注册表替换，确保工具列表始终同步
+- 系统提示词中的 `{tools_description}` 占位符在运行时被当前工具注册表替换，确保工具列表始终同步，`_stable_system_prompt` 也会同步更新以支持 prefix caching

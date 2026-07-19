@@ -242,6 +242,11 @@ class ReActAgent(BaseAgent):
                     self.tool_registry, style
                 )
                 full_prompt = full_prompt.replace("{tools_description}", tools_desc)
+                # Also update _stable_system_prompt for prefix caching path
+                # (_prepare_think_context uses it as system_stable for API calls)
+                self._stable_system_prompt = self._stable_system_prompt.replace(
+                    "{tools_description}", tools_desc
+                )
 
             self.memory.set_system_prompt(full_prompt)
             return

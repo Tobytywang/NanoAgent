@@ -2544,8 +2544,8 @@ enabled: true
 ```
 
 > **Note**: System prompts use `{tools_description}` as a placeholder that is replaced
-> at runtime with the current tool registry. This ensures tools are always up-to-date
-> even when tools are registered after the prompt is built.
+> at runtime with the current tool registry. Both the in-memory system prompt and the
+> stable prompt (`_stable_system_prompt`, used for prefix caching) are updated.
 
 ---
 
