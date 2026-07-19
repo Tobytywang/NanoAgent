@@ -503,12 +503,7 @@ class PromptBuilder:
         stable_modules_list = [self._modules[name] for name in stable_module_names]
         stable_modules_list.sort(key=lambda m: m.priority)
 
-        parts = []
-        for module in stable_modules_list:
-            content = module.content
-            if "{tools_description}" in content:
-                content = content.replace("{tools_description}", tools_description)
-            parts.append(content)
+        parts = [m.content for m in stable_modules_list]
 
         return "\n\n".join(parts)
 

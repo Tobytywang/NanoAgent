@@ -2543,6 +2543,10 @@ tools:
 enabled: true
 ```
 
+> **Note**: System prompts use `{tools_description}` as a placeholder that is replaced
+> at runtime with the current tool registry. This ensures tools are always up-to-date
+> even when tools are registered after the prompt is built.
+
 ---
 
 ## 内部实用函数

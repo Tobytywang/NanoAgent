@@ -189,7 +189,7 @@ class ReActAgent(BaseAgent):
         # Build stable portion (only once)
         tools_desc = PromptBuilder.format_tools_description(self.tool_registry, style)
         self._stable_system_prompt = self._prompt_builder.build_stable(
-            tools_description=tools_desc,
+            tools_description="",
             stable_modules=self.prompt_config.stable_modules,
         )
 
@@ -233,6 +233,15 @@ class ReActAgent(BaseAgent):
             full_prompt = self._stable_system_prompt
             if dynamic_parts:
                 full_prompt += "\n\n" + "\n\n".join(dynamic_parts)
+
+            # Replace {tools_description} placeholder with current tool registry.
+            # build_stable() no longer bakes tools in (they may not be registered yet).
+            if "{tools_description}" in full_prompt:
+                style = self.output_style_config.style
+                tools_desc = PromptBuilder.format_tools_description(
+                    self.tool_registry, style
+                )
+                full_prompt = full_prompt.replace("{tools_description}", tools_desc)
 
             self.memory.set_system_prompt(full_prompt)
             return
