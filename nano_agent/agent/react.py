@@ -235,33 +235,17 @@ class ReActAgent(BaseAgent):
                 full_prompt += "\n\n" + "\n\n".join(dynamic_parts)
 
             # Replace {tools_description} placeholder with current tool registry.
-            # build_stable() no longer bakes tools in (they may not be registered yet).
+            # Only sync _stable_system_prompt when tools are actually available —
+            # first call (during __init__) has empty registry, keep placeholder alive.
             if "{tools_description}" in full_prompt:
                 style = self.output_style_config.style
-                if self.verbose:
-                    tools_before = self.tool_registry.list_tools()
-                    print(
-                        f"[Debug] registry tools before fmt: {len(tools_before)}, "
-                        f"id={id(self.tool_registry)}"
-                    )
                 tools_desc = PromptBuilder.format_tools_description(
                     self.tool_registry, style
                 )
-                if self.verbose:
-                    print(
-                        f"[Debug] tools_desc={repr(tools_desc[:80])}, "
-                        f"len={len(tools_desc)}"
-                    )
                 full_prompt = full_prompt.replace("{tools_description}", tools_desc)
-                # Also update _stable_system_prompt for prefix caching path
-                # (_prepare_think_context uses it as system_stable for API calls)
-                self._stable_system_prompt = self._stable_system_prompt.replace(
-                    "{tools_description}", tools_desc
-                )
-                if self.verbose:
-                    print(
-                        f"[Debug] _stable_system_prompt updated: "
-                        f"{len(self._stable_system_prompt)} chars"
+                if tools_desc:
+                    self._stable_system_prompt = self._stable_system_prompt.replace(
+                        "{tools_description}", tools_desc
                     )
 
             self.memory.set_system_prompt(full_prompt)
