@@ -298,6 +298,12 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
         tracker=agent.tracker,
         context_length=config.llm.get_context_length(),
     )
+    if config.agent.verbose:
+        print(
+            f"[Debug] create_agent: registry={id(tool_registry)}, "
+            f"agent.registry={id(agent.tool_registry)}, "
+            f"tools={len(tool_registry.list_tools())}"
+        )
 
     # Load plugins from configuration
     from ..tools.plugin import load_plugins_from_config

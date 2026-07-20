@@ -238,6 +238,12 @@ class ReActAgent(BaseAgent):
             # build_stable() no longer bakes tools in (they may not be registered yet).
             if "{tools_description}" in full_prompt:
                 style = self.output_style_config.style
+                if self.verbose:
+                    tools_before = self.tool_registry.list_tools()
+                    print(
+                        f"[Debug] registry tools before fmt: {len(tools_before)}, "
+                        f"id={id(self.tool_registry)}"
+                    )
                 tools_desc = PromptBuilder.format_tools_description(
                     self.tool_registry, style
                 )
