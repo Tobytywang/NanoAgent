@@ -286,8 +286,9 @@ class OpenAICompatibleLLM(BaseLLM):
                 headers=self._get_headers(),
             ) as response:
                 if response.status_code != 200:
+                    body = await response.aread()
                     raise RuntimeError(
-                        f"API error {response.status_code}: {response.text[:500]}"
+                        f"API error {response.status_code}: " f"{body.decode()[:500]}"
                     )
                 async for line in response.aiter_lines():
                     if not line:
