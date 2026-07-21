@@ -86,80 +86,28 @@ class OpenAICompatibleLLM(BaseLLM):
         if system_stable:
             formatted_messages.append({"role": "system", "content": system_stable})
 
-        # DeepSeek reasoning models (deepseek-v4-*) require reasoning_content
-        # on assistant messages with tool_calls. Messages from other providers
-        # or older sessions lack this field, causing 400 errors.
-        # When detected, strip tool_calls and fold following tool results into
-        # the assistant's text content to preserve context without triggering
-        # DeepSeek's reasoning_content validation.
-        i = 0
-        while i < len(messages):
-            m = messages[i]
+        # DeepSeek V4 reasoning models require `reasoning_content` on any
+        # assistant message that carries `tool_calls`. Old or cross-model
+        # messages lack this field — inject an empty string to satisfy the
+        # check without saving or storing reasoning content ourselves.
+        for m in messages:
             if isinstance(m, dict):
-                role = m.get("role", "")
-                if system_stable and role == "system":
-                    i += 1
-                    continue
                 if (
-                    role == "assistant"
+                    m.get("role") == "assistant"
                     and "tool_calls" in m
                     and "reasoning_content" not in m
                 ):
-                    text = (m.get("content") or "") + "\n"
-                    i += 1
-                    while i < len(messages):
-                        next_m = messages[i]
-                        nr = (
-                            next_m.get("role")
-                            if isinstance(next_m, dict)
-                            else getattr(next_m, "role", None)
-                        )
-                        if nr != "tool":
-                            break
-                        if isinstance(next_m, dict):
-                            text += f"[Tool] {next_m.get('content', '')[:200]}\n"
-                        else:
-                            text += f"[Tool] {getattr(next_m, 'content', '')[:200]}\n"
-                        i += 1
-                    formatted_messages.append(
-                        {"role": "assistant", "content": text.strip()}
-                    )
-                    continue
+                    m = dict(m, reasoning_content="")
                 formatted_messages.append(m)
-                i += 1
             else:
-                if system_stable and m.role == "system":
-                    i += 1
-                    continue
+                m_dict = m.to_dict()
                 if (
                     m.role == "assistant"
-                    and hasattr(m, "tool_calls")
-                    and m.tool_calls
-                    and not hasattr(m, "reasoning_content")
+                    and "tool_calls" in m_dict
+                    and "reasoning_content" not in m_dict
                 ):
-                    text = (m.content or "") + "\n"
-                    i += 1
-                    while i < len(messages):
-                        nm = messages[i]
-                        nr = (
-                            nm.get("role")
-                            if isinstance(nm, dict)
-                            else (
-                                getattr(nm, "role", None)
-                                if hasattr(nm, "role")
-                                else None
-                            )
-                        )
-                        if nr != "tool":
-                            break
-                        text += f"[Tool] {nm.get('content', '')[:200] if isinstance(nm, dict) else getattr(nm, 'content', '')[:200]}\n"
-                        i += 1
-                    formatted_messages.append(
-                        {"role": "assistant", "content": text.strip()}
-                    )
-                    continue
-                formatted_messages.append(m.to_dict())
-                i += 1
+                    m_dict["reasoning_content"] = ""
+                formatted_messages.append(m_dict)
 
         payload = {
             "model": self.model,
