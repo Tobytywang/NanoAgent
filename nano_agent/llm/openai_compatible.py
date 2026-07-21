@@ -290,18 +290,11 @@ class OpenAICompatibleLLM(BaseLLM):
                     raise RuntimeError(
                         f"API error {response.status_code}: " f"{body.decode()[:500]}"
                     )
-                print(
-                    f"[Debug] Request: {json.dumps(payload.get('messages',[]))[:400]}..."
-                )
-                debug_count = 0
                 async for line in response.aiter_lines():
                     if not line:
                         continue
                     if isinstance(line, bytes):
                         line = line.decode("utf-8", errors="replace")
-                    if debug_count < 3 and "tool_calls" in line:
-                        print(f"[Debug] Stream line: {line[:200]}")
-                        debug_count += 1
                     if not line.startswith("data: "):
                         continue
                     data_str = line[6:]
@@ -330,10 +323,13 @@ class OpenAICompatibleLLM(BaseLLM):
                                     "name": "",
                                     "arguments_parts": [],
                                 }
-                            if "id" in tc_delta:
+                            # Some providers (讯飞星火) send a second delta for the
+                            # same tool_call index that resets id/name to "".
+                            # Only update when the value is actually provided.
+                            if tc_delta.get("id"):
                                 partial_tool_calls[idx]["id"] = tc_delta["id"]
                             func = tc_delta.get("function", {})
-                            if "name" in func:
+                            if func.get("name"):
                                 partial_tool_calls[idx]["name"] = func["name"]
                             if "arguments" in func:
                                 partial_tool_calls[idx]["arguments_parts"].append(
@@ -354,10 +350,8 @@ class OpenAICompatibleLLM(BaseLLM):
                         )
 
         # Emit completed tool calls after stream ends
-        print(f"[Debug] partial_tool_calls after stream: {len(partial_tool_calls)} items")
         for idx in sorted(partial_tool_calls):
             tc = partial_tool_calls[idx]
-            print(f"[Debug] yielding tool_call idx={idx}: name={tc['name']}")
             if tc["name"]:  # Only emit if we have at least a name
                 yield StreamChunk(
                     tool_call=ToolCall.from_openai_format(

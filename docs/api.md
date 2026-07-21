@@ -2546,6 +2546,9 @@ enabled: true
 > **Note**: System prompts use `{tools_description}` as a placeholder that is replaced
 > at runtime with the current tool registry. Both the in-memory system prompt and the
 > stable prompt (`_stable_system_prompt`, used for prefix caching) are updated.
+>
+> **2026-07-21**: Fix 讯飞星火 streaming tool call accumulation where a second delta
+> with empty `name`/`id` overwrites the correctly set values from the first delta.
 
 ---
 
