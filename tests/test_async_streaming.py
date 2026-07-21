@@ -634,3 +634,56 @@ class TestStreamingConfig:
         config = Config()
         assert hasattr(config, "streaming")
         assert config.streaming.mode == "sync"
+
+
+class TestMessageNormalizer:
+    """Tests for provider-specific message normalizers."""
+
+    def test_openai_normalizer_noop(self):
+        from nano_agent.llm.normalizer import OpenAINormalizer
+
+        n = OpenAINormalizer()
+        msgs = [{"role": "assistant", "tool_calls": []}]
+        assert n.normalize_request_messages(msgs) is msgs
+
+    def test_deepseek_normalizer_adds_reasoning_content(self):
+        from nano_agent.llm.normalizer import DeepSeekNormalizer
+
+        n = DeepSeekNormalizer()
+        msgs = [{"role": "assistant", "tool_calls": [{}]}]
+        n.normalize_request_messages(msgs)
+        assert msgs[0].get("reasoning_content") == ""
+
+    def test_deepseek_normalizer_skips_if_present(self):
+        from nano_agent.llm.normalizer import DeepSeekNormalizer
+
+        n = DeepSeekNormalizer()
+        msgs = [
+            {"role": "assistant", "tool_calls": [{}], "reasoning_content": "thinking"}
+        ]
+        n.normalize_request_messages(msgs)
+        assert msgs[0]["reasoning_content"] == "thinking"
+
+    def test_xfyun_normalizer_skips_empty_id(self):
+        from nano_agent.llm.normalizer import XfyunNormalizer
+
+        n = XfyunNormalizer()
+        calls = {0: {"id": "call_1", "name": "get_stats", "arguments_parts": []}}
+        n.normalize_stream_delta(
+            {"tool_calls": [{"index": 0, "id": ""}]},
+            calls,
+        )
+        assert calls[0]["id"] == "call_1"
+
+    def test_select_normalizer_by_model(self):
+        from nano_agent.llm.normalizer import (
+            select_normalizer,
+            DeepSeekNormalizer,
+            XfyunNormalizer,
+        )
+
+        assert isinstance(select_normalizer("deepseek-v4-flash"), DeepSeekNormalizer)
+        assert isinstance(select_normalizer("astron-code-latest"), XfyunNormalizer)
+        assert isinstance(
+            select_normalizer("gpt-4o"), type(select_normalizer("unknown"))
+        )
