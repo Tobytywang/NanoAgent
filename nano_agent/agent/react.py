@@ -1298,6 +1298,12 @@ class ReActAgent(BaseAgent):
                 response_text, tool_calls=[tc.to_dict() for tc in tool_calls]
             )
 
+        if getattr(self, "verbose", False) and tool_calls:
+            print(
+                f"[Debug] think_result: {len(tool_calls)} tool_calls, "
+                f"is_final={not tool_calls}"
+            )
+
         return ThinkResult(
             response_text=response_text,
             tool_calls=tool_calls or [],
@@ -1365,11 +1371,17 @@ class ReActAgent(BaseAgent):
 
             if chunk.is_tool_call_complete and chunk.tool_call:
                 tool_calls.append(chunk.tool_call)
+                if self.verbose:
+                    print(f"[Debug] tool_call captured: {chunk.tool_call.name}")
 
             if chunk.usage is not None:
                 usage = chunk.usage
 
         full_text = "".join(text_parts)
+        if self.verbose:
+            print(
+                f"[Debug] stream end: {len(tool_calls)} tool_calls, text={len(full_text)} chars"
+            )
 
         think_result = self._finalize_think_result(
             full_text, tool_calls, usage, llm_start, messages, tools
