@@ -290,12 +290,17 @@ class OpenAICompatibleLLM(BaseLLM):
                     raise RuntimeError(
                         f"API error {response.status_code}: " f"{body.decode()[:500]}"
                     )
+                if self.verbose:
+                    print(f"[Debug] Request payload: {json.dumps(payload)[:300]}...")
+                debug_count = 0
                 async for line in response.aiter_lines():
                     if not line:
                         continue
-                    # Handle bytes lines
                     if isinstance(line, bytes):
                         line = line.decode("utf-8", errors="replace")
+                    if self.verbose and debug_count < 3 and "tool_calls" in line:
+                        print(f"[Debug] Stream line: {line[:200]}")
+                        debug_count += 1
                     if not line.startswith("data: "):
                         continue
                     data_str = line[6:]
