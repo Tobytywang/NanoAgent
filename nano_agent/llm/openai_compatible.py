@@ -80,6 +80,7 @@ class OpenAICompatibleLLM(BaseLLM):
         Returns:
             Request payload dict
         """
+        messages = list(messages)  # copy so we can modify iteration
         formatted_messages = []
 
         if system_stable:
@@ -88,31 +89,47 @@ class OpenAICompatibleLLM(BaseLLM):
         # DeepSeek reasoning models (deepseek-v4-*) require reasoning_content
         # on assistant messages with tool_calls. Messages from other providers
         # or older sessions lack this field, causing 400 errors.
-        # Strip tool_calls (and subsequent tool results) when reasoning_content
-        # is missing, so the conversation stays valid for all providers.
-        skip_until_tool_result = False
-        for m in messages:
+        # When detected, strip tool_calls and fold following tool results into
+        # the assistant's text content to preserve context without triggering
+        # DeepSeek's reasoning_content validation.
+        i = 0
+        while i < len(messages):
+            m = messages[i]
             if isinstance(m, dict):
                 role = m.get("role", "")
                 if system_stable and role == "system":
+                    i += 1
                     continue
-                if skip_until_tool_result:
-                    if role == "tool":
-                        continue
-                    skip_until_tool_result = False
                 if (
                     role == "assistant"
                     and "tool_calls" in m
                     and "reasoning_content" not in m
                 ):
-                    # Strip tool_calls to avoid DeepSeek's reasoning_content check
-                    m = {k: v for k, v in m.items() if k != "tool_calls"}
-                    skip_until_tool_result = True
+                    text = (m.get("content") or "") + "\n"
+                    i += 1
+                    while i < len(messages):
+                        next_m = messages[i]
+                        nr = (
+                            next_m.get("role")
+                            if isinstance(next_m, dict)
+                            else getattr(next_m, "role", None)
+                        )
+                        if nr != "tool":
+                            break
+                        if isinstance(next_m, dict):
+                            text += f"[Tool] {next_m.get('content', '')[:200]}\n"
+                        else:
+                            text += f"[Tool] {getattr(next_m, 'content', '')[:200]}\n"
+                        i += 1
+                    formatted_messages.append(
+                        {"role": "assistant", "content": text.strip()}
+                    )
+                    continue
                 formatted_messages.append(m)
+                i += 1
             else:
                 if system_stable and m.role == "system":
-                    continue
-                if skip_until_tool_result and m.role == "tool":
+                    i += 1
                     continue
                 if (
                     m.role == "assistant"
@@ -120,12 +137,29 @@ class OpenAICompatibleLLM(BaseLLM):
                     and m.tool_calls
                     and not hasattr(m, "reasoning_content")
                 ):
-                    m = m.to_dict()
-                    m.pop("tool_calls", None)
-                    skip_until_tool_result = True
-                    formatted_messages.append(m)
-                else:
-                    formatted_messages.append(m.to_dict())
+                    text = (m.content or "") + "\n"
+                    i += 1
+                    while i < len(messages):
+                        nm = messages[i]
+                        nr = (
+                            nm.get("role")
+                            if isinstance(nm, dict)
+                            else (
+                                getattr(nm, "role", None)
+                                if hasattr(nm, "role")
+                                else None
+                            )
+                        )
+                        if nr != "tool":
+                            break
+                        text += f"[Tool] {nm.get('content', '')[:200] if isinstance(nm, dict) else getattr(nm, 'content', '')[:200]}\n"
+                        i += 1
+                    formatted_messages.append(
+                        {"role": "assistant", "content": text.strip()}
+                    )
+                    continue
+                formatted_messages.append(m.to_dict())
+                i += 1
 
         payload = {
             "model": self.model,
