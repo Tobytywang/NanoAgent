@@ -615,6 +615,36 @@ self.memory.add_user_message(
 
 ---
 
+## BUG-009: async 路径确认 handler 注册在 orchestrator.events，收不到 agent.events 事件
+
+**发现日期**: 2026-07-21
+
+**严重程度**: 高（async 模式下工具调用永久阻塞）
+
+**影响范围**: 所有使用 `streaming.mode: async` 且工具需要用户确认的用户
+
+### 问题描述
+
+`orchestrator.events` 和 `agent.events` 是独立创建的 `EventEmitter` 实例，事件不在两者间转发。工具执行时的确认事件（`CONFIRMATION_REQUIRED`）发在 `agent.events` 上，但 async 路径的 handler 注册在 `orchestrator.events` 上，handler 收不到事件，工具执行等待确认永久阻塞。
+
+### 根因分析
+
+v0.9.1 异步流式功能开发时，sync 路径的代码（`agent.events.on(...)`）被复制并改成了 `orchestrator.events.on(...)`，但 `orchestrator.events` 和 `agent.events` 是两个对象。
+
+### 修复方案
+
+async 路径也使用 `agent.events.on(...)`。
+
+### 修复提交
+
+- Commit `d0563bb`: async 路径 handler 注册从 `orchestrator.events` 改为 `agent.events`
+
+### 相关文件
+
+- `nano_agent/cli/main.py` - `run_interactive_async()` 中的确认 handler 注册
+
+---
+
 ## BUGLIST 格式说明
 
 每个 BUG 记录应包含：
