@@ -7,6 +7,7 @@ Provides two protection layers:
 """
 
 import signal
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
@@ -105,7 +106,10 @@ class ToolTimeoutWrapper:
         if timeout is None or timeout <= 0:
             return executor()
 
-        if hasattr(signal, "SIGALRM"):
+        if (
+            hasattr(signal, "SIGALRM")
+            and threading.current_thread() is threading.main_thread()
+        ):
             return self._execute_with_signal(timeout, executor)
         return self._execute_with_threadpool(timeout, executor)
 
