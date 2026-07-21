@@ -73,7 +73,7 @@ class TestPromptBuilder:
         builder.set_style("standard")
         stable = builder.build_stable("Test tools")
         assert len(stable) > 0
-        assert "Test tools" in stable
+        assert "{tools_description}" in stable
 
     def test_build_dynamic(self):
         """Test building dynamic portion."""

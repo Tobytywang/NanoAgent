@@ -13,6 +13,7 @@ import requests
 
 from .base import BaseLLM, LLMUsage
 from .messages import Message, StreamChunk, ToolCall
+from .normalizer import select_normalizer
 
 
 class OpenAICompatibleLLM(BaseLLM):
@@ -48,6 +49,7 @@ class OpenAICompatibleLLM(BaseLLM):
         self.timeout = timeout
         self.temperature = temperature
         self.extra_params = kwargs
+        self.normalizer = select_normalizer(model)
 
         # API Key handling: direct value > environment variable
         if api_key:
@@ -80,34 +82,20 @@ class OpenAICompatibleLLM(BaseLLM):
         Returns:
             Request payload dict
         """
-        messages = list(messages)  # copy so we can modify iteration
+        messages = list(messages)  # copy so we can modify
         formatted_messages = []
 
         if system_stable:
             formatted_messages.append({"role": "system", "content": system_stable})
 
-        # DeepSeek V4 reasoning models require `reasoning_content` on any
-        # assistant message that carries `tool_calls`. Old or cross-model
-        # messages lack this field — inject an empty string to satisfy the
-        # check without saving or storing reasoning content ourselves.
-        for m in messages:
-            if isinstance(m, dict):
-                if (
-                    m.get("role") == "assistant"
-                    and "tool_calls" in m
-                    and "reasoning_content" not in m
-                ):
-                    m = dict(m, reasoning_content="")
-                formatted_messages.append(m)
-            else:
-                m_dict = m.to_dict()
-                if (
-                    m.role == "assistant"
-                    and "tool_calls" in m_dict
-                    and "reasoning_content" not in m_dict
-                ):
-                    m_dict["reasoning_content"] = ""
-                formatted_messages.append(m_dict)
+        # Let the provider normalizer adjust outgoing messages.
+        raw = self.normalizer.normalize_request_messages(
+            [m if isinstance(m, dict) else m.to_dict() for m in messages]
+        )
+        for m in raw:
+            if system_stable and m.get("role") == "system":
+                continue
+            formatted_messages.append(m)
 
         payload = {
             "model": self.model,
@@ -285,10 +273,13 @@ class OpenAICompatibleLLM(BaseLLM):
                 json=payload,
                 headers=self._get_headers(),
             ) as response:
-                if response.status_code != 200:
+                if (
+                    isinstance(response.status_code, int)
+                    and response.status_code != 200
+                ):
                     body = await response.aread()
                     raise RuntimeError(
-                        f"API error {response.status_code}: " f"{body.decode()[:500]}"
+                        f"API error {response.status_code}: {body.decode()[:500]}"
                     )
                 async for line in response.aiter_lines():
                     if not line:
@@ -323,14 +314,20 @@ class OpenAICompatibleLLM(BaseLLM):
                                     "name": "",
                                     "arguments_parts": [],
                                 }
-                            # Some providers (讯飞星火) send a second delta for the
-                            # same tool_call index that resets id/name to "".
-                            # Only update when the value is actually provided.
-                            if tc_delta.get("id"):
-                                partial_tool_calls[idx]["id"] = tc_delta["id"]
+                                # Fresh entry — apply standard accumulation
+                                if tc_delta.get("id"):
+                                    partial_tool_calls[idx]["id"] = tc_delta["id"]
+                                func = tc_delta.get("function", {})
+                                if func.get("name"):
+                                    partial_tool_calls[idx]["name"] = func["name"]
+                            else:
+                                # Existing entry — let the normalizer handle
+                                # provider-specific delta quirks.
+                                self.normalizer.normalize_stream_delta(
+                                    {"tool_calls": [tc_delta]}, partial_tool_calls
+                                )
+                            # Arguments accumulation is provider-agnostic
                             func = tc_delta.get("function", {})
-                            if func.get("name"):
-                                partial_tool_calls[idx]["name"] = func["name"]
                             if "arguments" in func:
                                 partial_tool_calls[idx]["arguments_parts"].append(
                                     func["arguments"]
