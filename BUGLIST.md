@@ -615,7 +615,7 @@ self.memory.add_user_message(
 
 ---
 
-## BUG-009: async 路径确认 handler 注册在 orchestrator.events，收不到 agent.events 事件
+## BUG-009: async 路径确认 handler 两个 bug 导致工具永久阻塞
 
 **发现日期**: 2026-07-21
 
@@ -625,23 +625,39 @@ self.memory.add_user_message(
 
 ### 问题描述
 
-`orchestrator.events` 和 `agent.events` 是独立创建的 `EventEmitter` 实例，事件不在两者间转发。工具执行时的确认事件（`CONFIRMATION_REQUIRED`）发在 `agent.events` 上，但 async 路径的 handler 注册在 `orchestrator.events` 上，handler 收不到事件，工具执行等待确认永久阻塞。
+async 路径（`run_interactive_async`）的确认 handler 有两个 bug，先后导致工具执行阻塞：
+
+1. **Handler 注册在错误的事件发射器上**：`orchestrator.events` 和 `agent.events` 是独立的 `EventEmitter`，事件不转发。工具执行把确认事件发在 `agent.events` 上，但 handler 注册在 `orchestrator.events` 上。
+2. **确认后未调用 `agent.confirm_tool()`**：即使事件送达了，handler 只设置了 `execution_mode`，没有调用 `agent.confirm_tool()` 通知 agent 确认结果。
 
 ### 根因分析
 
-v0.9.1 异步流式功能开发时，sync 路径的代码（`agent.events.on(...)`）被复制并改成了 `orchestrator.events.on(...)`，但 `orchestrator.events` 和 `agent.events` 是两个对象。
+v0.9.1 异步流式功能开发时将 sync 路径的确认 handler 复制过来，改了事件注册对象（bug 1），但复制过程中遗漏了 `agent.confirm_tool()` 调用（bug 2）。两个 bug 属于同一次复制粘贴的两个不同遗漏。
+
+### 同步路径的确认 handler（正确实现）
+
+```python
+if response == "y":
+    agent.confirm_tool(True)  # ← 通知 agent 确认
+```
 
 ### 修复方案
 
-async 路径也使用 `agent.events.on(...)`。
+1. Handler 注册到 `agent.events` 而非 `orchestrator.events`
+2. Handler 中完整实现 y/a/s/n 逻辑，调用 `agent.confirm_tool()`
 
 ### 修复提交
 
-- Commit `d0563bb`: async 路径 handler 注册从 `orchestrator.events` 改为 `agent.events`
+- Commit `d0563bb`: handler 注册从 `orchestrator.events` 改为 `agent.events`
+- Commit `5763439`: handler 增加 `agent.confirm_tool()` 调用和完整 y/a/s/n 支持
 
 ### 相关文件
 
-- `nano_agent/cli/main.py` - `run_interactive_async()` 中的确认 handler 注册
+- `nano_agent/cli/main.py` - `run_interactive_async()` 中的确认 handler
+
+### 架构测试
+
+`test_orchestrator_and_agent_events_are_separate` 验证 `orchestrator.events` 和 `agent.events` 是独立的 EventEmitter，handler 必须注册在 `agent.events` 上。
 
 ---
 
