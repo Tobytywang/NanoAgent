@@ -354,8 +354,10 @@ class OpenAICompatibleLLM(BaseLLM):
                         )
 
         # Emit completed tool calls after stream ends
+        print(f"[Debug] partial_tool_calls after stream: {len(partial_tool_calls)} items")
         for idx in sorted(partial_tool_calls):
             tc = partial_tool_calls[idx]
+            print(f"[Debug] yielding tool_call idx={idx}: name={tc['name']}")
             if tc["name"]:  # Only emit if we have at least a name
                 yield StreamChunk(
                     tool_call=ToolCall.from_openai_format(
