@@ -105,13 +105,16 @@ class TestPromptBuilder:
         assert key1 == key2
 
     def test_get_cache_key_different(self):
-        """Test cache key changes with different input."""
+        """Cache key is based on stable prompt (not tools_description).
+
+        build_stable() no longer bakes tools_description into the stable
+        prompt, so different tool descriptions produce the same cache key.
+        """
         builder = PromptBuilder()
         builder.set_style("standard")
         key1 = builder.get_cache_key("Tools v1")
         key2 = builder.get_cache_key("Tools v2")
-        # Different input should produce different key
-        assert key1 != key2
+        assert key1 == key2
 
     def test_get_stable_module_names(self):
         """Test getting stable module names."""
