@@ -83,20 +83,46 @@ class OpenAICompatibleLLM(BaseLLM):
         formatted_messages = []
 
         if system_stable:
-            # Use stable system prompt for prefix caching
             formatted_messages.append({"role": "system", "content": system_stable})
-            # Skip original system message, add other messages
-            for m in messages:
-                if isinstance(m, dict):
-                    if m.get("role") != "system":
-                        formatted_messages.append(m)
-                else:
-                    if m.role != "system":
-                        formatted_messages.append(m.to_dict())
-        else:
-            # Normal message formatting
-            for m in messages:
-                if isinstance(m, dict):
+
+        # DeepSeek reasoning models (deepseek-v4-*) require reasoning_content
+        # on assistant messages with tool_calls. Messages from other providers
+        # or older sessions lack this field, causing 400 errors.
+        # Strip tool_calls (and subsequent tool results) when reasoning_content
+        # is missing, so the conversation stays valid for all providers.
+        skip_until_tool_result = False
+        for m in messages:
+            if isinstance(m, dict):
+                role = m.get("role", "")
+                if system_stable and role == "system":
+                    continue
+                if skip_until_tool_result:
+                    if role == "tool":
+                        continue
+                    skip_until_tool_result = False
+                if (
+                    role == "assistant"
+                    and "tool_calls" in m
+                    and "reasoning_content" not in m
+                ):
+                    # Strip tool_calls to avoid DeepSeek's reasoning_content check
+                    m = {k: v for k, v in m.items() if k != "tool_calls"}
+                    skip_until_tool_result = True
+                formatted_messages.append(m)
+            else:
+                if system_stable and m.role == "system":
+                    continue
+                if skip_until_tool_result and m.role == "tool":
+                    continue
+                if (
+                    m.role == "assistant"
+                    and hasattr(m, "tool_calls")
+                    and m.tool_calls
+                    and not hasattr(m, "reasoning_content")
+                ):
+                    m = m.to_dict()
+                    m.pop("tool_calls", None)
+                    skip_until_tool_result = True
                     formatted_messages.append(m)
                 else:
                     formatted_messages.append(m.to_dict())
