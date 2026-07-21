@@ -1230,7 +1230,7 @@ async def run_interactive_async(
                 if response != "y":
                     agent.execution_mode = ExecutionMode.SUPERVISED
 
-        orchestrator.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
+        agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
 
     _setup_confirmation_handler()
 

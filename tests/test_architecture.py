@@ -415,3 +415,38 @@ class TestAgentOrchestrator:
 
         assert new_session_id != old_session_id
         assert orchestrator.stats.total_tokens == 0
+
+    def test_orchestrator_and_agent_events_are_separate(self):
+        """orchestrator.events and agent.events are separate EventEmitters.
+
+        Events emitted on one are NOT forwarded to the other. Any code
+        that handles agent events (e.g. CONFIRMATION_REQUIRED during
+        tool execution) must register on agent.events directly.
+        """
+        from unittest.mock import MagicMock
+        from nano_agent.agent.events import AgentEvent
+
+        llm = Mock()
+        llm.chat = Mock(return_value=("Hello", [], LLMUsage()))
+        memory = ShortTermMemory()
+        registry = ToolRegistry()
+        agent = ReActAgent(
+            llm=llm, memory=memory, tool_registry=registry, verbose=False
+        )
+        orchestrator = AgentOrchestrator(agent)
+
+        # Verify separation: handler on orchestrator won't be called
+        orch_handler = MagicMock()
+        orchestrator.events.on(AgentEvent.CONFIRMATION_REQUIRED, orch_handler)
+        agent.events.emit(AgentEvent.CONFIRMATION_REQUIRED, {"tool": "test"})
+        assert (
+            not orch_handler.called
+        ), "orchestrator.events and agent.events are separate"
+
+        # Verify the fix: register on agent.events, emit on agent.events
+        agent_handler = MagicMock()
+        agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, agent_handler)
+        agent.events.emit(AgentEvent.CONFIRMATION_REQUIRED, {"tool": "test"})
+        assert (
+            agent_handler.called
+        ), "Handler on agent.events must fire when agent.events emits"
