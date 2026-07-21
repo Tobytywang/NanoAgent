@@ -1219,16 +1219,41 @@ async def run_interactive_async(
     """
     agent = orchestrator.agent
 
-    # Set up confirmation handler (same as sync)
+    # Set up confirmation handler (matches sync path)
     def _setup_confirmation_handler():
         def handle_confirmation(event, data):
             tool_name = data.get("tool", "unknown")
             risk_level = data.get("risk_level", "moderate")
-            if risk_level == "dangerous":
-                print(f"\n  ⚠️  Dangerous tool: {tool_name}")
-                response = input("  Execute? [y/N]: ").strip().lower()
-                if response != "y":
-                    agent.execution_mode = ExecutionMode.SUPERVISED
+            risk_icons = {"safe": "🟢", "moderate": "🟡", "dangerous": "🔴"}
+            icon = risk_icons.get(risk_level, "❓")
+
+            print(f"\n{icon} 确认执行工具: {tool_name}")
+            print(f"   风险级别: {risk_level}")
+            if arguments := data.get("arguments"):
+                print(f"   参数: {str(arguments)[:100]}")
+
+            while True:
+                response = input("   确认执行? [y/N/a(总是)/s(保存)]: ").strip().lower()
+                if response == "y":
+                    agent.confirm_tool(True)
+                    break
+                elif response == "a":
+                    agent.add_tool_to_whitelist(tool_name)
+                    agent.confirm_tool(True)
+                    print(f"   已添加到本次会话白名单")
+                    break
+                elif response == "s":
+                    agent.add_tool_to_whitelist(tool_name)
+                    _save_whitelist_to_config(tool_name, config)
+                    agent.confirm_tool(True)
+                    print(f"   已保存到配置文件白名单")
+                    break
+                elif response in ("n", ""):
+                    agent.confirm_tool(False)
+                    print("   已取消")
+                    break
+                else:
+                    print("   无效输入，请输入 y/N/a/s")
 
         agent.events.on(AgentEvent.CONFIRMATION_REQUIRED, handle_confirmation)
 
