@@ -89,3 +89,50 @@ class Console:
         cls.print(f"[Tool] {tool_name}({args_str})", style="info")
         preview = result_str[:100] + "..." if len(result_str) > 100 else result_str
         cls.print(f"  -> {preview}", style="success")
+
+    @classmethod
+    def print_title(cls, title: str) -> None:
+        """标准标题块"""
+        print()
+        print("=" * 50)
+        print(title)
+        print("=" * 50)
+
+    @classmethod
+    def print_subtitle(cls, title: str) -> None:
+        """标准小标题"""
+        print(f"\n## {title}")
+
+    @classmethod
+    def print_end(cls) -> None:
+        """标准结尾分隔线"""
+        print("\n" + "=" * 50 + "\n")
+
+    @classmethod
+    def print_kv(
+        cls, key: str, value: str, key_width: int = 12, indent: int = 0
+    ) -> None:
+        """对齐 key-value 行
+
+        Args:
+            key: 键名（可含冒号，如 "工具定义:"）
+            value: 值字符串
+            key_width: 键区域总显示宽度（含缩进）
+            indent: 额外缩进空格数
+        """
+        prefix = " " * indent
+        current_width = 0
+        for char in key:
+            if "一" <= char <= "鿿":
+                current_width += 2
+            else:
+                current_width += 1
+        padding = max(0, key_width - current_width - indent)
+        print(f"{prefix}{key}{' ' * padding} {value}")
+
+    @classmethod
+    def print_progress_bar(cls, pct: float, width: int = 40) -> None:
+        """标准进度条，用 █ 填充 + · 表示剩余"""
+        filled = int(pct / 100 * width)
+        bar = "█" * filled + "·" * (width - filled)
+        print(f"  [{bar}] {pct:.1f}%")
