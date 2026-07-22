@@ -1853,7 +1853,7 @@ nano_agent/agent/result_summarizer.py # 统一到 estimate_text_tokens()
 
 ---
 
-### v0.7.14 - 预判机制
+### v0.7.14 - 预判机制 ✅
 
 **目标**: 简单问题不走 ReAct 循环，节省 ~90% token。
 
@@ -1893,7 +1893,7 @@ nano_agent/agent/react.py            # 集成预判机制
 
 ---
 
-### v0.7.15 - 激进输出精简与工具输出标准化
+### v0.7.15 - 激进输出精简与工具输出标准化 ✅
 
 **目标**: 减少 LLM 输出冗余 + 统一工具输出结构。
 
@@ -2001,7 +2001,7 @@ nano_agent/config/schema.py          # ComplexityBudgetConfig, StallDetectionCon
 
 ---
 
-### v0.7.17 - 多轮缓存与 Tool Offloading
+### v0.7.17 - 多轮缓存与 Tool Offloading ✅
 
 **目标**: 跨轮次工具结果复用 + 大结果不撑爆窗口。
 
@@ -2061,7 +2061,7 @@ nano_agent/cli/main.py               # 配置显示
 
 ---
 
-### v0.7.18 - 估算审计与准确性增强
+### v0.7.18 - 估算审计与准确性增强 ✅
 
 **目标**: 校准闭环的验证环节 + 估算准确性提升。
 
