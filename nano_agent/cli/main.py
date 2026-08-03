@@ -107,7 +107,7 @@ class GracefulExitManager:
         except Exception as e:
             print(f"摘要生成失败: {e}")
 
-        print("Goodbye!")
+        print("再见!")
         sys.exit(0)
 
 
@@ -210,7 +210,7 @@ def update_gitignore(project_root: Path | None = None) -> bool:
 
     except (IOError, PermissionError) as e:
         # Silently fail if can't write to .gitignore
-        Console.print(f"Warning: Could not update .gitignore: {e}", style="warning")
+        Console.print(f"警告: 无法更新 .gitignore: {e}", style="warning")
         return False
 
 
@@ -755,12 +755,12 @@ def _handle_slash_command(
         return ("break", user_display, agent_display)
 
     if lower in Commands.EXIT_DIRECT:
-        Console.print("Goodbye!", style="success")
+        Console.print("再见!", style="success")
         return ("break", user_display, agent_display)
 
     if lower == Commands.CLEAR:
         agent.reset()
-        Console.print("Conversation history cleared", style="success")
+        Console.print("对话历史已清空", style="success")
         return ("continue", user_display, agent_display)
 
     if lower == Commands.UNDO:
@@ -785,7 +785,7 @@ def _handle_slash_command(
 
     if lower == Commands.TOOLS:
         tools = agent.tool_registry.list_tools()
-        Console.print(f"Available tools: {', '.join(tools)}", style="info")
+        Console.print(f"可用工具: {', '.join(tools)}", style="info")
         return ("continue", user_display, agent_display)
 
     if lower == Commands.PLANS:
@@ -877,14 +877,14 @@ def _handle_slash_command(
         if hasattr(agent.memory, "list_sessions"):
             sessions = agent.memory.list_sessions()
             if not sessions:
-                Console.print("No sessions found.", style="info")
+                Console.print("暂无会话", style="info")
             else:
-                Console.print(f"Available sessions ({len(sessions)}):", style="info")
+                Console.print(f"可用会话 ({len(sessions)}):", style="info")
                 for sid in sessions:
                     print(f"  {sid}")
         else:
             Console.print(
-                "Session listing not available (requires persistent/hybrid memory)",
+                "当前记忆类型不支持会话列表",
                 style="warning",
             )
         return ("continue", user_display, agent_display)
@@ -901,14 +901,14 @@ def _handle_slash_command(
         if hasattr(agent, "skill_loader"):
             skills = agent.skill_loader.list_loaded_skills()
             if not skills:
-                Console.print("No skills loaded.", style="info")
+                Console.print("未加载技能", style="info")
             else:
-                Console.print(f"Loaded skills ({len(skills)}):", style="info")
+                Console.print(f"已加载技能 ({len(skills)}):", style="info")
                 for skill_name in skills:
                     source = agent.skill_loader.get_skill_source(skill_name)
                     print(f"  {skill_name} <- {source}")
         else:
-            Console.print("Skill system not available", style="warning")
+            Console.print("技能系统不可用", style="warning")
         return ("continue", user_display, agent_display)
 
     if lower.startswith(CommandPrefix.SKILL):
@@ -1067,7 +1067,7 @@ def run_interactive(
         if git_manager.is_enabled():
             _setup_git_handler(agent, git_manager, config)
             if agent.verbose:
-                Console.print("Git integration enabled", style="info")
+                Console.print("Git 集成已启用", style="info")
 
     # Load project context at startup and add to system prompt
     project_context = _load_project_context(config)
@@ -1081,7 +1081,7 @@ def run_interactive(
     signal.signal(signal.SIGINT, GracefulExitManager.handler)
 
     # Print header with all info
-    Console.print_header("NanoAgent - AI Assistant")
+    Console.print_title("NanoAgent - AI Assistant")
 
     # Show config source
     if agent.verbose and hasattr(orchestrator, "_config_source"):
@@ -1093,10 +1093,10 @@ def run_interactive(
         current_prompt = agent.memory.system_prompt or ""
         agent.memory.set_system_prompt(f"{current_prompt}\n\n---\n\n{project_context}")
         if agent.verbose:
-            Console.print("Project: NANOPROJECT.md loaded", style="success")
+            Console.print("项目: NANOPROJECT.md 已加载", style="success")
 
     if agent.verbose:
-        Console.print("Type '/?' or 'help' for available commands", style="info")
+        Console.print("输入 '/?' 或 'help' 查看可用命令", style="info")
     Console.print_separator()
 
     # Get display names from config
@@ -1207,7 +1207,7 @@ def run_interactive(
             # 被 signal handler 处理，继续循环
             continue
         except Exception as e:
-            Console.print(f"Error: {e}", style="error")
+            Console.print(f"错误: {e}", style="error")
 
 
 async def run_interactive_async(
@@ -1422,7 +1422,7 @@ async def run_interactive_async(
                 # Ctrl+C during input — just continue
                 continue
             except Exception as e:
-                Console.print(f"Error: {e}", style="error")
+                Console.print(f"错误: {e}", style="error")
     finally:
         signal.signal(signal.SIGINT, original_sigint)
 
@@ -1637,16 +1637,16 @@ Config file priority:
     # Now print session info gated by verbose
     if agent.verbose:
         if args.resume_session and not args.new_session:
-            Console.print(f"Resuming session: {args.resume_session}", style="info")
+            Console.print(f"正在恢复会话: {args.resume_session}", style="info")
         elif not args.resume_session and not args.new_session:
-            Console.print("Starting new session", style="info")
+            Console.print("开始新会话", style="info")
 
     # Handle --new-session: explicitly create a new empty session
     if args.new_session:
         if hasattr(agent.memory, "new_session"):
             new_sid = agent.memory.new_session()
             if agent.verbose:
-                Console.print(f"Started new session: {new_sid}", style="success")
+                Console.print(f"已创建新会话: {new_sid}", style="success")
         # else: short_term memory doesn't need explicit new_session
 
     # Handle --resume-session
@@ -1654,17 +1654,13 @@ Config file priority:
         if hasattr(agent.memory, "load_session"):
             success = agent.memory.load_session(args.resume_session)
             if not success:
-                Console.print(
-                    f"Session '{args.resume_session}' not found", style="error"
-                )
+                Console.print(f"会话 '{args.resume_session}' 未找到", style="error")
                 sys.exit(1)
             if agent.verbose:
-                Console.print(
-                    f"Resumed session: {args.resume_session}", style="success"
-                )
+                Console.print(f"已恢复会话: {args.resume_session}", style="success")
         else:
             Console.print(
-                "Session resume not available (requires persistent/hybrid memory)",
+                "会话恢复不可用（需要持久化或混合记忆）",
                 style="warning",
             )
 
@@ -1803,7 +1799,7 @@ def _migrate_sessions(config_path: str | None = None, dry_run: bool = False) -> 
     if not db_path.endswith(".db"):
         db_path = db_path + ".db"
 
-    Console.print_header("Session Migration")
+    Console.print_title("会话迁移")
 
     # First show current status
     all_sessions = list_all_sessions(file_dir=file_dir, db_path=db_path)
@@ -1814,33 +1810,33 @@ def _migrate_sessions(config_path: str | None = None, dry_run: bool = False) -> 
     print(
         f"SQLite storage ({db_path}): {len(all_sessions['sqlite_storage']['sessions'])} sessions"
     )
-    print(f"Total unique sessions: {all_sessions['total_unique_sessions']}")
+    print(f"会话总数: {all_sessions['total_unique_sessions']}")
 
     if dry_run:
-        print("\n[DRY RUN] Would migrate the following sessions:")
+        print("\n[预演] 将迁移以下会话:")
         for session_id in all_sessions["file_storage"]["sessions"]:
             if session_id not in all_sessions["sqlite_storage"]["sessions"]:
                 info = all_sessions["file_storage"]["info"].get(session_id, {})
-                print(f"  - {session_id} ({info.get('message_count', 0)} messages)")
+                print(f"  - {session_id} ({info.get('message_count', 0)} 条消息)")
         return
 
     # Perform migration
-    print("\nMigrating sessions...")
+    print("\n正在迁移会话…")
     report = migrate_file_to_sqlite(file_dir=file_dir, db_path=db_path, dry_run=False)
 
-    print(f"\nMigration Report:")
-    print(f"  Total file sessions: {report['total_file_sessions']}")
-    print(f"  Already in SQLite: {len(report['already_in_sqlite'])}")
-    print(f"  Successfully migrated: {len(report['migrated'])}")
+    print(f"\n迁移报告:")
+    print(f"  文件会话总数: {report['total_file_sessions']}")
+    print(f"  已在 SQLite 中: {len(report['already_in_sqlite'])}")
+    print(f"  成功迁移: {len(report['migrated'])}")
 
     if report["errors"]:
-        print(f"  Errors: {len(report['errors'])}")
+        print(f"  错误: {len(report['errors'])}")
         for error in report["errors"]:
             print(f"    - {error['session_id']}: {error['error']}")
 
     if report["migrated"]:
         Console.print(
-            f"\nSuccessfully migrated {len(report['migrated'])} sessions!",
+            f"\n成功迁移 {len(report['migrated'])} 个会话!",
             style="success",
         )
 
@@ -1871,17 +1867,17 @@ def _list_sessions(config_path: str | None = None) -> None:
     sessions = storage.list_sessions()
 
     if not sessions:
-        Console.print("No sessions found.", style="info")
+        Console.print("暂无会话", style="info")
         return
 
-    Console.print(f"Found {len(sessions)} session(s):", style="info")
+    Console.print(f"共有 {len(sessions)} 个会话:", style="info")
     Console.print_separator()
     for session_id in sessions:
         info = storage.get_session_info(session_id)
         print(f"  {session_id}")
-        print(f"    Messages: {info['message_count']}")
+        print(f"    消息数: {info['message_count']}")
         if info["last_message"]:
-            print(f"    Last activity: {info['last_message'][:19]}")
+            print(f"    最后活动: {info['last_message'][:19]}")
         print()
 
 
@@ -1902,14 +1898,14 @@ def _delete_session(session_id: str, config_path: str | None = None) -> None:
     storage = _get_storage(config)
 
     if not storage.session_exists(session_id):
-        Console.print(f"Session '{session_id}' not found", style="error")
+        Console.print(f"会话 '{session_id}' 未找到", style="error")
         sys.exit(1)
 
     # Delete session and summary
     storage.delete_session(session_id)
     storage.delete_summary(session_id)
 
-    Console.print(f"Session '{session_id}' deleted successfully", style="success")
+    Console.print(f"会话 '{session_id}' 已删除", style="success")
 
 
 def _cleanup_sessions(config_path: str | None = None, threshold: int = 3) -> None:
@@ -1930,18 +1926,16 @@ def _cleanup_sessions(config_path: str | None = None, threshold: int = 3) -> Non
     low_value_sessions = storage.get_sessions_below_threshold(threshold)
 
     if not low_value_sessions:
-        Console.print(
-            f"No sessions with fewer than {threshold} messages found.", style="info"
-        )
+        Console.print(f"未找到低于 {threshold} 条消息的低价值会话。", style="info")
         return
 
     Console.print(
-        f"Found {len(low_value_sessions)} session(s) with fewer than {threshold} messages:",
+        f"发现 {len(low_value_sessions)} 个低于 {threshold} 条消息的低价值会话:",
         style="info",
     )
     for session_id in low_value_sessions:
         info = storage.get_session_info(session_id)
-        print(f"  {session_id} ({info['message_count']} messages)")
+        print(f"  {session_id} ({info['message_count']} 条消息)")
 
     # Delete sessions
     deleted_count = 0
@@ -1950,7 +1944,7 @@ def _cleanup_sessions(config_path: str | None = None, threshold: int = 3) -> Non
         storage.delete_summary(session_id)
         deleted_count += 1
 
-    Console.print(f"Cleaned up {deleted_count} low-value session(s)", style="success")
+    Console.print(f"已清理 {deleted_count} 个低价值会话", style="success")
 
 
 def _set_clean_threshold(config_path: str | None, threshold: int) -> None:
@@ -1977,8 +1971,8 @@ def _set_clean_threshold(config_path: str | None, threshold: int) -> None:
 
     # Save config
     ConfigLoader.save(config, config_file)
-    Console.print(f"Clean threshold set to {threshold}", style="success")
-    Console.print(f"Config saved to: {config_file}", style="info")
+    Console.print(f"清理阈值已设置为 {threshold}", style="success")
+    Console.print(f"配置已保存: {config_file}", style="info")
 
 
 def _generate_session_summary(agent, config) -> str:
@@ -2072,7 +2066,7 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
     parts = command.strip().split()
     if not parts:
         Console.print(
-            "Usage: /snapshot <save [name]|list|restore <id>|delete <id>"
+            "用法: /snapshot <save [名称]|list|restore <id>|delete <id>"
             "|audit|rollback <audit_id>>",
             style="info",
         )
@@ -2080,7 +2074,7 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
 
     snapshot_manager = getattr(orchestrator, "snapshot_manager", None)
     if snapshot_manager is None:
-        Console.print("Snapshot manager not available.", style="warning")
+        Console.print("快照管理器不可用。", style="warning")
         return
 
     subcommand = parts[0].lower()
@@ -2090,7 +2084,7 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
         metadata = snapshot_manager.save(orchestrator.agent, orchestrator, name=name)
         name_str = f" ({metadata.name})" if metadata.name else ""
         Console.print(
-            f"Snapshot saved: {metadata.snapshot_id}{name_str} "
+            f"快照已保存: {metadata.snapshot_id}{name_str} "
             f"(round={metadata.round_counter}, tokens={metadata.total_tokens})",
             style="success",
         )
@@ -2098,9 +2092,9 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
     elif subcommand == "list":
         snapshots = snapshot_manager.list_snapshots()
         if not snapshots:
-            Console.print("No snapshots found.", style="info")
+            Console.print("暂无快照。", style="info")
         else:
-            Console.print(f"Snapshots ({len(snapshots)}):", style="info")
+            Console.print(f"快照 ({len(snapshots)}):", style="info")
             for snap in snapshots:
                 time_str = (
                     snap.created_at[11:16]
@@ -2115,30 +2109,30 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
 
     elif subcommand == "restore":
         if len(parts) < 2:
-            Console.print("Usage: /snapshot restore <id>", style="info")
+            Console.print("用法: /snapshot restore <id>", style="info")
             return
         snapshot_id = parts[1]
         if snapshot_manager.restore(snapshot_id, orchestrator.agent, orchestrator):
-            Console.print(f"Restored to snapshot: {snapshot_id}", style="success")
+            Console.print(f"已恢复快照: {snapshot_id}", style="success")
         else:
-            Console.print(f"Snapshot not found: {snapshot_id}", style="error")
+            Console.print(f"快照未找到: {snapshot_id}", style="error")
 
     elif subcommand == "delete":
         if len(parts) < 2:
-            Console.print("Usage: /snapshot delete <id>", style="info")
+            Console.print("用法: /snapshot delete <id>", style="info")
             return
         snapshot_id = parts[1]
         if snapshot_manager.delete(snapshot_id):
-            Console.print(f"Snapshot deleted: {snapshot_id}", style="success")
+            Console.print(f"快照已删除: {snapshot_id}", style="success")
         else:
-            Console.print(f"Snapshot not found: {snapshot_id}", style="error")
+            Console.print(f"快照未找到: {snapshot_id}", style="error")
 
     elif subcommand == "audit":
         entries = snapshot_manager.list_audit_entries()
         if not entries:
-            Console.print("No audit entries found.", style="info")
+            Console.print("暂无审计条目。", style="info")
         else:
-            Console.print(f"Audit Log ({len(entries)} entries):", style="info")
+            Console.print(f"审计日志 ({len(entries)} entries):", style="info")
             for entry in entries:
                 time_str = (
                     entry.timestamp[11:16]
@@ -2155,22 +2149,20 @@ def _handle_snapshot_command(orchestrator, config, command: str) -> None:
 
     elif subcommand == "rollback":
         if len(parts) < 2:
-            Console.print("Usage: /snapshot rollback <audit_id>", style="info")
+            Console.print("用法: /snapshot rollback <audit_id>", style="info")
             return
         audit_id = parts[1]
         if snapshot_manager.rollback_from_audit(
             audit_id, orchestrator.agent, orchestrator
         ):
-            Console.print(f"Rolled back from audit entry: {audit_id}", style="success")
+            Console.print(f"已回滚审计条目: {audit_id}", style="success")
         else:
-            Console.print(
-                f"Audit entry not found or rollback failed: {audit_id}", style="error"
-            )
+            Console.print(f"审计条目未找到或回滚失败: {audit_id}", style="error")
 
     else:
-        Console.print(f"Unknown subcommand: {subcommand}", style="error")
+        Console.print(f"未知子命令: {subcommand}", style="error")
         Console.print(
-            "Available: save [name], list, restore <id>, delete <id>, "
+            "可选: save [名称], list, restore <id>, delete <id>, "
             "audit, rollback <audit_id>",
             style="info",
         )
@@ -2243,12 +2235,12 @@ def _handle_skill_command(agent, command: str) -> None:
         command: 命令字符串（如 'reload coding'）
     """
     if not hasattr(agent, "skill_loader"):
-        Console.print("Skill system not available", style="warning")
+        Console.print("技能系统不可用", style="warning")
         return
 
     parts = command.strip().split()
     if not parts:
-        Console.print("Usage: skill <reload|unload> <name>", style="info")
+        Console.print("用法: /skill reload <名称>", style="info")
         return
 
     action = parts[0].lower()
@@ -2256,41 +2248,37 @@ def _handle_skill_command(agent, command: str) -> None:
 
     if action == "reload":
         if not skill_name:
-            Console.print("Usage: skill reload <name>", style="info")
+            Console.print("用法: /skill reload <名称>", style="info")
             return
 
         if skill_name not in agent.skill_loader.list_loaded_skills():
-            Console.print(f"Skill '{skill_name}' not found", style="error")
+            Console.print(f"技能 '{skill_name}' 未找到", style="error")
             return
 
         success = agent.skill_loader.reload_skill(skill_name)
         if success:
-            Console.print(
-                f"Skill '{skill_name}' reloaded successfully", style="success"
-            )
+            Console.print(f"技能 '{skill_name}' 重新加载成功", style="success")
             # Update agent's tools and prompt
             _update_agent_skills(agent)
         else:
-            Console.print(f"Failed to reload skill '{skill_name}'", style="error")
+            Console.print(f"重新加载技能失败: '{skill_name}'", style="error")
 
     elif action == "unload":
         if not skill_name:
-            Console.print("Usage: skill unload <name>", style="info")
+            Console.print("用法: /skill unload <名称>", style="info")
             return
 
         if skill_name not in agent.skill_loader.list_loaded_skills():
-            Console.print(f"Skill '{skill_name}' not found", style="error")
+            Console.print(f"技能 '{skill_name}' 未找到", style="error")
             return
 
         success = agent.skill_loader.unload_skill(skill_name)
         if success:
-            Console.print(
-                f"Skill '{skill_name}' unloaded successfully", style="success"
-            )
+            Console.print(f"技能 '{skill_name}' unloaded successfully", style="success")
             # Update agent's tools and prompt
             _update_agent_skills(agent)
         else:
-            Console.print(f"Failed to unload skill '{skill_name}'", style="error")
+            Console.print(f"卸载技能失败: '{skill_name}'", style="error")
 
     else:
         Console.print(
@@ -2348,18 +2336,18 @@ def _export_report(
         # 使用 ReportGenerator 导出
         if report_format == "json":
             ReportGenerator.save_json(metrics, report_output)
-            Console.print(f"Report exported to: {report_output}", style="success")
+            Console.print(f"报告已导出: {report_output}", style="success")
         elif report_format == "markdown":
             ReportGenerator.save_markdown(metrics, report_output)
-            Console.print(f"Report exported to: {report_output}", style="success")
+            Console.print(f"报告已导出: {report_output}", style="success")
         elif report_format == "summary":
             summary = ReportGenerator.to_summary(metrics)
             print(f"\n{summary}")
         else:
-            Console.print(f"Unknown format: {report_format}", style="error")
+            Console.print(f"未知格式: {report_format}", style="error")
 
     except Exception as e:
-        Console.print(f"Failed to export report: {e}", style="error")
+        Console.print(f"报告导出失败: {e}", style="error")
 
 
 def _handle_memory_command(agent, config, command: str) -> None:
@@ -2380,8 +2368,8 @@ def _handle_memory_command(agent, config, command: str) -> None:
     elif parts[0].lower() == "off":
         _disable_long_term_memory(config)
     else:
-        Console.print(f"Unknown subcommand: {parts[0]}", style="error")
-        Console.print("Available: status, on, off", style="info")
+        Console.print(f"未知子命令: {parts[0]}", style="error")
+        Console.print("可选: status, on, off", style="info")
 
 
 def _enable_long_term_memory(config) -> None:
@@ -2391,7 +2379,7 @@ def _enable_long_term_memory(config) -> None:
 
     # 检查当前状态
     if config.memory.type == "hybrid":
-        Console.print("Long-term memory is already enabled.", style="info")
+        Console.print("长期记忆已启用", style="info")
         return
 
     # 更新配置文件
@@ -2399,7 +2387,7 @@ def _enable_long_term_memory(config) -> None:
 
     if not config_path.exists():
         # 创建配置文件
-        Console.print("Creating config file...", style="info")
+        Console.print("创建配置文件…", style="info")
         _init_config_file(config)
 
     # 读取并更新配置
@@ -2430,13 +2418,13 @@ def _enable_long_term_memory(config) -> None:
                 sort_keys=False,
             )
 
-        Console.print("Long-term memory enabled!", style="success")
-        Console.print(f"Config updated: {config_path}", style="info")
-        Console.print("Memory type changed to: hybrid", style="info")
-        Console.print("Restart nano-agent to apply changes.", style="warning")
+        Console.print("长期记忆已启用!", style="success")
+        Console.print(f"配置已更新: {config_path}", style="info")
+        Console.print("记忆类型已切换为: hybrid", style="info")
+        Console.print("重启 nano-agent 以应用更改。", style="warning")
 
     except Exception as e:
-        Console.print(f"Failed to update config: {e}", style="error")
+        Console.print(f"配置更新失败: {e}", style="error")
 
 
 def _disable_long_term_memory(config) -> None:
@@ -2446,14 +2434,14 @@ def _disable_long_term_memory(config) -> None:
 
     # 检查当前状态
     if config.memory.type == "short_term":
-        Console.print("Long-term memory is already disabled.", style="info")
+        Console.print("长期记忆已禁用", style="info")
         return
 
     # 更新配置文件
     config_path = Path.cwd() / ".nano_agent" / "config.yaml"
 
     if not config_path.exists():
-        Console.print("No config file found. Memory is using defaults.", style="info")
+        Console.print("未找到配置文件。当前使用默认值。", style="info")
         return
 
     # 读取并更新配置
@@ -2476,9 +2464,9 @@ def _disable_long_term_memory(config) -> None:
                 sort_keys=False,
             )
 
-        Console.print("Long-term memory disabled!", style="success")
-        Console.print(f"Config updated: {config_path}", style="info")
-        Console.print("Memory type changed to: short_term", style="info")
+        Console.print("长期记忆已禁用!", style="success")
+        Console.print(f"配置已更新: {config_path}", style="info")
+        Console.print("记忆类型已切换为: short_term", style="info")
         Console.print("Restart nano-agent to apply changes.", style="warning")
 
     except Exception as e:
@@ -2512,9 +2500,9 @@ def _handle_stats_command(agent, config, command: str) -> None:
         # v0.7.18: Show estimation audit data
         _show_estimation_audit(agent, config)
     else:
-        Console.print(f"Unknown subcommand: {parts[0]}", style="error")
+        Console.print(f"未知子命令: {parts[0]}", style="error")
         Console.print(
-            "Available: status, context, breakdown, estimation, on, off", style="info"
+            "可选: status, context, breakdown, estimation, on, off", style="info"
         )
 
 
@@ -2550,7 +2538,7 @@ def _handle_config_command(agent, config, command: str) -> None:
     """
     parts = command.strip().split()
     if not parts:
-        Console.print("Usage: /config <init [--force]>", style="info")
+        Console.print("用法: /config <init [--force]>", style="info")
         return
 
     subcommand = parts[0].lower()
@@ -2559,8 +2547,8 @@ def _handle_config_command(agent, config, command: str) -> None:
         force = "--force" in parts or "-f" in parts
         _init_config_file(config, force=force)
     else:
-        Console.print(f"Unknown subcommand: {subcommand}", style="error")
-        Console.print("Available: init [--force]", style="info")
+        Console.print(f"未知子命令: {subcommand}", style="error")
+        Console.print("可选: init [--force]", style="info")
 
 
 def _init_config_file(config, force: bool = False) -> None:

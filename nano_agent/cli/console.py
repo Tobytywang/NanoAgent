@@ -93,7 +93,7 @@ class Console:
     @classmethod
     def print_title(cls, title: str) -> None:
         """标准标题块"""
-        print()
+        print("")
         print("=" * 50)
         print(title)
         print("=" * 50)
