@@ -16,6 +16,11 @@ repos:
         entry: scripts/check_test_cases.sh
         language: script
 
+      - id: check-buglist
+        name: BUGLIST update reminder
+        entry: scripts/check_buglist.sh
+        language: script
+
       - id: check-config-chain
         name: Config chain completeness check
         entry: scripts/check_config_chain.sh

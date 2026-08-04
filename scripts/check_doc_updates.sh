@@ -1,60 +1,72 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # check_doc_updates.sh
-# When core files change, check that related docs are also updated
-# Triggers on: schema.py, agent/*.py, memory/*.py changes
+# When nano_agent/** code changes, check that related docs are also staged.
+#
+# Mapping-driven (scan-based): each code area routes to the docs it affects.
+# Previously this was a hard-coded whitelist (schema.py + 3 agent/memory
+# files only); now every nano_agent/ sub-module change is covered.
+#
+# Add/change a rule by editing the parallel RULE_PATHS / RULE_DOCS arrays.
+# Note: parallel arrays are used instead of associative arrays to stay
+# compatible with macOS bash 3.2 (no `declare -A` support).
 
 set -e
 
-# Core files that require doc updates
-SCHEMA_FILE="nano_agent/config/schema.py"
-AGENT_FILES=("nano_agent/agent/base.py" "nano_agent/agent/react.py" "nano_agent/agent/orchestrator.py")
-MEMORY_FILES=("nano_agent/memory/base.py" "nano_agent/memory/short_term.py" "nano_agent/memory/hybrid.py")
+RULE_PATHS=(
+  "nano_agent/config/"
+  "nano_agent/agent/"
+  "nano_agent/memory/"
+  "nano_agent/llm/"
+  "nano_agent/tools/"
+  "nano_agent/cli/"
+  "nano_agent/monitoring/"
+  "nano_agent/core/"
+  "nano_agent/skills/"
+)
 
-# Doc files to check based on trigger type
-SCHEMA_DOCS=("docs/api.md" "docs/constraints.md" "docs/architecture.md")
-FEATURE_DOCS=("docs/api.md" "docs/tutorial.md")
+# Space-separated docs, same index as RULE_PATHS
+RULE_DOCS=(
+  "docs/api.md docs/constraints.md docs/architecture.md"
+  "docs/api.md docs/tutorial.md"
+  "docs/api.md docs/tutorial.md"
+  "docs/api.md"
+  "docs/api.md"
+  "docs/api.md docs/tutorial.md"
+  "docs/api.md"
+  "docs/api.md docs/architecture.md"
+  "docs/api.md docs/skill-development.md"
+)
 
-# Check what type of files changed
-STAGED_SCHEMA=$(git diff --cached --name-only | grep -F "$SCHEMA_FILE" || true)
-STAGED_AGENT=$(git diff --cached --name-only | grep -Ff <(printf '%s\n' "${AGENT_FILES[@]}") || true)
-STAGED_MEMORY=$(git diff --cached --name-only | grep -Ff <(printf '%s\n' "${MEMORY_FILES[@]}") || true)
+STAGED=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+[ -z "$STAGED" ] && exit 0
 
-# If nothing relevant changed, skip
-if [ -z "$STAGED_SCHEMA" ] && [ -z "$STAGED_AGENT" ] && [ -z "$STAGED_MEMORY" ]; then
-    exit 0
-fi
-
-# Determine which docs to check based on what changed
 MISSING_DOCS=()
 
-if [ -n "$STAGED_SCHEMA" ]; then
-    # schema.py changed - check all schema-related docs
-    for doc in "${SCHEMA_DOCS[@]}"; do
-        STAGED_DOC=$(git diff --cached --name-only | grep -F "$doc" || true)
-        if [ -z "$STAGED_DOC" ]; then
-            MISSING_DOCS+=("$doc (triggered by $SCHEMA_FILE)")
-        fi
-    done
-fi
+for i in "${!RULE_PATHS[@]}"; do
+    prefix="${RULE_PATHS[$i]}"
+    AREA_CHANGED=$(echo "$STAGED" | grep -F "$prefix" | grep -v '__pycache__' || true)
+    [ -z "$AREA_CHANGED" ] && continue
 
-if [ -n "$STAGED_AGENT" ] || [ -n "$STAGED_MEMORY" ]; then
-    # Agent or memory files changed - check feature docs
-    for doc in "${FEATURE_DOCS[@]}"; do
-        STAGED_DOC=$(git diff --cached --name-only | grep -F "$doc" || true)
+    for doc in ${RULE_DOCS[$i]}; do
+        STAGED_DOC=$(echo "$STAGED" | grep -F "$doc" || true)
         if [ -z "$STAGED_DOC" ]; then
-            # Avoid duplicate entries
-            if ! echo "${MISSING_DOCS[*]}" | grep -q "$doc"; then
-                TRIGGER=$(echo "$STAGED_AGENT $STAGED_MEMORY" | head -1)
-                MISSING_DOCS+=("$doc (triggered by $TRIGGER)")
-            fi
+            MISSING_DOCS+=("$doc (triggered by $prefix)")
         fi
     done
-fi
+done
 
 if [ ${#MISSING_DOCS[@]} -gt 0 ]; then
+    # De-duplicate while keeping order
+    UNIQUE_DOCS=()
+    for entry in "${MISSING_DOCS[@]}"; do
+        if ! echo "${UNIQUE_DOCS[*]}" | grep -qF "$entry"; then
+            UNIQUE_DOCS+=("$entry")
+        fi
+    done
+
     echo "❌ Core files modified but docs not updated:"
-    for doc in "${MISSING_DOCS[@]}"; do
-        echo "   - $doc"
+    for entry in "${UNIQUE_DOCS[@]}"; do
+        echo "   - $entry"
     done
     echo "   Fix: update the relevant docs and stage them with 'git add'"
     exit 1

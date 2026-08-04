@@ -124,6 +124,6 @@ pre-commit run --all-files            # 全量检查
 | 2 | **pre-commit** | 7 hooks 必过；禁止 `--no-verify` |
 | 3 | **新功能全链路** | schema → loader（parse+save）→ config_display → create_agent → 测试（详情: update-checklist.md §2.1） |
 | 4 | **接口扩展** | 给基类加方法 → 检查所有子类 → 补接口一致性测试（pre-commit: check_interface_implementation） |
-| 5 | **BUG 修复** | 补回归测试 + 更新 BUGLIST.md + 更新 test_cases.xlsx |
+| 5 | **BUG 修复** | 补回归测试 + 更新 BUGLIST.md + 更新 test_cases.xlsx（详情: update-checklist.md §3.2） |
 | 6 | **测试运行** | pytest 前台运行；禁止 `\| tail`/`\| head` 管道；长命令用 --timeout（详情: update-checklist.md §九） |
 | 7 | **新增测试** | 同步更新 tests/test_cases.xlsx |
