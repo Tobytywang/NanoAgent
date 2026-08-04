@@ -2906,6 +2906,42 @@ async def run_interactive_async(orchestrator, user_input):
 
 ---
 
+### v0.9.2 - CLI 展示层重构与输出标准化 ✅
+
+**目标**: 将 CLI 显示逻辑从 main.py 解耦为独立模块，统一所有 slash 命令的输出格式、语言和样式。
+
+**背景**:
+main.py 达 3700+ 行，16 个 `_show_*` 显示函数与命令处理逻辑混在一起，每个函数各自手写格式（`print("\n" + "=" * 50)` 重复出现）。同时命令输出语言混杂（中文/英文）、样式不统一（裸 print 与 Console.print 混用）。
+
+**架构归属**: CLI 交互层 - 展示层重构
+
+**任务列表**:
+- [x] `Console` 类新增 5 个高阶格式化方法 - `print_title` / `print_subtitle` / `print_end` / `print_kv` / `print_progress_bar`
+- [x] 新建 `nano_agent/cli/displays.py` - 迁移 11 个 `_show_*` 函数 + `_get_display_width` / `_pad_to_width`
+- [x] main.py 从 3735 行减至 ~3000 行 - 仅保留 `_handle_*` 命令处理
+- [x] 全部命令输出统一中文 + `Console.print(style=...)`
+- [x] 输出格式标准化 - 标题块 / 小标题 / key-value 对齐 / 进度条 / 结尾线
+
+**设计文档**: `docs/superpowers/specs/2026-07-22-cli-output-standardization-design.md`
+**实施计划**: `docs/superpowers/plans/2026-07-22-cli-output-standardization.md`
+
+**提交记录**:
+- `3fc179a` - feat: Console 类新增 print_title / print_subtitle / print_end / print_kv / print_progress_bar
+- `c39d3ac` - refactor: 抽出 displays.py，迁移所有 _show_* 展示函数（含 i18n 统一）
+- `9e831af` - i18n: 统一 CLI 命令输出为中文 + Console style
+
+**关键决策**:
+- 采用单文件 `displays.py` 而非包结构（约 600 行，无需过度拆分；将来超 1500 行可再升级为包，caller import 不变）
+- 表格（/usage）与紧凑行（_show_run_stats）保留原格式，不强行统一
+- `_enable_run_stats` / `_disable_run_stats` 属于状态修改而非展示，保留在 main.py
+
+**经验教训**:
+- 批量删除函数时使用精确边界验证（本次误删了 `_enable_run_stats` / `_disable_run_stats`，被测试暴露后从 git 恢复）
+- 批量字符串替换有破坏代码风险（`"messages)" → "条消息)"` 误伤变量名 `{len(messages)}`），替换后必须 py_compile + 跑测试
+- Console 格式化方法用裸 `print()` 会破坏 mock 测试（`mock_print(text)` 需要参数），空行用 `print("")` 而非 `print()`
+
+---
+
 ### v0.10.0 - 反思与规划能力
 
 **目标**: 增强 Agent 的推理能力，支持复杂任务的规划与自我改进。
