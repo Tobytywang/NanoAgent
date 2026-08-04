@@ -1,217 +1,129 @@
 # CLAUDE.md
 
-> **定位**: 开发者日常工作手册 - 快速参考与操作规范
+> **定位**: 开发者入口索引 — 各维度仅列简介与指针，详情按需通过工具（Read/Grep/Glob）读取
 >
-> **战略规划**: 详见 [ROADMAP.md](ROADMAP.md) - 版本规划、测试系统、架构演进
->
-> **BUG 复盘**: 详见 [BUGLIST.md](BUGLIST.md) - BUG 记录与经验教训
+> **进度**: [ROADMAP.md](ROADMAP.md) | **BUG 复盘**: [BUGLIST.md](BUGLIST.md) | **更新规范**: [docs/update-checklist.md](docs/update-checklist.md)
 
-## Project Overview
+---
 
-Lightweight ReAct Agent framework in Python 3.10+ with Ollama backend.
+## 维度一：代码结构 → `nano_agent/`
 
-## Commands
+| 子目录 | 一句话 | 关键入口文件 |
+|--------|--------|-------------|
+| agent/ | 执行层：ReAct 循环、Token 优化、管控护栏、提示词 | base.py, react.py, orchestrator.py, prejudgment.py, router.py, token_budget.py, cache.py, output_simplifier.py, sanitizer.py, circuit_breaker.py, prompt_builder.py |
+| cli/ | 交互层：命令处理、展示层、配置显示 | main.py, displays.py, console.py, config_display.py, constants.py |
+| config/ | 配置定义与加载 | schema.py, loader.py, model_contexts.yaml |
+| core/ | 构建器与注册表 | builder.py, registry.py, types.py |
+| llm/ | LLM 客户端 + 重试/限流/provider 解耦 | base.py, anthropic.py, ollama.py, openai_compatible.py, retry.py, rate_limiter.py, normalizer.py |
+| memory/ | 多级记忆 + 存储后端 | short_term.py, hybrid.py, long_term.py, persistent.py, gc.py, migration.py, storage/(file_storage, sqlite_storage) |
+| monitoring/ | 执行追踪与统计上报 | tracker.py, metrics.py, raw_data.py, reporter.py, token_analyzer.py |
+| skills/ | 技能定义与加载 | base.py, loader.py |
+| tools/ | 工具注册 + 内建工具 + 标准化输出 | base.py, registry.py, plugin.py, standard_output.py, resource_limiter.py, builtin/(file_ops, shell, python_executor, web_search, memory_tools, plan_tools) |
+| utils/ | 通用工具函数 | patterns.py, strings.py |
+
+协议：需要具体模块实现时 Read 对应文件；需要理解模块间关系时 Read docs/architecture.md。
+
+---
+
+## 维度二：开发进度 → ROADMAP.md, BUGLIST.md, docs/superpowers/
+
+| 条目 | 内容 | 何时读取 |
+|------|------|---------|
+| ROADMAP.md | 版本规划（v0.1–v0.9.2 ✅，v0.10–v0.16 规划）+ 特性总览表 + 测试系统规划（T1/T2/T3） | 了解进度、开始新版本开发 |
+| BUGLIST.md | BUG-001~009 复盘（问题→根因→修复→教训） | 修 BUG 前参考、复盘 |
+| docs/superpowers/specs/ | 大功能设计文档（如 CLI 输出标准化设计） | 开始大功能前 |
+| docs/superpowers/plans/ | 对应实施计划 | 执行设计时 |
+
+---
+
+## 维度三：架构/功能/约束/技术文档 → `docs/`
+
+| 文件 | 一句话 | 何时读取 |
+|------|--------|---------|
+| architecture.md | 分层架构与数据流（含 mermaid 图） | 理解系统结构、新增组件 |
+| api.md | 完整 API 参考 | 查接口签名/用法 |
+| tutorial.md | 使用教程 | 用户上手引导 |
+| constraints.md | 硬限制 + 软限制 + 交互图 | 新增终止/检测机制 |
+| plugins.md | 插件开发指南 | 开发外部插件 |
+| skill-development.md | 技能开发指南 | 开发新技能 |
+| token-feature-tree.md | Token 特性树（✅/⏳/🔴 标注 + 版本号） | Token 优化相关工作 |
+| token-optimization-methodology.md | Token 优化方法论 | 设计新 Token 优化方案 |
+| agent-control-audit.md | 管控体系审计（四层 16 控制点） | 审查/增强安全管控 |
+| update-checklist.md | 代码更新后固定检查清单 | 提交前自查 |
+| testing.md | 测试指南 | 了解测试策略、编写新测试 |
+| examples/ | 配置示例（ollama/online/default） | 用户配置参考 |
+
+---
+
+## 维度四：测试 → `tests/`, docs/testing.md, scripts/
+
+| 条目 | 内容 | 何时使用 |
+|------|------|---------|
+| tests/ | 78 个 test_\<module\>.py 按模块对应 | 运行/新增测试 |
+| tests/conftest.py | 共享 fixtures | 理解测试基础设施 |
+| tests/factories.py | Mock 工厂函数 | 编写新测试 |
+| tests/run_tests.py | 自定义运行器（支持 --coverage） | 本地快速验证 |
+| tests/test_cases.xlsx | 测试用例 Excel 记录 | 新增测试后更新 |
+| pytest markers | unit / integration / e2e / slow | 分层运行（-m unit） |
+| 覆盖率 | pytest-cov 门禁 ≥54% | 质量检查 |
+| scripts/test_token_consumption.py | Token 消耗专项验证（独立于 pytest） | Token 修改后 |
+
+---
+
+## 维度五：技术栈与工程工具 → pyproject.toml, scripts/, .pre-commit-config.yaml
+
+| 条目 | 内容 |
+|------|------|
+| pyproject.toml | 运行时依赖: requests, pyyaml, httpx；开发依赖: pytest, black, pre-commit, pytest-cov, pytest-asyncio；可选: sentence-transformers |
+| 构建 | setuptools + pyproject.toml；CLI 入口: `nano-agent` |
+| Python | ≥3.10，支持 3.10–3.13 |
+| pre-commit | 7 个 hooks（6 检查脚本 + black），git commit 时自动运行 |
+| scripts/ | check_version_consistency / check_doc_updates / check_test_cases / check_config_chain / check_show_commands / check_interface_implementation |
+
+---
+
+## 维度六：其他
+
+| 条目 | 说明 |
+|------|------|
+| .nano_agent/ | 本地运行配置（config.yaml, skills/） |
+| examples/ | 插件示例（tool_weather.py）+ 技能示例（coding/translation/web_search） |
+| NANOPROJECT.md | `/init` 命令由 LLM 自动生成的项目摘要 |
+| main.py / ChatDemo.py | PyCharm 示例残留，非项目代码 |
+| 记忆系统 | `~/.claude/projects/-Users-tobytywang-Repositories-NanoAgent/memory/` — Claude Code 会话记忆（独立于 NanoAgent 的 memory/） |
+
+---
+
+## Quick Commands
 
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/ -v
-
-# Run tests with coverage
-python tests/run_tests.py --coverage
-
-# Format code
-black .
+pip install -e ".[dev]"               # 安装 + 开发依赖
+pytest tests/ -v                      # 运行所有测试
+python tests/run_tests.py --coverage  # 覆盖率
+black .                               # 格式化
+pre-commit run --all-files            # 全量检查
 ```
 
-**CLI Usage** (see `nano-agent -h` for full options):
-- `nano-agent` - Resume most recent session (default)
-- `nano-agent -n` - Start new session
-- `nano-agent -l` - List saved sessions
-- `nano-agent -r <ID>` - Resume specific session
-- `nano-agent -d <ID>` - Delete session
-- `nano-agent --clean-sessions` - Auto-clean low-value sessions
-- `nano-agent -c <path>` - Use specific config file
+**CLI**: `nano-agent`（恢复最近会话）/ `-n`（新建）/ `-l`（列出）/ `-r <ID>`（恢复指定）/ `-d <ID>`（删除）/ `--clean-sessions`（清理低价值会话）/ `-c <path>`（指定配置）
 
-## Architecture
-
-```
-nano_agent/
-├── agent/          # ReAct agent (base.py, react.py, prompts.py, undo.py)
-├── cli/            # Entry point, console utilities
-├── config/         # YAML config loading and schemas
-├── llm/            # LLM client layer (abstract base + Ollama)
-├── memory/         # Memory types (short_term, hybrid, long_term)
-│   └── storage/    # Storage backends (file, sqlite)
-├── monitoring/     # Execution tracking and reporting
-├── skills/         # Skill definitions
-└── tools/          # Built-in tools (python_execute, file_*, shell_execute)
-```
+---
 
 ## Key Patterns
 
-- **Abstract Base Classes**: `BaseAgent`, `BaseLLM`, `BaseMemory`, `BaseTool`, `BaseStorage` use ABC
-- **ToolResult**: Dataclass with `success`, `output`, `error` fields
-- **ToolRegistry / SkillRegistry**: Central registries for tools and skills
-- **ReAct Loop**: Think → Act → Observe cycle with `max_iterations` limit
-- **LLM Interface**: `chat()` returns `(text, tool_calls)`, `chat_stream()` for streaming
-
-## Configuration
-
-Config loaded from YAML (priority: project > global > defaults). See `docs/examples/config.yaml`.
-
-Key sections: `llm`, `agent`, `memory`, `skills`, `plugins`, `logging`, `output_style`. Use `/config` in interactive mode to view current settings.
-
-### Output Style (Token Efficiency)
-
-Control token consumption with `output_style` configuration:
-
-```yaml
-output_style:
-  style: concise          # concise / standard / detailed
-  tool_output_max_tokens: 500
-```
-
-| Style | System Prompt | Expected Savings | Use Case |
-|-------|---------------|------------------|----------|
-| concise | ~300 tokens | ~70% | Quick queries, simple tasks |
-| standard | ~800 tokens | ~50% | General use (default) |
-| detailed | ~1500 tokens | None | Complex analysis, debugging |
-
-## Built-in Tools
-
-- `python_execute`: Execute Python code in subprocess
-- `file_read`/`file_write`/`file_search`: File operations
-- `shell_execute`: Cross-platform shell command execution
-- `web_search`: Web search functionality
-- `memorize`/`recall`/`list_memories`/`forget`: Long-term memory tools
-- `get_stats`: Get execution statistics
+- **ABC 基类**: BaseAgent, BaseLLM, BaseMemory, BaseTool, BaseStorage
+- **ReAct 循环**: Think → Act → Observe; max_iterations 限制; 置信度早停; Token 预算管理
+- **LLM 接口**: chat() → (text, tool_calls); chat_stream() 流式
 
 ---
 
-## Development Guidelines
+## Critical Rules
 
-### Before Committing
-
-1. **Tests**: `pytest tests/ -v` - all tests must pass
-2. **Coverage**: Check coverage when fixing bugs or adding features
-3. **Documentation**: Update help text, `docs/api.md`, `docs/tutorial.md`; if `schema.py` changed, also update `docs/constraints.md`, `docs/architecture.md`
-4. **Roadmap**: Update ROADMAP.md if adding/changing features
-5. **Version**: Update version in both `pyproject.toml` AND `nano_agent/__init__.py` — must stay in sync
-
-### 版本发布检查清单
-
-发版时确保：
-1. 版本号在 `pyproject.toml` 和 `nano_agent/__init__.py` 中一致
-2. ROADMAP.md 中该版本标题添加 ✅ 标记（如 `### v0.7.19 - 语义压缩 ✅`）
-
-Pre-commit 自动检查：`check_version_consistency.sh`
-
-### 交互式命令开发规范
-
-新增交互式命令时：
-1. 在 `constants.py` 的 `Commands` 或 `CommandPrefix` 中定义常量
-2. 在 `main.py` 中使用常量而非硬编码字符串
-
-Pre-commit 自动检查：`check_show_commands.sh`
-
-### Testing
-
-- Write tests in `tests/` directory (not `python -c` ad-hoc)
-- Check coverage after bug fixes or feature changes
-- Run tests after resolving merge conflicts
-- **发现 BUG 后必须补充测试** - 防止回归，参见 [BUGLIST.md](BUGLIST.md)
-- **新增测试后必须更新 `tests/test_cases.xlsx`** - 将测试类、测试点、测试内容补充到 Excel 记录中
-
-> **详细测试规划**: 参见 [ROADMAP.md - 测试系统规划](ROADMAP.md#测试系统规划与功能版本并行)
-
-### 新增功能完整链路
-
-实现新功能时，确保以下环节全部连通：
-
-1. **配置定义** → `config/schema.py` 添加配置项
-2. **配置解析/保存** → `config/loader.py` 的 `_parse_*_config()` 和 `save()` 中处理新字段
-3. **配置显示** → `_show_config()` (cli/main.py) 中添加 print 语句
-4. **配置初始化** → `_init_config_file()` 中保存默认值
-5. **CLI 集成** → `create_agent()` (cli/main.py) 中使用新配置
-6. **测试验证** → 单元测试 + 端到端验证
-
-**常见遗漏**:
-- 配置添加了但忘记在 `loader.py` 的 parse/save 中处理
-- 配置添加了但忘记在 `_show_config()` 显示
-- 核心模块实现了但忘记在 `create_agent()` 调用
-- 只有单元测试，缺少端到端验证
-- **给基类/接口添加方法时，遗漏了某个子类** - 参见 [BUGLIST.md BUG-001](BUGLIST.md#bug-001-persistentmemory-缺失-stable_system_prompt-方法)
-
-**Pre-commit 自动检查**: `check_config_chain.sh` 会自动检测 schema.py 新增字段是否在 loader.py 中处理。`_show_config()` 和 `create_agent()` 需人工确认。
-
-### 接口扩展检查清单
-
-当给基类（如 `BaseMemory`、`BaseTool`、`BaseLLM`）添加新方法时：
-
-1. **列出所有子类** - `grep -r "class.*BaseX" nano_agent/`
-2. **逐个检查实现** - 确保每个子类都实现了新方法
-3. **添加接口一致性测试** - 参考 `tests/test_memory_interface.py`
-4. **测试所有组合场景** - 如 `HybridMemory` 可使用不同的 working memory 类型
-
-Pre-commit 自动检查：`check_interface_implementation.sh` 会检测子类是否实现了新增的 `@abstractmethod`。
-
-### Documentation
-
-When adding or modifying features, always update:
-- **Interactive help**: `_show_help()` in `nano_agent/cli/main.py`
-- **API documentation**: `docs/api.md`
-- **Tutorial**: `docs/tutorial.md` if it affects user workflow
-
-### Bash Commands
-
-Always provide a clear purpose explaining what, why, and expected output:
-
-```bash
-# Purpose: Verify session management feature works correctly
-# by testing the --list-sessions CLI option
-python -m nano_agent.cli.main --list-sessions
-```
-
-### 后台 Shell 规范
-
-为避免残留僵尸进程，遵守以下规则：
-
-1. **pytest 必须前台运行** — 测试通常几分钟内完成，不使用 `run_in_background`
-2. **禁止 `| tail` / `| head` 管道截断** — 管道会导致上游进程卡在 sleep 状态，会话结束后不退出
-3. **长命令用 `--timeout`** — 替代后台运行，超时自动终止不残留
-4. **真正需要后台的场景** — 仅限 dev server、watch 模式等长期运行的服务
-
----
-
-## Design Philosophy
-
-### User Intervention Control
-
-NanoAgent follows a "critical decision confirmation" model:
-
-**The Problem**: Users want final authority without micromanaging execution details.
-
-**The Solution**: The `undo` mechanism provides "post-hoc veto power":
-1. **Audit transparency**: Show brief summary after each memorize operation
-2. **One-key veto**: User can type `undo` to revert the last operation
-3. **No interruption**: Normal flow continues unless user explicitly intervenes
-
-Example output:
-```
-[记忆] 存储用户名字: "王五" (importance: 0.8)
-       输入 'undo' 撤销，或继续对话
-```
-
-**Why undo beats CLI commands**:
-- `--memories`, `--forget`, `--set-importance` require users to manage details proactively
-- `undo` gives users veto power without forcing them into execution details
-- Like the emperor's veto: ministers handle affairs, emperor can strike down any decision
-
-**Design principles**:
-- Daily operations flow uninterrupted
-- Information is transparent (user sees what happened)
-- User can veto anytime with `undo`
-- CLI commands are fallback for advanced use, not primary workflow
+| # | 规则 | 详情 |
+|---|------|------|
+| 1 | **版本同步** | 发版时 pyproject.toml + `__init__.py` 双处一致；ROADMAP 版本标题加 ✅（pre-commit 自动检查） |
+| 2 | **pre-commit** | 7 hooks 必过；禁止 `--no-verify` |
+| 3 | **新功能全链路** | schema → loader（parse+save）→ config_display → create_agent → 测试（详情: update-checklist.md §2.1） |
+| 4 | **接口扩展** | 给基类加方法 → 检查所有子类 → 补接口一致性测试（pre-commit: check_interface_implementation） |
+| 5 | **BUG 修复** | 补回归测试 + 更新 BUGLIST.md + 更新 test_cases.xlsx |
+| 6 | **测试运行** | pytest 前台运行；禁止 `\| tail`/`\| head` 管道；长命令用 --timeout（详情: update-checklist.md §九） |
+| 7 | **新增测试** | 同步更新 tests/test_cases.xlsx |

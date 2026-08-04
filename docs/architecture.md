@@ -1116,3 +1116,35 @@ v0.8.15 在快照机制基础上增加 append-only 审计日志和连续失败�
 - **与 StallDetector 的区别**: StallDetector 检测"原地打转"（不同工具但结果相似），注入转向提示；ConsecutiveFailureDetector 检测"级联失败"（工具明确返回错误），触发自动回滚
 - **与 CircuitBreaker 的区别**: CircuitBreaker 检测异常 LLM 行为后降级为 SUPERVISED 模式；ConsecutiveFailureDetector 检测工具执行失败后直接回滚状态
 - **与 DuplicateDetector 的区别**: DuplicateDetector 检测完全相同的重复调用并跳过；ConsecutiveFailureDetector 不关心重复性，只关心连续失败
+
+---
+
+## 设计哲学
+
+### User Intervention Control — 用户干预控制
+
+NanoAgent 遵循"关键决策确认"模型：
+
+**The Problem**: 用户想要最终权威，而不想被执行细节打扰。
+
+**The Solution**: `undo` 机制提供"事后否决权"（post-hoc veto power）：
+1. **Audit transparency**: 每次 memorize 操作后显示简短摘要
+2. **One-key veto**: 用户输入 `undo` 即可回退上一次操作
+3. **No interruption**: 正常流程不被打断，除非用户明确介入
+
+示例输出:
+```
+[记忆] 存储用户名字: "王五" (importance: 0.8)
+       输入 'undo' 撤销，或继续对话
+```
+
+**为什么 undo 优于 CLI 命令**:
+- `--memories`、`--forget`、`--set-importance` 需要用户主动管理细节
+- `undo` 提供否决权而不强迫用户进入执行细节
+- 如同皇帝的否决权：大臣处理事务，皇帝可以否决任何决策
+
+**设计原则**:
+- 日常操作流畅不中断
+- 信息透明（用户能看到发生了什么）
+- 用户随时可用 `undo` 否决
+- CLI 命令是高级用户的备选方案，而非主要工作流
