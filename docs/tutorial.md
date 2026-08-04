@@ -87,7 +87,7 @@ drwxr-xr-x  4 user  staff  128 May  4 10:00 .
 from nano_agent.llm import create_llm
 from nano_agent.memory import ShortTermMemory
 from nano_agent.agent.react import ReActAgent
-from nano_agent.tools.base import ToolRegistry
+from nano_agent.tools import ToolRegistry
 from nano_agent.tools.builtin import register_builtin_tools
 
 # 创建 LLM 客户端
@@ -377,7 +377,7 @@ class WeatherTool(BaseTool):
         return ToolResult(success=True, output=result)
 
 # 注册工具
-from nano_agent.tools.base import ToolRegistry
+from nano_agent.tools import ToolRegistry
 
 registry = ToolRegistry()
 registry.register(WeatherTool())
@@ -475,10 +475,10 @@ memory.forget(entry_id)
 
 ```bash
 # CLI 中管理会话
-nano-agent --list-sessions           # 列出所有会话
-nano-agent --resume session_abc123    # 恢复会话
-nano-agent --new-session              # 创建新会话
-nano-agent --show-session session_id  # 查看会话内容
+nano-agent -l                         # 列出所有会话
+nano-agent --resume-session session_abc123  # 恢复会话
+nano-agent -n                         # 创建新会话
+nano-agent -r session_id                # 查看/恢复会话内容
 ```
 
 ---
@@ -1138,9 +1138,9 @@ memory = ShortTermMemory(
 ### 10.2 限制工具使用
 
 ```python
-from nano_agent.tools.base import ToolRegistry
-from nano_agent.tools.python_executor import PythonExecutorTool
-from nano_agent.tools.file_ops import FileReadTool, FileWriteTool
+from nano_agent.tools import ToolRegistry
+from nano_agent.tools.builtin.python_executor import PythonExecutorTool
+from nano_agent.tools.builtin.file_ops import FileReadTool, FileWriteTool
 
 # 只注册特定工具
 registry = ToolRegistry()
@@ -1313,7 +1313,7 @@ class SafeFileReadTool(BaseTool):
 from nano_agent.agent.react import ReActAgent
 from nano_agent.llm import create_llm
 from nano_agent.memory import ShortTermMemory
-from nano_agent.tools.base import ToolRegistry
+from nano_agent.tools import ToolRegistry
 
 # 创建专门的代码审查 Agent
 code_reviewer = ReActAgent(

@@ -121,9 +121,11 @@ pre-commit run --all-files            # 全量检查
 | # | 规则 | 详情 |
 |---|------|------|
 | 1 | **版本同步** | 发版时 pyproject.toml + `__init__.py` 双处一致；ROADMAP 版本标题加 ✅（pre-commit 自动检查） |
-| 2 | **pre-commit** | 7 hooks 必过；禁止 `--no-verify` |
+| 2 | **pre-commit** | 9 hooks 必过；禁止 `--no-verify` |
 | 3 | **新功能全链路** | schema → loader（parse+save）→ config_display → create_agent → 测试（详情: update-checklist.md §2.1） |
 | 4 | **接口扩展** | 给基类加方法 → 检查所有子类 → 补接口一致性测试（pre-commit: check_interface_implementation） |
 | 5 | **BUG 修复** | 补回归测试 + 更新 BUGLIST.md + 更新 test_cases.xlsx（详情: update-checklist.md §3.2） |
 | 6 | **测试运行** | pytest 前台运行；禁止 `\| tail`/`\| head` 管道；长命令用 --timeout（详情: update-checklist.md §九） |
 | 7 | **新增测试** | 同步更新 tests/test_cases.xlsx |
+| 8 | **文档同步** | 修改公开 API（签名/路径/参数/默认值）后 grep -r docs/ 找引用并同步；改 agent/ 行为逻辑时检查 audit.md 对应控制点描述（pre-commit: check_doc_imports + check_audit_references） |
+

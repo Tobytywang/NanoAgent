@@ -661,7 +661,76 @@ if response == "y":
 
 ---
 
-## BUGLIST 格式说明
+## BUG-010: docs/ 文档大量陈旧/虚构内容与代码库不一致
+
+**发现日期**: 2026-08-04
+
+**严重程度**: 高（审计文档虚构控制点，API 示例无法运行）
+
+**影响范围**: docs/ 全部用户可读文档 — api.md 快速开始 ImportError、tutorial.md 导入路径过时、agent-control-audit.md 虚构控制点
+
+### 问题描述
+
+全面审核 docs/ 发现约 45 项不一致，其中 10 项高优先级：
+
+1. **audit.md #6 Atomize 整控制点虚构**：描述 `Orchestrator.decompose()`/SubTask/AutoPlanTool 均不存在，"✅ 完整"标记错误
+2. **audit.md #5 Route 行为虚构**：`IntentDetector.detect()` 返回 `IntentResult` → 实际返回 `set[str]`
+3. **audit.md #10/#13 引用不存在的中间件层**：ToolMiddleware/SensitiveOutputMiddleware/HarmfulContentMiddleware 均不存在
+4. **audit.md #8/#11/#16 类名错误**：ConfidenceTracker→ConfidenceParser、UndoManager→UndoStack
+5. **api.md 快速开始 `from nano_agent import create_agent`**：ImportError，create_agent 是 CLI 内部函数
+6. **api.md + tutorial.md `from nano_agent.tools.base import ToolRegistry`**：ImportError，ToolRegistry 在 tools/registry.py
+7. **api.md + tutorial.md `--resume` 参数**：argparse 拒绝，实为 `--resume-session`
+8. **tutorial.md `from nano_agent.tools.python_executor import ...`**：ModuleNotFoundError，在 tools/builtin/ 下
+9. **audit.md 17 个 PromptModule**：实际 13 个
+10. **config.yaml 示例缺失 21 个 schema 节**（v0.7.5 之后全部新功能）
+
+### 根因分析（5 类）
+
+| 类 | 根因 | 示例 |
+|----|------|------|
+| A | 审计文档从架构设计生成，未对照代码验证 | audit.md 虚构控制点（#5/#6/#8/#10/#13/#16） |
+| B | 代码重构（模块移动/类改名）后文档未同步 | ToolRegistry 路径、builtin 子包、--resume 参数 |
+| C | 文档假设了从未存在的公开 API | `from nano_agent import create_agent` |
+| D | 凭记忆编写，未读代码验证 | sanitizer 管线顺序 |
+| E | check_doc_updates.sh 映射未覆盖审计/专项文档 | audit.md 不在任何 RULE_DOCS 中 |
+
+### 为什么自动化没发现
+
+1. `check_doc_updates.sh` 只检查"是否 staged 了文档"，不检查"文档内容是否正确"
+2. 映射表仅覆盖 api.md 和 tutorial.md，未覆盖 audit.md/constraints.md/token-feature-tree.md
+3. 无导入路径验证 hook — 文档示例从未被 `python -c` 执行
+4. 无审计文档引用验证 — 虚构的类名/方法/文件路径无法被检测
+
+### 修复方案
+
+**文档修复**（4 个文件）：
+- `docs/agent-control-audit.md`：修正 8 个控制点描述（#4/#5/#6/#7/#8/#10/#11/#13/#16），类名/行为/文件路径全面对齐代码
+- `docs/api.md`：快速开始改为 AgentBuilder 模式；3 处 ToolRegistry 导入修正；2 处 --resume 参数修正
+- `docs/tutorial.md`：4 处 ToolRegistry 导入修正；修正 --list-sessions/--resume/--new-session/--show-session 参数；修正 python_executor/file_ops 路径
+- `docs/examples/config.yaml`：本次未改（需补齐 21 个节，列为后续工作）
+
+**保障机制**（4 个文件）：
+- 新增 `scripts/check_doc_imports.sh`：提取 docs/*.md 中 nano_agent 导入，python importlib 验证可解析性（pre-commit hook）
+- 新增 `scripts/check_audit_references.sh`：audit.md staged 时验证代码引用存在性（pre-commit hook）
+- 扩充 `scripts/check_doc_updates.sh`：MUST/SHOULD 双层映射，覆盖 audit.md/constraints.md/token-feature-tree.md
+- CLAUDE.md 新增 Critical Rule #8（文档同步）+ update-checklist.md 新增 §十（文档一致性自查清单）
+
+### 经验教训
+
+1. **审计文档必须以代码为唯一事实来源**：不能从设计文档推导审计结论，必须 grep/Read 验证每个声称
+2. **"✅ 完整"标记本身就是审计对象**：标记应附加验证证据（如 git commit hash 或 audit date），避免过时断言
+3. **文档示例应有可运行性验证**：至少导入路径验证是低成本可自动化的（check_doc_imports.sh 实现了这一点）
+4. **中间件架构不能用类名虚构**：audit.md 中 ToolMiddleware/auto_plan.py 等引用验证了"先设计后审计"的反模式 — 应该以代码现状为准，不是以架构蓝图为准
+5. **50-60% 的文档不一致可被机器检测（路径/类名/参数），40-50% 仍依赖人工审查（行为描述/输出样例/数值统计）**
+
+### 预防措施
+
+1. `check_doc_imports.sh` — 每次 commit 时验证文档中所有 nano_agent 导入
+2. `check_audit_references.sh` — audit.md staged 时验证代码引用存在性
+3. CLAUDE.md 规则 #8 — 修改 API 后自动执行 `grep -r docs/`
+4. update-checklist.md §十 — 文档同步自查清单覆盖 4 种变更类型
+
+---
 
 每个 BUG 记录应包含：
 

@@ -21,6 +21,16 @@ repos:
         entry: scripts/check_buglist.sh
         language: script
 
+      - id: check-doc-imports
+        name: Documentation import path verification
+        entry: scripts/check_doc_imports.sh
+        language: script
+
+      - id: check-audit-references
+        name: Audit document code reference verification
+        entry: scripts/check_audit_references.sh
+        language: script
+
       - id: check-config-chain
         name: Config chain completeness check
         entry: scripts/check_config_chain.sh

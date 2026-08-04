@@ -7,6 +7,8 @@
 # files only); now every nano_agent/ sub-module change is covered.
 #
 # Add/change a rule by editing the parallel RULE_PATHS / RULE_DOCS arrays.
+# For SHOULD-level mappings (warning only, non-blocking), edit
+# SHOULD_PATHS / SHOULD_DOCS.
 # Note: parallel arrays are used instead of associative arrays to stay
 # compatible with macOS bash 3.2 (no `declare -A` support).
 
@@ -35,6 +37,25 @@ RULE_DOCS=(
   "docs/api.md"
   "docs/api.md docs/architecture.md"
   "docs/api.md docs/skill-development.md"
+)
+
+# SHOULD-level: warning only (non-blocking) — docs that should be
+# reviewed when code in this area changes, but not required.
+SHOULD_PATHS=(
+  "nano_agent/agent/"       # agent behavior → audit, constraints, token docs
+  "nano_agent/agent/"       # same paths in different docs
+  "nano_agent/config/"      # config fields → token feature tree
+  "nano_agent/llm/"         # LLM stability → constraints
+  "nano_agent/memory/"      # memory mechanics → token feature tree
+  "nano_agent/monitoring/"  # monitoring → token feature tree
+)
+SHOULD_DOCS=(
+  "docs/agent-control-audit.md docs/constraints.md docs/token-feature-tree.md"
+  "docs/agent-control-audit.md"
+  "docs/token-feature-tree.md"
+  "docs/constraints.md"
+  "docs/token-feature-tree.md"
+  "docs/token-feature-tree.md"
 )
 
 STAGED=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
@@ -70,6 +91,37 @@ if [ ${#MISSING_DOCS[@]} -gt 0 ]; then
     done
     echo "   Fix: update the relevant docs and stage them with 'git add'"
     exit 1
+fi
+
+# --- SHOULD-level check (warning only) ---
+SHOULD_MISSING=()
+
+for i in "${!SHOULD_PATHS[@]}"; do
+    prefix="${SHOULD_PATHS[$i]}"
+    AREA_CHANGED=$(echo "$STAGED" | grep -F "$prefix" | grep -v '__pycache__' || true)
+    [ -z "$AREA_CHANGED" ] && continue
+
+    for doc in ${SHOULD_DOCS[$i]}; do
+        STAGED_DOC=$(echo "$STAGED" | grep -F "$doc" || true)
+        if [ -z "$STAGED_DOC" ]; then
+            SHOULD_MISSING+=("$doc (triggered by $prefix)")
+        fi
+    done
+done
+
+if [ ${#SHOULD_MISSING[@]} -gt 0 ]; then
+    UNIQUE_SHOULD=()
+    for entry in "${SHOULD_MISSING[@]}"; do
+        if ! echo "${UNIQUE_SHOULD[*]}" | grep -qF "$entry"; then
+            UNIQUE_SHOULD+=("$entry")
+        fi
+    done
+
+    echo ""
+    echo "⚠️  Consider updating these docs as well:"
+    for entry in "${UNIQUE_SHOULD[@]}"; do
+        echo "   - $entry"
+    done
 fi
 
 echo "✅ Documentation update check passed"

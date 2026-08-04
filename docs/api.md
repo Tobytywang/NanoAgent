@@ -28,13 +28,27 @@ pip install nano-agent
 ### 基本使用
 
 ```python
-from nano_agent import create_agent
+from nano_agent.core.builder import AgentBuilder
+from nano_agent.llm import create_llm_from_config
+from nano_agent.memory import ShortTermMemory
+from nano_agent.tools import ToolRegistry
+from nano_agent.tools.builtin import register_builtin_tools
+from nano_agent.config.loader import load_config
 
-# 创建 Agent
-agent = create_agent("config.yaml")
+config = load_config("config.yaml")
+llm = create_llm_from_config(config.llm)
+memory = ShortTermMemory.from_config(config.memory)
+tools = ToolRegistry()
+register_builtin_tools(tools)
 
-# 运行
-response = agent.run("你好，请帮我列出当前目录的文件")
+builder = AgentBuilder(config)
+orchestrator = (builder
+    .with_llm(lambda cfg: llm)
+    .with_memory(lambda cfg: memory)
+    .with_tools(lambda cfg: tools)
+    .build())
+
+response = orchestrator.run("你好，请帮我列出当前目录的文件")
 print(response)
 ```
 
@@ -50,7 +64,7 @@ Agent 是 NanoAgent 的核心组件，实现 ReAct (Reasoning + Acting) 模式�
 from nano_agent.agent.react import ReActAgent
 from nano_agent.llm import create_llm
 from nano_agent.memory import ShortTermMemory
-from nano_agent.tools.base import ToolRegistry
+from nano_agent.tools import ToolRegistry
 from nano_agent.tools.builtin import register_builtin_tools
 ```
 
@@ -2000,7 +2014,7 @@ result = ToolResult(
 工具注册表。
 
 ```python
-from nano_agent.tools.base import ToolRegistry
+from nano_agent.tools import ToolRegistry
 
 registry = ToolRegistry()
 registry.register(MyTool())
@@ -2353,7 +2367,7 @@ nano-agent [选项]
 |------|------|
 | `-c, --config` | 配置文件路径 |
 | `-m, --model` | 覆盖模型名称 |
-| `-r, --resume` | 恢复会话 |
+| `-r, --resume-session` | 恢复会话 |
 | `-n, --new-session` | 创建新会话 |
 | `--list-sessions` | 列出所有会话 |
 | `--show-session` | 显示会话内容 |
@@ -2436,7 +2450,7 @@ nano-agent
 nano-agent -m gpt-4o
 
 # 恢复会话
-nano-agent --resume session_abc123
+nano-agent --resume-session session_abc123
 
 # 非交互模式
 echo "列出当前目录文件" | nano-agent --non-interactive
@@ -2520,7 +2534,7 @@ class WeatherTool(BaseTool):
 
 # 注册工具
 from nano_agent.tools.builtin import register_builtin_tools
-from nano_agent.tools.base import ToolRegistry
+from nano_agent.tools import ToolRegistry
 
 registry = ToolRegistry()
 register_builtin_tools(registry)

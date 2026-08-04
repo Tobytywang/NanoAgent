@@ -183,3 +183,54 @@ pre-commit run check-version-consistency --all-files  # 运行单个 hook
 2. **禁止 `| tail` / `| head` 管道截断** — 管道会导致上游进程卡在 sleep 状态，会话结束后不退出
 3. **长命令用 `--timeout`** — 替代后台运行，超时自动终止不残留
 4. **真正需要后台的场景** — 仅限 dev server、watch 模式等长期运行的服务
+
+---
+
+## 十、文档一致性自查
+
+修改代码后，按以下步骤检查 docs/ 是否同步：
+
+### 修改了公开 API（签名/路径/参数/默认值）
+1. `grep -r "旧名称\|旧路径" docs/` 找到所有引用
+2. 更新 api.md、tutorial.md 中的代码示例和参数表格
+3. 运行 `scripts/check_doc_imports.sh` 验证导入路径
+
+### 修改了 CLI 参数（argparse）
+1. `grep -r -- "--参数名" docs/` 找到文档中的命令行示例
+2. 同步更新 api.md §CLI 使用、tutorial.md §会话管理
+
+### 修改了 agent/ 行为逻辑
+1. 检查 `docs/agent-control-audit.md` 对应控制点描述是否仍需修正
+2. 检查 `docs/constraints.md` 中的阈值/默认值是否一致
+3. 检查 `docs/token-feature-tree.md` 中引用该模块的 ✅/⏳ 标注
+
+### 修改了 config/schema.py
+1. 检查 `docs/examples/config*.yaml` 是否需要补充新增配置节
+2. 更新 `docs/api.md` §Config 中的字段说明
+3. 更新 `docs/constraints.md` 中的配置阈值速查表
+
+### 验证
+- `scripts/check_audit_references.sh` — 验证 audit.md 代码引用
+- `scripts/check_doc_imports.sh` — 验证文档导入路径
+- `pre-commit run --all-files` — 全量检查
+
+---
+
+## 十一、版本发布前审查（每版本一次，约 5-10 分钟）
+
+以下由 LLM 执行，开发者说 "请做发布前审查" 即可触发。
+
+### 自动化检查（LLM 可独立完成）
+
+| # | 检查项 | 方法 |
+|---|--------|------|
+| 1 | **API 示例可运行** | 抽查 api.md 中 3 个代码块，`python -c` 实际执行 |
+| 2 | **CLI 输出与文档对齐** | 跑一次完整 `nano-agent -n "简单任务"` 交互，对照 tutorial.md 的输出格式样例 |
+| 3 | **数值统计校准** | `grep` docs/ 中所有数字（文件数/行数/覆盖率），与当前实际对比 |
+| 4 | **Token 特性树同步** | `grep` token-feature-tree.md 中 ✅/⏳ 标注，对照 ROADMAP 当前版本确认 |
+| 5 | **审计文档抽样** | 随机抽查 audit.md 2 个控制点，grep 验证描述中的类名/方法名 |
+| 6 | **配置示例覆盖** | diff schema.py 的 dataclass 字段与 config.yaml 示例的顶层键，检查缺失节 |
+
+### 输出格式
+
+每项给出 ✅/⚠️/❌ 判定，标注不一致项的文件路径和建议修复。开发者确认后执行修正。
