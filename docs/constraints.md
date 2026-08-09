@@ -372,6 +372,12 @@ sanitizer:
     - api_key
 ```
 
+### 8a. 调试输出控制 (OutputConfig, v0.10)
+| 项目 | 值 |
+|------|------|
+| 配置路径 | `output.*` |
+| 默认 | `verbosity: quiet` / `module_overrides: {}` / `color: true` / `tui_enabled: true` |
+
 ### 8b. 输出护栏 (Output Guard)
 
 | 项目 | 值 |

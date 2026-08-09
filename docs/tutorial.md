@@ -774,6 +774,9 @@ smart_optimization:
 
   # v0.10: 工具结果截断由 tool_processor_max_output_tokens 统一控制
   # STATUS 格式使用 render_status_truncated() 按比例分配 stdout/stderr 预算
+
+# v0.10 调试输出控制: output.verbosity (quiet|minimal|verbose)
+# 模块覆写: output.module_overrides: {react: verbose} 单独开启某模块调试
 ```
 
 ---

@@ -462,6 +462,21 @@ result = prejudgment.prejudge("Python 的 GIL 是什么")
 - `prejudgment_simple_prompt: str = ""` — 自定义 SIMPLE 回答提示词
 - `prejudgment_max_answer_tokens: int = 300` — SIMPLE 回答最大 token 数
 
+### OutputConfig（v0.10）
+
+调试输出冗度控制，三级过滤 + 模块级覆写。详见 `nano_agent/output/` 包。
+
+```python
+from nano_agent.config.schema import OutputConfig
+
+config = OutputConfig(
+    verbosity="quiet",         # quiet | minimal | verbose
+    module_overrides={},       # e.g. {"react": "verbose"}
+    color=True,
+    tui_enabled=True,
+)
+```
+
 ### AggressiveOutputConfig & OutputSimplifier
 
 v0.7.15 激进输出精简。约束 LLM 回答长度，减少冗余格式（emoji、表格、列表）。

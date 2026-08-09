@@ -13,6 +13,7 @@ from ..memory import BaseMemory
 from ..tools import ToolRegistry
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring import MetricsTracker
+from ..output import configure_output, get_output
 
 
 class AgentBuilder:
@@ -251,6 +252,18 @@ class AgentBuilder:
             tool_resource_limiter=getattr(self.config, "tool_resource_limiter", None),
         )
 
+        # Initialize output system from config
+        output_config = getattr(self.config, "output", None)
+        if output_config is not None:
+            configure_output(
+                verbosity=output_config.verbosity,
+                module_overrides=output_config.module_overrides,
+                color=output_config.color,
+            )
+
+        # Map legacy verbose flag to OutputManager
+        verbose_override = True if self.config.agent.verbose else None
+
         # Create agent
         agent = ReActAgent(
             llm=self._llm,
@@ -258,7 +271,7 @@ class AgentBuilder:
             tool_registry=self._tool_registry,
             subsystems=subsystems,
             max_iterations=self.config.agent.max_iterations,
-            verbose=self.config.agent.verbose,
+            verbose=verbose_override,
             skill_prompt=self._skill_registry.get_combined_system_prompt(),
             tracker=self._tracker,
             prompt_config=self.config.prompt,
@@ -273,19 +286,17 @@ class AgentBuilder:
         ):
             from ..agent.types import AgentEvent
 
-            verbose = self.config.agent.verbose
-
             def _on_llm_retry(event_data: dict):
                 agent.events.emit(AgentEvent.LLM_RETRY, event_data)
-                if verbose:
-                    attempt = event_data["attempt"]
-                    max_retries = event_data["max_retries"]
-                    delay = event_data["delay"]
-                    error = event_data["error"]
-                    print(
-                        f"[Retry {attempt}/{max_retries}] "
-                        f"{error.__class__.__name__}, waiting {delay:.1f}s..."
-                    )
+                attempt = event_data["attempt"]
+                max_retries = event_data["max_retries"]
+                delay = event_data["delay"]
+                error = event_data["error"]
+                get_output().perf(
+                    f"[Retry {attempt}/{max_retries}] "
+                    f"{error.__class__.__name__}, waiting {delay:.1f}s...",
+                    module="llm",
+                )
 
             self._llm._on_retry_callback = _on_llm_retry
 
@@ -297,17 +308,14 @@ class AgentBuilder:
         ):
             from ..agent.types import AgentEvent
 
-            verbose = self.config.agent.verbose
-
             def _on_llm_rate_limit(event_data: dict):
                 agent.events.emit(AgentEvent.LLM_RATE_LIMITED, event_data)
-                if verbose:
-                    wait_time = event_data["wait_time"]
-                    rpm = event_data["rpm"]
-                    print(
-                        f"[Rate Limit] Waiting {wait_time:.2f}s "
-                        f"(limit: {rpm} rpm)..."
-                    )
+                wait_time = event_data["wait_time"]
+                rpm = event_data["rpm"]
+                get_output().perf(
+                    f"[Rate Limit] Waiting {wait_time:.2f}s " f"(limit: {rpm} rpm)...",
+                    module="llm",
+                )
 
             self._llm._on_rate_limit_callback = _on_llm_rate_limit
 

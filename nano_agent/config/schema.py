@@ -188,6 +188,18 @@ class LoggingConfig:
 
 
 @dataclass
+class OutputConfig:
+    """Output/display configuration (TUI 与调试输出分离)."""
+
+    verbosity: str = "quiet"  # quiet | minimal | verbose
+    module_overrides: dict[str, str] = field(
+        default_factory=dict
+    )  # e.g. {"react": "verbose"}
+    color: bool = True
+    tui_enabled: bool = True
+
+
+@dataclass
 class ContextConfig:
     """Context management configuration."""
 
@@ -721,6 +733,7 @@ class Config:
     plugins: PluginsConfig = field(default_factory=PluginsConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
     context: ContextConfig = field(default_factory=ContextConfig)
     confirmation: ConfirmationConfig = field(default_factory=ConfirmationConfig)
     git: GitConfig = field(default_factory=GitConfig)

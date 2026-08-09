@@ -47,6 +47,7 @@ from ..tools.base import ToolResult
 from ..tools.standard_output import OutputFormat
 from ..utils.strings import safe_str
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
+from ..output import Verbosity, get_output
 
 
 class ReActAgent(BaseAgent):
@@ -64,7 +65,7 @@ class ReActAgent(BaseAgent):
         tool_registry,
         subsystems: AgentSubsystems | None = None,
         max_iterations: int = 10,
-        verbose: bool = True,
+        verbose: bool | None = None,
         skill_prompt: str = "",
         tracker: MetricsTracker | None = None,
         events: EventEmitter | None = None,
@@ -81,7 +82,7 @@ class ReActAgent(BaseAgent):
             tool_registry: Tool registry instance
             subsystems: Agent optimization subsystems facade (default: created from defaults)
             max_iterations: Maximum reasoning iterations
-            verbose: Whether to print debug information
+            verbose: Override verbosity (True→VERBOSE, False→QUIET, None→use global)
             skill_prompt: Additional prompt from skills
             tracker: Metrics tracker for monitoring
             events: Event emitter for external listeners
@@ -90,7 +91,11 @@ class ReActAgent(BaseAgent):
             llm_config: LLM configuration
         """
         super().__init__(llm, memory, tool_registry, max_iterations)
-        self.verbose = verbose
+        self._output = get_output()
+        if verbose is not None:
+            self._output.set_verbosity(
+                Verbosity.VERBOSE if verbose else Verbosity.QUIET
+            )
         self.skill_prompt = skill_prompt
         self.tracker = tracker or MetricsTracker()
         self.events = events or EventEmitter()
@@ -147,6 +152,14 @@ class ReActAgent(BaseAgent):
 
         self._setup_prompt_builder()
         self._setup_system_prompt()
+
+    @property
+    def verbose(self) -> bool:
+        return self._output.verbosity >= Verbosity.VERBOSE
+
+    @verbose.setter
+    def verbose(self, value: bool) -> None:
+        self._output.set_verbosity(Verbosity.VERBOSE if value else Verbosity.QUIET)
 
     def _setup_prompt_builder(self) -> None:
         """Initialize PromptBuilder and build stable portion (v0.7.6)."""

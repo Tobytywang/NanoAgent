@@ -13,7 +13,9 @@ from .schema import Config, SemanticCompressorConfig, MemoryGCConfig, StreamingC
 # dataclass introspection and do NOT require explicit handling in load/save:
 #   "verbose" (AgentConfig — config.agent.verbose), "merge_tag" (SemanticCompressorConfig),
 #   "dedup_merge_tag" (MemoryGCConfig),
-#   "streaming" (StreamingConfig, with nested "mode" field)
+#   "streaming" (StreamingConfig, with nested "mode" field),
+#   "output" (OutputConfig — config.output), "module_overrides", "color", "tui_enabled"
+#   (OutputConfig sub-fields — cf. config.output.module_overrides, .color, .tui_enabled)
 # save() persists them via _asdict_filtered which walks all dataclass fields.
 
 

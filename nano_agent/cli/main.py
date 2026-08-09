@@ -1510,6 +1510,20 @@ Config file priority:
         help="Start a [n]ew session (default: resume most recent)",
     )
     parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase verbosity: -v (minimal), -vv (debug).  Overrides config.output.verbosity.",
+    )
+    parser.add_argument(
+        "--output-module",
+        type=str,
+        default=None,
+        metavar="MODULE:LEVEL",
+        help="Module-level verbosity override, e.g. react:verbose,context:quiet",
+    )
+    parser.add_argument(
         "-d",
         "--delete-session",
         type=str,
@@ -2638,6 +2652,12 @@ def _init_config_file(config, force: bool = False) -> None:
         "standardized_output": {
             "enabled": config.standardized_output.enabled,
             "detailed": config.standardized_output.detailed,
+        },
+        "output": {
+            "verbosity": config.output.verbosity,
+            "module_overrides": config.output.module_overrides,
+            "color": config.output.color,
+            "tui_enabled": config.output.tui_enabled,
         },
         "retry": {
             "enabled": config.retry.enabled,
