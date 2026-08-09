@@ -61,7 +61,6 @@ class PythonExecutorTool(BaseTool):
                     format=OutputFormat.STATUS,
                     data={
                         "status": "success",
-                        "output": output,
                         "stdout": output,
                     },
                     summary="Code executed successfully",

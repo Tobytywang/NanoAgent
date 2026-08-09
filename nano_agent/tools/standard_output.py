@@ -25,8 +25,14 @@ class StandardToolOutput:
 
     MAX_LIST_DISPLAY = 10
 
+    _STDERR_SHARE = 0.3  # Fraction of token budget reserved for stderr
+    _MIN_FIELD_CHARS = 200  # Floor per-field char budget
+
     def to_llm_message(self, detailed: bool = False) -> str:
-        """Render as compact text for LLM consumption."""
+        """Render as compact text for LLM consumption (full text, no truncation).
+
+        For token-budget-aware STATUS rendering, use render_status_truncated().
+        """
         dispatch = {
             OutputFormat.STRUCTURE: self._format_structure,
             OutputFormat.LIST: self._format_list,
@@ -36,6 +42,66 @@ class StandardToolOutput:
         }
         formatter = dispatch.get(self.format, self._format_structure)
         return formatter(detailed)
+
+    def render_status_truncated(
+        self, max_tokens: int, calibration_factor: float = 1.0
+    ) -> str:
+        """Render STATUS format with per-field token-budget truncation.
+
+        Splits the token budget across stdout and stderr so stderr is never
+        buried under a large stdout.  A final calculate_max_chars pass acts
+        as a global safety net.
+        """
+        from ..agent.token_utils import calculate_max_chars
+
+        stdout = self.data.get("stdout", "")
+        stderr = self.data.get("stderr", "")
+        status = self.data.get("status", "unknown")
+        exit_code = self.data.get("exit_code")
+
+        prefix = self._status_prefix(status, exit_code)
+
+        char_budget = max_tokens * 3
+        overhead = (
+            len(prefix)
+            + len("stderr: ")
+            + len("\n... [stdout 已截断]")
+            + len("\n... [stderr 已截断]")
+        )
+
+        stderr_budget = max(
+            int(char_budget * self._STDERR_SHARE), self._MIN_FIELD_CHARS
+        )
+        stdout_budget = max(
+            char_budget - stderr_budget - overhead, self._MIN_FIELD_CHARS
+        )
+
+        if len(stdout) > stdout_budget:
+            stdout = stdout[:stdout_budget] + "\n... [stdout 已截断]"
+        if len(stderr) > stderr_budget:
+            stderr = stderr[:stderr_budget] + "\n... [stderr 已截断]"
+
+        parts = [prefix]
+        if stdout:
+            parts.append(stdout)
+        if stderr:
+            parts.append(f"stderr: {stderr}")
+
+        result = " ".join(parts) if len(parts) > 1 else parts[0]
+
+        max_chars = calculate_max_chars(result, max_tokens, calibration_factor)
+        if len(result) > max_chars:
+            result = result[:max_chars] + "\n... [输出已截断]"
+
+        return result
+
+    @staticmethod
+    def _status_prefix(status: str, exit_code: int | None) -> str:
+        if status == "success" or exit_code == 0:
+            return "[ok]"
+        if status == "error":
+            return f"[error:{exit_code}]"
+        return f"[{status}]"
 
     def _format_structure(self, detailed: bool = False) -> str:
         lines = []
@@ -80,25 +146,16 @@ class StandardToolOutput:
     def _format_status(self, detailed: bool = False) -> str:
         status = self.data.get("status", "unknown")
         exit_code = self.data.get("exit_code")
-
-        if status == "success" or exit_code == 0:
-            prefix = "[ok]"
-        elif status == "error":
-            prefix = f"[error:{exit_code}]"
-        else:
-            prefix = f"[{status}]"
+        prefix = self._status_prefix(status, exit_code)
 
         parts = [prefix]
-
         stdout = self.data.get("stdout", "")
         stderr = self.data.get("stderr", "")
 
         if stdout:
-            output = stdout[:500] if not detailed else stdout
-            parts.append(output)
+            parts.append(stdout)
         if stderr:
-            err = stderr[:300] if not detailed else stderr
-            parts.append(f"stderr: {err}")
+            parts.append(f"stderr: {stderr}")
 
         return " ".join(parts) if len(parts) > 1 else parts[0]
 

@@ -86,8 +86,8 @@ class ShellTool(BaseTool):
                 data={
                     "status": "success" if result.returncode == 0 else "error",
                     "exit_code": result.returncode,
-                    "stdout": (result.stdout or "")[:500],
-                    "stderr": (result.stderr or "")[:500],
+                    "stdout": result.stdout or "",
+                    "stderr": result.stderr or "",
                 },
                 summary=f"Exit code: {result.returncode}",
             )

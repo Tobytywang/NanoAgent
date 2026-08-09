@@ -1172,7 +1172,7 @@ class ReActAgent(BaseAgent):
         self,
     ) -> tuple[list, list | None, str | None]:
         """Prepare messages, tools schema, and prefix-caching setup for a think phase."""
-        calibration_factor = self.token_budget.get_calibration_factor()
+        calibration_factor = self._get_calibration_factor()
         if self.context_manager:
             self.context_manager.check_and_compress(
                 last_prompt_tokens=self._last_prompt_tokens,
@@ -1253,7 +1253,7 @@ class ReActAgent(BaseAgent):
                 usage=usage,
                 latency_ms=llm_latency,
                 estimated_tokens=estimated_prompt_tokens,
-                calibration_factor=self.token_budget.get_calibration_factor(),
+                calibration_factor=self._get_calibration_factor(),
             )
         )
 
@@ -1685,7 +1685,7 @@ class ReActAgent(BaseAgent):
             result_content = summarizer.summarize(
                 result_content,
                 tool_call.name,
-                calibration_factor=self.token_budget.get_calibration_factor(),
+                calibration_factor=self._get_calibration_factor(),
             )
 
         # v0.7.17: Tool Offloading - check before truncation
@@ -1702,15 +1702,7 @@ class ReActAgent(BaseAgent):
             result_content = summary_content
             is_offloaded = True
 
-        # Cache the result (summary if offloaded, full content otherwise)
-        self.cache.set_cached_result(
-            tool_call.name,
-            tool_call.arguments,
-            result_content,
-            is_offloaded=is_offloaded,
-        )
-
-        # v0.10: Unified tool output truncation — single point for all formats.
+        # v0.10: Truncation before cache so cache and memory see same content.
         max_tokens = self.smart_optimization_config.tool_processor_max_output_tokens
         if max_tokens > 0 and self.smart_optimization_config.tool_processor_enabled:
             calib = self._get_calibration_factor()
@@ -1720,13 +1712,20 @@ class ReActAgent(BaseAgent):
                 and standard_output.format == OutputFormat.STATUS
                 and not self.standardized_output_config.detailed
             ):
-                result_content = self._truncate_status_output(
-                    standard_output, max_tokens, calib
+                result_content = standard_output.render_status_truncated(
+                    max_tokens, calib
                 )
             else:
                 max_chars = calculate_max_chars(result_content, max_tokens, calib)
                 if len(result_content) > max_chars:
                     result_content = result_content[:max_chars] + "\n... [输出已截断]"
+
+        self.cache.set_cached_result(
+            tool_call.name,
+            tool_call.arguments,
+            result_content,
+            is_offloaded=is_offloaded,
+        )
 
         self.memory.add_tool_result(
             tool_call_id=tool_call.id, content=result_content, tool_name=tool_call.name
@@ -1736,49 +1735,6 @@ class ReActAgent(BaseAgent):
         if self.token_budget is None:
             return 1.0
         return self.token_budget.get_calibration_factor()
-
-    def _truncate_status_output(self, sto, max_tokens: int, calib: float) -> str:
-        """Build STATUS result with per-field truncation so stderr is never buried."""
-        stdout = sto.data.get("stdout", "")
-        stderr = sto.data.get("stderr", "")
-        status = sto.data.get("status", "unknown")
-        exit_code = sto.data.get("exit_code")
-
-        if status == "success" or exit_code == 0:
-            prefix = "[ok]"
-        elif status == "error":
-            prefix = f"[error:{exit_code}]"
-        else:
-            prefix = f"[{status}]"
-
-        total_char_budget = max_tokens * 3
-        overhead = (
-            len(prefix)
-            + len("stderr: ")
-            + len("\n... [stdout 已截断]")
-            + len("\n... [stderr 已截断]")
-        )
-        stderr_budget = max(total_char_budget // 3, 200)
-        stdout_budget = max(total_char_budget - stderr_budget - overhead, 200)
-
-        if len(stdout) > stdout_budget:
-            stdout = stdout[:stdout_budget] + "\n... [stdout 已截断]"
-        if len(stderr) > stderr_budget:
-            stderr = stderr[:stderr_budget] + "\n... [stderr 已截断]"
-
-        parts = [prefix]
-        if stdout:
-            parts.append(stdout)
-        if stderr:
-            parts.append(f"stderr: {stderr}")
-
-        result = " ".join(parts) if len(parts) > 1 else parts[0]
-
-        max_chars = calculate_max_chars(result, max_tokens, calib)
-        if len(result) > max_chars:
-            result = result[:max_chars] + "\n... [输出已截断]"
-
-        return result
 
     def _handle_confirmation_denied(self, tool_call: ToolCall) -> ToolResult:
         """Handle user denying tool confirmation."""
