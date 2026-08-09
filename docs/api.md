@@ -517,6 +517,10 @@ message = sto.to_llm_message(detailed=False)
 # → "a.py\nb.py\nTotal: 2"
 ```
 
+> **v0.10**: `to_llm_message()` 不再负责截断——截断统一在 `ReActAgent._observe()`
+> 中处理，STATUS 格式按比例分配 stdout/stderr 预算，其他格式走 token 感知兜底。
+> 阈值由 `tool_processor_max_output_tokens` 控制（默认 2000 tokens）。
+
 **OutputFormat 枚举**:
 - `STRUCTURE` — 键值对结构（file_read 结构信息）
 - `LIST` — 列表（file_search, web_search）

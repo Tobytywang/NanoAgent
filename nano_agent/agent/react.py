@@ -44,6 +44,7 @@ from .token_utils import estimate_tokens, calculate_max_chars
 from ..llm.messages import StreamChunk, ToolCall
 from ..llm.base import LLMUsage
 from ..tools.base import ToolResult
+from ..tools.standard_output import OutputFormat
 from ..utils.strings import safe_str
 from ..monitoring import MetricsTracker, RawLLMCallData, RawToolExecutionData
 
@@ -1637,6 +1638,8 @@ class ReActAgent(BaseAgent):
             result: The result from the tool execution
         """
         result_content = result.output if result.success else f"Error: {result.error}"
+        standard_output = None
+        schema_valid = True
 
         # v0.7.15: Standardized output takes priority over summarizer
         if (
@@ -1649,7 +1652,6 @@ class ReActAgent(BaseAgent):
 
             # v0.8.8: Schema validation before rendering
             result_validator = self._subsystems.result_validator
-            schema_valid = True
             schema_errors: list[str] = []
             if result_validator is not None and result_validator.enabled:
                 schema_valid, schema_errors = result_validator.validate_tool_output(
@@ -1708,21 +1710,75 @@ class ReActAgent(BaseAgent):
             is_offloaded=is_offloaded,
         )
 
-        # v0.7.15: Activate tool_processor config for truncation
-        if (
-            self.smart_optimization_config.tool_processor_enabled
-            and self.smart_optimization_config.tool_processor_max_output_tokens > 0
-        ):
-            max_tokens = self.smart_optimization_config.tool_processor_max_output_tokens
-        else:
-            max_tokens = self.output_style_config.tool_output_max_tokens
-        max_chars = calculate_max_chars(result_content, max_tokens)
-        if len(result_content) > max_chars:
-            result_content = result_content[:max_chars] + "\n... [输出已截断]"
+        # v0.10: Unified tool output truncation — single point for all formats.
+        max_tokens = self.smart_optimization_config.tool_processor_max_output_tokens
+        if max_tokens > 0 and self.smart_optimization_config.tool_processor_enabled:
+            calib = self._get_calibration_factor()
+            if (
+                standard_output is not None
+                and schema_valid
+                and standard_output.format == OutputFormat.STATUS
+                and not self.standardized_output_config.detailed
+            ):
+                result_content = self._truncate_status_output(
+                    standard_output, max_tokens, calib
+                )
+            else:
+                max_chars = calculate_max_chars(result_content, max_tokens, calib)
+                if len(result_content) > max_chars:
+                    result_content = result_content[:max_chars] + "\n... [输出已截断]"
 
         self.memory.add_tool_result(
             tool_call_id=tool_call.id, content=result_content, tool_name=tool_call.name
         )
+
+    def _get_calibration_factor(self) -> float:
+        if self.token_budget is None:
+            return 1.0
+        return self.token_budget.get_calibration_factor()
+
+    def _truncate_status_output(self, sto, max_tokens: int, calib: float) -> str:
+        """Build STATUS result with per-field truncation so stderr is never buried."""
+        stdout = sto.data.get("stdout", "")
+        stderr = sto.data.get("stderr", "")
+        status = sto.data.get("status", "unknown")
+        exit_code = sto.data.get("exit_code")
+
+        if status == "success" or exit_code == 0:
+            prefix = "[ok]"
+        elif status == "error":
+            prefix = f"[error:{exit_code}]"
+        else:
+            prefix = f"[{status}]"
+
+        total_char_budget = max_tokens * 3
+        overhead = (
+            len(prefix)
+            + len("stderr: ")
+            + len("\n... [stdout 已截断]")
+            + len("\n... [stderr 已截断]")
+        )
+        stderr_budget = max(total_char_budget // 3, 200)
+        stdout_budget = max(total_char_budget - stderr_budget - overhead, 200)
+
+        if len(stdout) > stdout_budget:
+            stdout = stdout[:stdout_budget] + "\n... [stdout 已截断]"
+        if len(stderr) > stderr_budget:
+            stderr = stderr[:stderr_budget] + "\n... [stderr 已截断]"
+
+        parts = [prefix]
+        if stdout:
+            parts.append(stdout)
+        if stderr:
+            parts.append(f"stderr: {stderr}")
+
+        result = " ".join(parts) if len(parts) > 1 else parts[0]
+
+        max_chars = calculate_max_chars(result, max_tokens, calib)
+        if len(result) > max_chars:
+            result = result[:max_chars] + "\n... [输出已截断]"
+
+        return result
 
     def _handle_confirmation_denied(self, tool_call: ToolCall) -> ToolResult:
         """Handle user denying tool confirmation."""

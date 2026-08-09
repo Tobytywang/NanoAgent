@@ -771,6 +771,8 @@ smart_optimization:
     duplicate_trigger_count: 3    # 重复调用触发次数
     stall_trigger_count: 3        # 停滞触发次数
     auto_reset_on_user_confirm: true  # 确认后自动恢复 AUTO
+
+  # v0.10: 工具结果截断由 tool_processor_max_output_tokens 统一控制（默认 2000 tokens）
 ```
 
 ---
