@@ -71,6 +71,7 @@ def _show_help() -> None:
     Console.print_kv("/effort standard", "标准模式（默认）", key_width=24)
     Console.print_kv("/effort detailed", "详细模式，最深推理", key_width=24)
     Console.print_kv("/effort", "查看当前推理强度", key_width=24)
+    Console.print_kv("/prompt", "查看当前系统提示词", key_width=24)
 
     Console.print_subtitle("项目管理")
     Console.print_kv("/init", "初始化项目", key_width=24)

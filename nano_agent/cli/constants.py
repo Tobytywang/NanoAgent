@@ -55,6 +55,7 @@ class Commands:
     # 输出控制
     VERBOSE = "/verbose"
     EFFORT = "/effort"
+    PROMPT = "/prompt"
 
 
 class CommandPrefix:

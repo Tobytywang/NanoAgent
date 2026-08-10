@@ -912,6 +912,24 @@ def _handle_slash_command(
             )
         return ("continue", user_display, agent_display)
 
+    if lower == Commands.PROMPT:
+        messages = agent.memory.get_all()
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        if system_msgs:
+            for i, msg in enumerate(system_msgs):
+                content = msg.get("content", "")
+                name = msg.get("name", "")
+                header = f"--- System Prompt #{i + 1}"
+                if name:
+                    header += f" (name: {name})"
+                header += f" [{len(content)} chars] ---"
+                print(header)
+                print(content)
+                print("--- end ---")
+        else:
+            Console.print("当前无 system prompt", style="warning")
+        return ("continue", user_display, agent_display)
+
     if lower == Commands.SESSIONS:
         if hasattr(agent.memory, "list_sessions"):
             sessions = agent.memory.list_sessions()
