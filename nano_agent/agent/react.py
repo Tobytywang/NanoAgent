@@ -228,13 +228,14 @@ class ReActAgent(BaseAgent):
             dynamic_parts = []
 
             # Environment context — always include so the agent knows its runtime context
+            os_name = platform.system()
             env_lines = [
                 "## Environment",
                 f"- Working directory: {os.getcwd()}",
                 f"- Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                f"- OS: {platform.system()} {platform.release()}",
+                f"- OS: {os_name} {platform.release()}",
             ]
-            if platform.system() == "Windows":
+            if os_name == "Windows":
                 env_lines.append("- Shell: PowerShell (use powershell syntax)")
             else:
                 env_lines.append("- Shell: bash/sh (use Unix shell syntax)")

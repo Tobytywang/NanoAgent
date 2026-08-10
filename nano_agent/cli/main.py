@@ -86,7 +86,9 @@ def _read_user_input(prompt_text: str) -> str:
         if _input_session is None:
             history_path = Path.home() / ".nano_agent" / "history"
             history_path.parent.mkdir(parents=True, exist_ok=True)
-            _input_session = PromptSession(history=FileHistory(str(history_path)))
+            _input_session = PromptSession(
+                history=FileHistory(str(history_path), max_length=1000)
+            )
 
         result = _input_session.prompt(prompt_text, multiline=False)
     except (EOFError, KeyboardInterrupt):
