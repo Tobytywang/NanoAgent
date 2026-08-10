@@ -101,7 +101,7 @@ graph TB
 | **CLI 层** | 用户交互、命令解析、会话管理 | `main.py`, `scanner.py`, `plan_mode.py` |
 | **Agent 层** | 推理执行、上下文管理、撤销机制 | `ReActAgent`, `AgentOrchestrator`, `AgentSubsystems`（门面）, `ContextManager`, `StallDetector`, `ToolResultCache`, `ToolOffloadManager`, `SemanticCompressor`, `RateLimiter`, `RetryHandler`, `CircuitBreaker`, `InputSanitizer`, `OutputGuard`, `HarmfulContentFilter`, `ResultValidator`, `ToolTimeoutWrapper`, `ToolRateLimiter`, `SnapshotManager`, `ConsecutiveFailureDetector`, `filter_utils` |
 | **核心组件** | LLM 调用、记忆管理、工具/技能注册、共享类型 | `BaseLLM`, `BaseMemory`, `ToolRegistry`, `SkillRegistry`, `core/types`（`RiskLevel`, `Plan`）, `core/builder`（`AgentBuilder`） |
-| **输出层 (v0.10)** | TUI/调试分离，三级冗度（-v/-vv），模块覆写 | `output/manager.py`, `output/tui.py`, `output/categories.py`；提示词约束在 `agent/prompts.py` |
+| **输出层 (v0.10)** | TUI/调试分离，三级冗度(-v/-vv)，模块覆写，128k 上下文 | `output/manager.py`, `output/tui.py`, `output/categories.py` |
 | **存储层** | 持久化存储 | `FileStorage`, `SQLiteStorage` |
 | **监控层** | 执行追踪、报告生成、估算审计 | `MetricsTracker`, `ReportGenerator`, `EstimationAudit` |
 

@@ -376,7 +376,7 @@ sanitizer:
 | 项目 | 值 |
 |------|------|
 | 配置路径 | `output.*` |
-| 默认 | `verbosity: quiet` / `module_overrides: {}` / `color: true` / `tui_enabled: true` |
+| 默认 | `verbosity: quiet`, `module_overrides: {}`, `color: true`, `tui_enabled: true` |
 
 ### 8b. 输出护栏 (Output Guard)
 

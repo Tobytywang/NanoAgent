@@ -23,6 +23,8 @@ MODEL_CONTEXT_LENGTHS = {
     # DeepSeek models
     "deepseek-chat": 64000,
     "deepseek-coder": 16000,
+    "deepseek-v4-flash": 131072,
+    "deepseek-v4": 131072,
     # Moonshot models
     "moonshot-v1-8k": 8192,
     "moonshot-v1-32k": 32768,
