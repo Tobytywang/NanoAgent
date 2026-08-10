@@ -2582,7 +2582,7 @@ enabled: true
 > stable prompt (`_stable_system_prompt`, used for prefix caching) are updated.
 >
 > **v0.10**: Internal Guidelines + Execution Rules + Environment(项目/git/OS/Shell)；
-> /prompt /context /usage 诊断命令；deepseek-v4-flash 131072 上下文。
+> /prompt /context 诊断；131072 上下文；demote_summary 防缓存失忆；streaming 双打印修复。
 > **2026-07-21**: Fix 讯飞星火 streaming tool call accumulation where a second delta
 > with empty `name`/`id` overwrites the correctly set values from the first delta.
 

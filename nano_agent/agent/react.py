@@ -1273,6 +1273,11 @@ class ReActAgent(BaseAgent):
         system_stable = None
         if self.prompt_config.enable_caching and self._stable_system_prompt:
             system_stable = self._stable_system_prompt
+            # Demote system-role context summaries to user-role so they
+            # aren't discarded when the stable prompt replaces full prompt.
+            from ..memory.base import demote_summary_messages
+
+            messages = demote_summary_messages(messages)
             if self.verbose:
                 print(
                     f"[Caching] Using stable system prompt ({len(system_stable)} chars)"

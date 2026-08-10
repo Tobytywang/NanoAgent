@@ -772,7 +772,7 @@ smart_optimization:
     stall_trigger_count: 3        # 停滞触发次数
     auto_reset_on_user_confirm: true  # 确认后自动恢复 AUTO
 
-  # v0.10: /prompt /context 查看提示词和预算 + 环境感知 + 128k 上下文
+  # v0.10: /prompt /context 诊断命令 + 环境感知 + 128k 上下文 + BUG-013/014 修复
   # 工具结果截断、-v/-vv 冗度控制、--output-module 模块覆写
 
 # v0.10 调试输出控制: output.verbosity (quiet|minimal|verbose)

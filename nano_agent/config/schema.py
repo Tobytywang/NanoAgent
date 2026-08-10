@@ -327,7 +327,7 @@ class CompressorConfig:
     """Message compression configuration."""
 
     enabled: bool = True
-    threshold_tokens: int = 2000  # Compress when prompt_tokens > threshold
+    threshold_tokens: int = 32000  # Compress when prompt_tokens > threshold
     keep_recent: int = 3  # Keep recent N rounds of conversation
     summary_max_tokens: int = 500  # Max tokens for summary
 

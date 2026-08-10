@@ -42,6 +42,26 @@ def sanitize_tool_messages(messages: list[dict]) -> list[dict]:
     return cleaned
 
 
+def demote_summary_messages(messages: list[dict]) -> list[dict]:
+    """Demote system-role summary messages to user-role.
+
+    When prefix caching is enabled, the stable system prompt replaces
+    the full system prompt.  Any system-role context summary messages
+    (from compression) would be discarded.  Demoting them to user role
+    preserves them in the conversation so the model doesn't lose context.
+
+    Returns a new list (does not mutate the input).
+    """
+    return [
+        (
+            {**msg, "role": "user"}
+            if msg.get("role") == "system" and msg.get("name") == "context_summary"
+            else msg
+        )
+        for msg in messages
+    ]
+
+
 class BaseMemory(ABC):
     """记忆系统抽象基类"""
 

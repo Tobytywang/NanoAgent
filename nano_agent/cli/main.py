@@ -612,7 +612,14 @@ def _handle_undo_command(
 
 
 def _handle_run_result(
-    result, orchestrator, agent, config, name_update_state, user_display, agent_display
+    result,
+    orchestrator,
+    agent,
+    config,
+    name_update_state,
+    user_display,
+    agent_display,
+    response_already_shown: bool = False,
 ) -> tuple[str, str] | None:
     """Process run result. Returns updated (user_display, agent_display) or None to continue loop."""
     # Handle input rejection from sanitizer
@@ -711,12 +718,13 @@ def _handle_run_result(
         )
 
     # Sanitize response for printing
-    response = result.response
-    try:
-        response = response.encode("utf-8", errors="replace").decode("utf-8")
-    except (UnicodeDecodeError, UnicodeEncodeError):
-        pass
-    print(f"> {response}")
+    if not response_already_shown:
+        response = result.response
+        try:
+            response = response.encode("utf-8", errors="replace").decode("utf-8")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            pass
+        print(f"> {response}")
 
     # Check for pending name updates from memorize tool (may be multiple)
     if name_update_state["pending_updates"]:
@@ -1461,7 +1469,7 @@ async def run_interactive_async(
                     except asyncio.CancelledError:
                         pass
 
-                # Process run result
+                # Process run result (response already printed via streaming)
                 updated = _handle_run_result(
                     result,
                     orchestrator,
@@ -1470,6 +1478,7 @@ async def run_interactive_async(
                     name_update_state,
                     user_display,
                     agent_display,
+                    response_already_shown=True,
                 )
                 if updated is None:
                     continue
