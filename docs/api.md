@@ -2582,7 +2582,7 @@ enabled: true
 > stable prompt (`_stable_system_prompt`, used for prefix caching) are updated.
 >
 > **v0.10**: 提示词 Internal Guidelines + Execution Rules + Environment；
-> CLI prompt_toolkit 支持 bracketed paste/多行输入/历史记录。
+> CLI 接入 prompt_toolkit 支持 bracketed paste/多行输入/历史记录。
 > **2026-07-21**: Fix 讯飞星火 streaming tool call accumulation where a second delta
 > with empty `name`/`id` overwrites the correctly set values from the first delta.
 
