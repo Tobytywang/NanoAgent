@@ -402,9 +402,11 @@ def _show_context_budget(agent, config) -> None:
         context_limit = config.llm.get_context_length()
 
     breakdown = {}
+    use_tracker = False
     if hasattr(agent, "tracker") and agent.tracker:
         detailed_usage = agent.tracker.get_detailed_usage()
         if detailed_usage:
+            use_tracker = True
             last_row = detailed_usage[-1]
             base_chars = agent.tracker.get_base_chars()
             base_ratio = agent.tracker.get_base_ratio()
@@ -439,7 +441,9 @@ def _show_context_budget(agent, config) -> None:
             )
             if messages_tokens > 0:
                 breakdown["对话消息"] = messages_tokens
-    else:
+
+    # Fallback: estimate from messages when tracker has no data yet
+    if not use_tracker:
         base_ratio = 0.25
         if hasattr(agent, "tool_registry"):
             import json
