@@ -2581,8 +2581,8 @@ enabled: true
 > at runtime with the current tool registry. Both the in-memory system prompt and the
 > stable prompt (`_stable_system_prompt`, used for prefix caching) are updated.
 >
-> **v0.10**: 所有提示词变体添加 Internal Guidelines + Execution Rules；
-> 系统提示词动态注入 Environment 段落（工作目录、UTC 时间、OS、Shell 类型）。
+> **v0.10**: 提示词添加 Internal Guidelines + Execution Rules + Environment；
+> CLI 接入 prompt_toolkit 支持 bracketed paste 多行输入 + 历史记录。
 > **2026-07-21**: Fix 讯飞星火 streaming tool call accumulation where a second delta
 > with empty `name`/`id` overwrites the correctly set values from the first delta.
 

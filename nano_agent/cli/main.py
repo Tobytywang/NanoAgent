@@ -55,6 +55,44 @@ from .displays import (
 )
 from .scanner import ProjectScanner
 
+# Prompt_toolkit session for bracketed paste + history support.
+# Falls back to built-in input() if prompt_toolkit is unavailable or fd is
+# not a terminal (e.g. tests, piped input, non-interactive mode).
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import FileHistory
+
+    _HAS_PROMPT_TOOLKIT = True
+except ImportError:
+    _HAS_PROMPT_TOOLKIT = False
+
+_input_session = None
+
+
+def _read_user_input(prompt_text: str) -> str:
+    """Read user input with bracketed paste handling.
+
+    Prompt_toolkit auto-detects pasted multi-line content via bracketed
+    paste mode (ANSI \e[200~ / \e[201~), preserving embedded newlines
+    within the returned string.  Falls back to built-in input() if
+    prompt_toolkit is not installed or stdin is not a terminal.
+    """
+    global _input_session
+
+    try:
+        if not _HAS_PROMPT_TOOLKIT or not sys.stdin.isatty():
+            return input(prompt_text).strip()
+
+        if _input_session is None:
+            history_path = Path.home() / ".nano_agent" / "history"
+            history_path.parent.mkdir(parents=True, exist_ok=True)
+            _input_session = PromptSession(history=FileHistory(str(history_path)))
+
+        result = _input_session.prompt(prompt_text, multiline=False)
+    except (EOFError, KeyboardInterrupt):
+        return ""
+    return result.strip()
+
 
 class GracefulExitManager:
     """管理优雅退出状态"""
@@ -1117,7 +1155,7 @@ def run_interactive(
     while True:
         try:
             print(f"\n[{user_display}] [{cwd}]:")
-            user_input = input("> ").strip()
+            user_input = _read_user_input("> ")
 
             if not user_input:
                 continue
@@ -1328,7 +1366,7 @@ async def run_interactive_async(
 
                 # Get user input in thread to not block event loop
                 user_input = await loop.run_in_executor(
-                    None, lambda: input("> ").strip()
+                    None, lambda: _read_user_input("> ")
                 )
 
                 if not user_input:
