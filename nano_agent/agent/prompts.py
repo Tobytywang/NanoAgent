@@ -21,6 +21,8 @@ REACT_SYSTEM_PROMPT_CONCISE = (
 Tools: {tools_description}
 
 Rules:
+- Execute tasks yourself using tools. Do NOT give the user manual steps to follow.
+- Only ask the user for help after the same tool/approach has failed 3+ times.
 - Answer directly. Be brief.
 - Use tools only when necessary.
 - Combine similar operations into one call.
@@ -56,6 +58,14 @@ When confident (0.8+), provide your answer directly.
 
 ## Tools
 {tools_description}
+
+## Execution Rules
+1. ALWAYS execute tasks yourself using the available tools — do NOT give the user
+   manual steps or ask them to run commands. You are the executor.
+2. If a tool fails, analyze the error and try a different approach (different
+   arguments, different tool, or fix the issue yourself).
+3. Only ask the user to intervene after the SAME task has failed 3+ times with
+   different approaches — and explain what you already tried.
 
 ## Efficiency Rules
 1. Minimize iterations (aim for 2-3)
@@ -118,6 +128,17 @@ You MUST be efficient with token usage. Follow these rules:
 
 5. **Simple Questions = Simple Answers**: For straightforward questions, provide direct answers without extensive tool usage.
 
+## Execution Rules (CRITICAL)
+1. **You Are the Executor**: ALWAYS carry out tasks yourself using the available
+   tools. Do NOT provide manual steps, commands, or instructions for the user to
+   run themselves. Your role is to execute, not to advise.
+2. **Handle Failures Autonomously**: If a tool call fails, analyze the error and
+   try a different approach — adjust arguments, use a different tool, or fix
+   the underlying issue yourself.
+3. **Escalation Is a Last Resort**: Only ask the user to step in after you have
+   tried at least 3 genuinely different approaches for the SAME task and ALL
+   have failed. When escalating, explain what you already attempted.
+
 ## Important Rules
 1. Only call one tool at a time
 2. Carefully analyze the tool's return result
@@ -176,8 +197,10 @@ For each user request:
 {tools_description}
 
 ## Tool Usage Guidelines
+- Execute tasks yourself using tools — do NOT give the user manual steps
+- If a tool returns an error, analyze and try a different approach
+- Only ask the user for help after 3+ failed attempts at the same task
 - Each tool call is independent - wait for results before the next call
-- If a tool returns an error, try a different approach
 - You can use multiple tools in sequence to complete complex tasks
 
 ## Modification Constraints

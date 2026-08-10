@@ -772,9 +772,8 @@ smart_optimization:
     stall_trigger_count: 3        # 停滞触发次数
     auto_reset_on_user_confirm: true  # 确认后自动恢复 AUTO
 
-  # v0.10: 工具结果截断由 tool_processor_max_output_tokens 统一控制
-  # -v (minimal), -vv (verbose) 冗度控制，--output-module 模块覆写
-  # STATUS 格式使用 render_status_truncated() 按比例分配 stdout/stderr 预算
+  # v0.10: Agent 自行执行优先（非给出指令），3+ 次失败后才求助
+  # 工具结果截断、-v/-vv 冗度控制、--output-module 模块覆写
 
 # v0.10 调试输出控制: output.verbosity (quiet|minimal|verbose)
 # 模块覆写: output.module_overrides: {react: verbose} 单独开启某模块调试
