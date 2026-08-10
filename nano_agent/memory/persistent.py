@@ -133,14 +133,23 @@ class PersistentMemory(BaseMemory):
 
         system_msg = self._messages[0]
         recent = self._messages[-(max_messages - 1) :]
-        return [system_msg] + recent
+        from .base import sanitize_tool_messages
+
+        return sanitize_tool_messages([system_msg] + recent)
 
     def _trim_if_needed(self) -> None:
-        """如超出限制则裁剪旧消息（仅在内存中）。"""
+        """如超出限制则裁剪旧消息（仅在内存中）。
+
+        裁剪后调用 sanitize_tool_messages 确保不会产生
+        孤立的 tool_calls（OpenAI API 会因此返回 400 错误）。
+        """
         if len(self._messages) > self.max_messages:
+            from .base import sanitize_tool_messages
+
             system_msg = self._messages[0]
             recent = self._messages[-(self.max_messages - 1) :]
-            self._messages = [system_msg] + recent
+            trimmed = [system_msg] + recent
+            self._messages = sanitize_tool_messages(trimmed)
 
     def set_system_prompt(self, prompt: str) -> None:
         """设置或更新系统提示。"""

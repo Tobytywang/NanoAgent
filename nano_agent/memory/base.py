@@ -10,6 +10,38 @@ from typing import Any
 EPHEMERAL_KEY = "ephemeral"
 
 
+def sanitize_tool_messages(messages: list[dict]) -> list[dict]:
+    """Remove orphan tool_calls that have no matching tool result.
+
+    OpenAI requires every assistant message with tool_calls to be followed
+    by corresponding tool messages.  Trimming by message count can leave
+    tool_calls without their results, causing API 400 errors.
+
+    Returns a new list (does not mutate the input).
+    """
+    # Collect tool_call_ids that have corresponding tool results
+    tool_result_ids: set[str] = set()
+    for msg in messages:
+        if msg.get("role") == "tool" and msg.get("tool_call_id"):
+            tool_result_ids.add(msg["tool_call_id"])
+
+    cleaned: list[dict] = []
+    for msg in messages:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            # Keep only calls that have matching results
+            valid_calls = [
+                tc for tc in msg["tool_calls"] if tc.get("id") in tool_result_ids
+            ]
+            if valid_calls:
+                msg_copy = {**msg, "tool_calls": valid_calls}
+                cleaned.append(msg_copy)
+            # If no valid calls remain, drop this message entirely
+        else:
+            cleaned.append(msg)
+
+    return cleaned
+
+
 class BaseMemory(ABC):
     """记忆系统抽象基类"""
 

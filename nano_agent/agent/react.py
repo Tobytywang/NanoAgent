@@ -1246,6 +1246,13 @@ class ReActAgent(BaseAgent):
                     f"[Caching] Using stable system prompt ({len(system_stable)} chars)"
                 )
 
+        # Guard against orphan tool_calls — trimming/compression can leave
+        # assistant tool_calls without corresponding tool results, causing
+        # OpenAI API 400 "insufficient tool messages following tool_calls".
+        from ..memory.base import sanitize_tool_messages
+
+        messages = sanitize_tool_messages(messages)
+
         return messages, tools_schema if tools_schema else None, system_stable
 
     def _finalize_think_result(

@@ -99,7 +99,10 @@ class MessageCompressor:
 
         self._compression_count += 1
 
-        return compressed
+        # Remove orphan tool_calls that may have been split by slicing
+        from ..memory.base import sanitize_tool_messages
+
+        return sanitize_tool_messages(compressed)
 
     def _create_summary(self, old_messages: list) -> dict:
         """
