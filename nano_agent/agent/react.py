@@ -252,7 +252,24 @@ class ReActAgent(BaseAgent):
                 if branch.returncode == 0:
                     env_lines.append(f"- Git branch: {branch.stdout.strip()}")
             except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-                pass  # git not installed or not a repo — skip
+                pass
+
+            # Project type detection from common config files
+            project_markers = {
+                "pyproject.toml": "Python project (pyproject.toml)",
+                "setup.py": "Python project (setup.py)",
+                "package.json": "Node.js project (package.json)",
+                "Cargo.toml": "Rust project (Cargo.toml)",
+                "go.mod": "Go project (go.mod)",
+                "Makefile": "C/C++ or general project (Makefile)",
+                "CMakeLists.txt": "CMake project",
+                "Gemfile": "Ruby project (Gemfile)",
+            }
+            cwd = os.getcwd()
+            for filename, description in project_markers.items():
+                if os.path.isfile(os.path.join(cwd, filename)):
+                    env_lines.append(f"- Project type: {description}")
+                    break  # Report only the first match
 
             dynamic_parts.append("\n".join(env_lines))
 

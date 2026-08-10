@@ -772,7 +772,7 @@ smart_optimization:
     stall_trigger_count: 3        # 停滞触发次数
     auto_reset_on_user_confirm: true  # 确认后自动恢复 AUTO
 
-  # v0.10: prompt_toolkit 多行输入 + 环境感知(git分支/OS/Shell) + 自行执行优先
+  # v0.10: prompt_toolkit 多行输入 + 环境感知(项目类型/git/OS/Shell) + 自行执行
   # 工具结果截断、-v/-vv 冗度控制、--output-module 模块覆写
 
 # v0.10 调试输出控制: output.verbosity (quiet|minimal|verbose)
