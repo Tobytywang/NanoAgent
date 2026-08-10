@@ -8,6 +8,7 @@ following the Think -> Act -> Observe cycle.
 import asyncio
 import os
 import platform
+import subprocess
 import time
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Generator
@@ -239,6 +240,20 @@ class ReActAgent(BaseAgent):
                 env_lines.append("- Shell: PowerShell (use powershell syntax)")
             else:
                 env_lines.append("- Shell: bash/sh (use Unix shell syntax)")
+
+            # Git branch (only if cwd is inside a git repository)
+            try:
+                branch = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                if branch.returncode == 0:
+                    env_lines.append(f"- Git branch: {branch.stdout.strip()}")
+            except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+                pass  # git not installed or not a repo — skip
+
             dynamic_parts.append("\n".join(env_lines))
 
             # Add skill prompt if available

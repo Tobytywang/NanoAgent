@@ -2581,8 +2581,8 @@ enabled: true
 > at runtime with the current tool registry. Both the in-memory system prompt and the
 > stable prompt (`_stable_system_prompt`, used for prefix caching) are updated.
 >
-> **v0.10**: Internal Guidelines + Execution Rules + Environment 段落；
-> CLI prompt_toolkit bracketed paste/历史记录；消息裁剪防孤儿 tool_calls。
+> **v0.10**: Internal Guidelines + Execution Rules + Environment(git/OS/Shell)；
+> CLI prompt_toolkit bracketed paste/历史记录；sanitize_tool_messages。
 > **2026-07-21**: Fix 讯飞星火 streaming tool call accumulation where a second delta
 > with empty `name`/`id` overwrites the correctly set values from the first delta.
 
