@@ -388,9 +388,9 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
 
 def _load_project_context(config=None) -> tuple[str, str]:
     """
-    Load project context from CLAUDE.md, NANOPROJECT.md and .nano_agent/.
+    Load project context from NANOPROJECT.md, CLAUDE.md, README.md, and .nano_agent/.
 
-    Priority: CLAUDE.md > NANOPROJECT.md (auto-generated).
+    Priority: NANOPROJECT.md > CLAUDE.md > README.md.
 
     Args:
         config: Configuration object (optional, for project_file_mode)
@@ -407,41 +407,51 @@ def _load_project_context(config=None) -> tuple[str, str]:
     if config and hasattr(config, "project_file"):
         project_file_mode = config.project_file.mode
 
-    # 1. Load project context from CLAUDE.md or NANOPROJECT.md
-    claude_path = project_root / "CLAUDE.md"
-    nanoproject_path = project_root / "NANOPROJECT.md"
+    # 1. Load project context: NANOPROJECT.md > CLAUDE.md > README.md
+    project_files = [
+        (project_root / "NANOPROJECT.md", "NANOPROJECT.md"),
+        (project_root / "CLAUDE.md", "CLAUDE.md"),
+        (project_root / "README.md", "README.md"),
+    ]
     project_file_path = None
     project_file_name = ""
 
-    if claude_path.exists():
-        project_file_path = claude_path
-        project_file_name = "CLAUDE.md"
-    elif nanoproject_path.exists():
-        project_file_path = nanoproject_path
-        project_file_name = "NANOPROJECT.md"
+    for path, name in project_files:
+        if path.exists():
+            project_file_path = path
+            project_file_name = name
+            break
 
     if project_file_path is not None:
         try:
             content = project_file_path.read_text(encoding="utf-8")
 
-            if project_file_name == "CLAUDE.md":
-                if len(content) > 8000:
-                    content = content[:8000] + "\n\n... (truncated)"
-                context_parts.append(
-                    f"## Project Instructions ({project_file_name})\n\n{content}"
-                )
-                source_name = project_file_name
-            else:
+            if project_file_name == "NANOPROJECT.md":
+                # Apply mode-specific processing
                 if project_file_mode == "full":
                     if len(content) > 5000:
                         content = content[:5000] + "\n\n... (truncated)"
                 elif project_file_mode == "condensed":
                     content = _condense_project_file(content)
                 elif project_file_mode == "reference":
-                    content = f"See NANOPROJECT.md for project context (file exists, {len(content)} chars)"
+                    content = (
+                        f"See NANOPROJECT.md for project context ({len(content)} chars)"
+                    )
+            elif project_file_name == "CLAUDE.md":
+                if len(content) > 8000:
+                    content = content[:8000] + "\n\n... (truncated)"
+            else:  # README.md
+                if len(content) > 4000:
+                    content = content[:4000] + "\n\n... (truncated)"
+                content = f"## Project README ({project_file_name})\n\n{content}"
 
-                context_parts.append(f"## Project Context\n\n{content}")
-                source_name = project_file_name
+            label = (
+                "Project Context"
+                if project_file_name != "CLAUDE.md"
+                else f"Project Instructions ({project_file_name})"
+            )
+            context_parts.append(f"## {label}\n\n{content}")
+            source_name = project_file_name
         except Exception:
             pass
 
@@ -2970,6 +2980,17 @@ def _init_project(agent) -> None:
         # 使用 LLM 生成项目摘要
         Console.print("\nGenerating project summary with LLM...", style="info")
 
+        # 读取 CLAUDE.md 作为参考（如果存在）
+        claude_path = Path.cwd() / "CLAUDE.md"
+        claude_context = ""
+        if claude_path.exists():
+            try:
+                claude_content = claude_path.read_text(encoding="utf-8")
+                claude_context = f"\n\nCLAUDE.md Reference:\n{claude_content[:4000]}"
+                Console.print("  参考 CLAUDE.md", style="info")
+            except Exception:
+                pass
+
         # 构建扫描信息摘要
         scan_summary = f"""
 Project Name: {info['project_name']}
@@ -2992,7 +3013,7 @@ The summary should include:
 4. Development notes and suggestions
 
 Scan Results:
-{scan_summary}
+{scan_summary}{claude_context}
 
 Please generate NANOPROJECT.md content (in Chinese, concise and professional):"""
 
