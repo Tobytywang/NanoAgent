@@ -386,17 +386,20 @@ def create_agent(config_path: str | None = None) -> AgentOrchestrator:
     return orchestrator
 
 
-def _load_project_context(config=None) -> str:
+def _load_project_context(config=None) -> tuple[str, str]:
     """
-    Load project context from NANOPROJECT.md and .nano_agent/.
+    Load project context from CLAUDE.md, NANOPROJECT.md and .nano_agent/.
+
+    Priority: CLAUDE.md > NANOPROJECT.md (auto-generated).
 
     Args:
         config: Configuration object (optional, for project_file_mode)
 
     Returns:
-        Context string to add to system prompt
+        Tuple of (context_string, source_description)
     """
     context_parts = []
+    source_name = ""
     project_root = Path.cwd()
 
     # Get project file mode from config
@@ -404,25 +407,41 @@ def _load_project_context(config=None) -> str:
     if config and hasattr(config, "project_file"):
         project_file_mode = config.project_file.mode
 
-    # 1. Load NANOPROJECT.md (required if exists)
+    # 1. Load project context from CLAUDE.md or NANOPROJECT.md
+    claude_path = project_root / "CLAUDE.md"
     nanoproject_path = project_root / "NANOPROJECT.md"
-    if nanoproject_path.exists():
+    project_file_path = None
+    project_file_name = ""
+
+    if claude_path.exists():
+        project_file_path = claude_path
+        project_file_name = "CLAUDE.md"
+    elif nanoproject_path.exists():
+        project_file_path = nanoproject_path
+        project_file_name = "NANOPROJECT.md"
+
+    if project_file_path is not None:
         try:
-            content = nanoproject_path.read_text(encoding="utf-8")
+            content = project_file_path.read_text(encoding="utf-8")
 
-            # Apply mode-specific processing
-            if project_file_mode == "full":
-                # Send complete file (with truncation for safety)
-                if len(content) > 5000:
-                    content = content[:5000] + "\n\n... (truncated)"
-            elif project_file_mode == "condensed":
-                # Send condensed version (extract key sections)
-                content = _condense_project_file(content)
-            elif project_file_mode == "reference":
-                # Only send file name reference
-                content = f"See NANOPROJECT.md for project context (file exists, {len(content)} chars)"
+            if project_file_name == "CLAUDE.md":
+                if len(content) > 8000:
+                    content = content[:8000] + "\n\n... (truncated)"
+                context_parts.append(
+                    f"## Project Instructions ({project_file_name})\n\n{content}"
+                )
+                source_name = project_file_name
+            else:
+                if project_file_mode == "full":
+                    if len(content) > 5000:
+                        content = content[:5000] + "\n\n... (truncated)"
+                elif project_file_mode == "condensed":
+                    content = _condense_project_file(content)
+                elif project_file_mode == "reference":
+                    content = f"See NANOPROJECT.md for project context (file exists, {len(content)} chars)"
 
-            context_parts.append(f"## Project Context\n\n{content}")
+                context_parts.append(f"## Project Context\n\n{content}")
+                source_name = project_file_name
         except Exception:
             pass
 
@@ -443,8 +462,8 @@ def _load_project_context(config=None) -> str:
             pass
 
     if context_parts:
-        return "\n\n---\n\n".join(context_parts)
-    return ""
+        return "\n\n---\n\n".join(context_parts), source_name
+    return "", ""
 
 
 def _condense_project_file(content: str) -> str:
@@ -1135,7 +1154,7 @@ def run_interactive(
                 Console.print("Git 集成已启用", style="info")
 
     # Load project context at startup and add to system prompt
-    project_context = _load_project_context(config)
+    project_context, project_source = _load_project_context(config)
 
     # 设置优雅退出管理器
     GracefulExitManager.agent = agent
@@ -1158,7 +1177,8 @@ def run_interactive(
         current_prompt = agent.memory.system_prompt or ""
         agent.memory.set_system_prompt(f"{current_prompt}\n\n---\n\n{project_context}")
         if agent.verbose:
-            Console.print("项目: NANOPROJECT.md 已加载", style="success")
+            source_label = project_source or "project file"
+            Console.print(f"项目: {source_label} 已加载", style="success")
 
     if agent.verbose:
         Console.print("输入 '/?' 或 'help' 查看可用命令", style="info")

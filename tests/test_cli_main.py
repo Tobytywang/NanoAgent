@@ -778,10 +778,11 @@ class TestProjectContext:
         config.agent = AgentConfig()
 
         with patch("pathlib.Path.cwd", return_value=temp_dir):
-            context = _load_project_context(config)
+            context, source = _load_project_context(config)
 
-            # Should return empty string when no NANOPROJECT.md
+            # Should return empty when no project file
             assert context == ""
+            assert source == ""
 
     def test_load_project_context_with_nanoproject(self, temp_dir):
         """Test _load_project_context with NANOPROJECT.md."""
@@ -798,10 +799,11 @@ class TestProjectContext:
         config.project_file.mode = "full"
 
         with patch("pathlib.Path.cwd", return_value=temp_dir):
-            context = _load_project_context(config)
+            context, source = _load_project_context(config)
 
             assert "Test Project" in context
             assert "Project Context" in context
+            assert source == "NANOPROJECT.md"
 
     def test_load_project_context_condensed_mode(self, temp_dir):
         """Test _load_project_context with condensed mode."""
@@ -830,7 +832,7 @@ tests/test_main.py
         config.project_file.mode = "condensed"
 
         with patch("pathlib.Path.cwd", return_value=temp_dir):
-            context = _load_project_context(config)
+            context, source = _load_project_context(config)
 
             # Should contain condensed content
             assert context != ""
@@ -849,7 +851,7 @@ tests/test_main.py
         config.project_file.mode = "reference"
 
         with patch("pathlib.Path.cwd", return_value=temp_dir):
-            context = _load_project_context(config)
+            context, source = _load_project_context(config)
 
             # Should only contain reference, not full content
             assert "See NANOPROJECT.md" in context
