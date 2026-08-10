@@ -773,6 +773,7 @@ smart_optimization:
     auto_reset_on_user_confirm: true  # 确认后自动恢复 AUTO
 
   # v0.10: 工具结果截断由 tool_processor_max_output_tokens 统一控制
+  # -v (minimal), -vv (verbose) 冗度控制，--output-module 模块覆写
   # STATUS 格式使用 render_status_truncated() 按比例分配 stdout/stderr 预算
 
 # v0.10 调试输出控制: output.verbosity (quiet|minimal|verbose)

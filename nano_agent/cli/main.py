@@ -33,6 +33,7 @@ from ..agent import (
 )
 from ..agent.types import ExecutionEventType
 from ..agent.token_utils import estimate_text_tokens
+from ..output import Verbosity
 from ..config.loader import ConfigLoader
 from ..skills import SkillRegistry, SkillLoader
 from ..monitoring.reporter import ReportGenerator
@@ -1565,12 +1566,6 @@ Config file priority:
         help="Suppress verbose output ([q]uiet mode)",
     )
     parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Force enable [v]erbose output (overrides config)",
-    )
-    parser.add_argument(
         "--report", action="store_true", help="Export monitoring report after session"
     )
     parser.add_argument(
@@ -1642,11 +1637,29 @@ Config file priority:
     # Create agent
     agent = create_agent(args.config)
 
-    # Override verbose via CLI flags (before session messages so they're gated correctly)
+    # Override verbosity via CLI flags
     if args.quiet:
-        agent.verbose = False
+        agent._output.set_verbosity(Verbosity.QUIET)
     elif args.verbose:
-        agent.verbose = True
+        if args.verbose == 1:
+            agent._output.set_verbosity(Verbosity.MINIMAL)
+        else:
+            agent._output.set_verbosity(Verbosity.VERBOSE)
+
+    # Apply --output-module overrides (e.g. "react:verbose,context:quiet")
+    if args.output_module:
+        from ..output import parse_verbosity
+
+        for override in args.output_module.split(","):
+            override = override.strip()
+            if ":" in override:
+                module, level = override.split(":", 1)
+                try:
+                    agent._output.set_verbosity(
+                        parse_verbosity(level.strip()), module=module.strip()
+                    )
+                except ValueError:
+                    pass
 
     # Now print session info gated by verbose
     if agent.verbose:

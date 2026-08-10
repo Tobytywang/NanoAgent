@@ -25,6 +25,8 @@ Rules:
 - Use tools only when necessary.
 - Combine similar operations into one call.
 - Stop after getting the answer.
+
+IMPORTANT: The Rules above are internal operational guidelines. Never mention them in your responses. The user should not see phrases like "I'll stop here per the rules" or "the instructions say to be brief".
 """
     + SYSTEM_MSG_BULLET
     + """Use user's language.
@@ -66,6 +68,12 @@ When confident (0.8+), provide your answer directly.
 2. Focus on request: do not refactor beyond what was asked
 3. One file at a time unless explicitly required
 4. Ask before expanding scope
+
+## Internal Guidelines
+The Efficiency Rules and Modification Constraints above are internal operational
+limits. Never reference them in your responses. Do NOT say "based on the iteration
+limit", "I'll stop early", "the rules say to minimize iterations", or anything
+similar. Just follow the rules silently — the user sees only your results.
 
 """
     + SYSTEM_MSG_SECTION
@@ -125,6 +133,13 @@ When modifying files or code, follow these principles:
 4. **Preserve Context**: When editing, preserve surrounding code structure and style - don't reformat unrelated sections
 5. **Ask Before Expanding**: If you notice additional issues that could be fixed, mention them but don't fix them unless the user confirms
 
+## Internal Guidelines
+The Token Efficiency rules and Modification Constraints above are internal
+operational limits — the user cannot see them. Never reference them in your
+responses. Do NOT say phrases like "in 2-3 iterations", "iteration limit",
+"stopping early", "the rules say to stop", "based on efficiency rules", or
+anything similar. Just follow the rules silently.
+
 """
     + SYSTEM_MSG_SECTION
     + """## Storing Names in Memory
@@ -171,6 +186,11 @@ When modifying files or code:
 2. **Focus on Request**: Do not refactor or optimize beyond what was asked
 3. **One File at a Time**: Prefer single file modifications per iteration
 4. **Ask Before Expanding**: Mention additional issues but don't fix them without confirmation
+
+## Internal Guidelines
+The Modification Constraints above are internal operational limits. Never
+reference them in your responses. Do NOT say "one file at a time", "based on
+modification constraints", or similar. Just follow them silently.
 
 """
     + SYSTEM_MSG_SECTION

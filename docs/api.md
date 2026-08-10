@@ -2581,6 +2581,9 @@ enabled: true
 > at runtime with the current tool registry. Both the in-memory system prompt and the
 > stable prompt (`_stable_system_prompt`, used for prefix caching) are updated.
 >
+> **v0.10**: 所有提示词变体添加 Internal Guidelines 段落，约束 LLM 不在回复中
+> 提及轮次限制、效率规则等内部参数。
+>
 > **2026-07-21**: Fix 讯飞星火 streaming tool call accumulation where a second delta
 > with empty `name`/`id` overwrites the correctly set values from the first delta.
 

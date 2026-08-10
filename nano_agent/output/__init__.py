@@ -40,7 +40,8 @@ def configure_output(
     if isinstance(verbosity, str):
         verbosity = parse_verbosity(verbosity)
     manager = OutputManager(verbosity=verbosity, color=color)
-    for module, v in (module_overrides or {}).items():
-        manager.set_verbosity(parse_verbosity(v), module=module)
+    if isinstance(module_overrides, dict):
+        for module, v in module_overrides.items():
+            manager.set_verbosity(parse_verbosity(v), module=module)
     _output = manager
     return _output

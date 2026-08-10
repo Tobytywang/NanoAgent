@@ -254,15 +254,16 @@ class AgentBuilder:
 
         # Initialize output system from config
         output_config = getattr(self.config, "output", None)
-        if output_config is not None:
+        if output_config is not None and isinstance(output_config.verbosity, str):
             configure_output(
                 verbosity=output_config.verbosity,
                 module_overrides=output_config.module_overrides,
-                color=output_config.color,
+                color=getattr(output_config, "color", True),
             )
 
-        # Map legacy verbose flag to OutputManager
-        verbose_override = True if self.config.agent.verbose else None
+        # Map legacy verbose flag (True→VERBOSE, False/None→use global default)
+        agent_verbose = getattr(self.config.agent, "verbose", False)
+        verbose_override = True if agent_verbose is True else None
 
         # Create agent
         agent = ReActAgent(
