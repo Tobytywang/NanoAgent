@@ -7,7 +7,9 @@ following the Think -> Act -> Observe cycle.
 
 import asyncio
 import os
+import platform
 import time
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Generator
 
 from .base import BaseAgent
@@ -225,10 +227,18 @@ class ReActAgent(BaseAgent):
             # Build dynamic portion
             dynamic_parts = []
 
-            # Working directory — always include so the agent knows its filesystem context
-            dynamic_parts.append(
-                f"## Environment\nCurrent working directory: {os.getcwd()}"
-            )
+            # Environment context — always include so the agent knows its runtime context
+            env_lines = [
+                "## Environment",
+                f"- Working directory: {os.getcwd()}",
+                f"- Current time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                f"- OS: {platform.system()} {platform.release()}",
+            ]
+            if platform.system() == "Windows":
+                env_lines.append("- Shell: PowerShell (use powershell syntax)")
+            else:
+                env_lines.append("- Shell: bash/sh (use Unix shell syntax)")
+            dynamic_parts.append("\n".join(env_lines))
 
             # Add skill prompt if available
             if self.skill_prompt:
