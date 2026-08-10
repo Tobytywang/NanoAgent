@@ -6,6 +6,7 @@ following the Think -> Act -> Observe cycle.
 """
 
 import asyncio
+import os
 import time
 from typing import AsyncGenerator, Generator
 
@@ -223,6 +224,11 @@ class ReActAgent(BaseAgent):
         if self._prompt_builder is not None and self._stable_system_prompt:
             # Build dynamic portion
             dynamic_parts = []
+
+            # Working directory — always include so the agent knows its filesystem context
+            dynamic_parts.append(
+                f"## Environment\nCurrent working directory: {os.getcwd()}"
+            )
 
             # Add skill prompt if available
             if self.skill_prompt:
