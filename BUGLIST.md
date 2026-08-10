@@ -732,6 +732,45 @@ if response == "y":
 
 ---
 
+## BUG-011: FileHistory 传入不存在的 max_length 参数导致 CLI 启动循环报错
+
+**发现日期**: 2026-08-10
+
+**严重程度**: 高（CLI 交互循环中每轮均报错，严重影响可用性）
+
+**影响范围**: 所有使用 prompt_toolkit 交互输入的用户
+
+### 问题描述
+
+CLI 每轮交互均输出错误信息：
+```
+错误: FileHistory.__init__() got an unexpected keyword argument 'max_length'
+```
+
+### 根因分析
+
+`prompt_toolkit.history.FileHistory.__init__()` 仅接受 `filename` 参数，不支持 `max_length`。`max_length` 是基类 `History` 的参数，但未在 `FileHistory` 构造函数中暴露。代码审查建议添加此参数，但未验证实际 API 签名即提交。
+
+### 修复方案
+
+移除 `max_length=1000` 参数。`FileHistory` 仅接受 `filename`：
+```python
+_input_session = PromptSession(history=FileHistory(str(history_path)))
+```
+
+### 经验教训
+
+1. **代码审查建议必须在实际环境中验证 API 签名后再提交** — `inspect.signature()` 是可靠的工具
+2. `History` 基类的 `max_length` 控制的是内存中条目数（默认 10000），磁盘增长由 `FileHistory` 自行管理
+3. 这个 BUG 是由 simplify 流程中的审查建议引入的，审查建议本身需要二次验证
+
+### 相关提交
+
+- 引入: `70df5fc refactor: simplify - 环境构建与输入缓存优化`
+- 修复: `bcaec68 fix: 移除 FileHistory 不支持的 max_length 参数`
+
+---
+
 每个 BUG 记录应包含：
 
 - **发现日期**: YYYY-MM-DD
